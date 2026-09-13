@@ -29,7 +29,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
 
-    <!-- आपकी कस्टम CSS फाइल -->
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -75,7 +75,8 @@
                 <button class="action-btn-sm" onclick="window.openAddNewFeederModal()"><i class="fa-solid fa-plus"></i></button>
             </div>
             <div class="header-actions">
-                <div id="sync-indicator" title="Sync Status">✅☁️</div>
+                <!-- UI UX Fix: Modern Sync Icon -->
+                <div id="sync-indicator" class="sync-icon-box" title="Sync Status"><i class="fa-solid fa-cloud"></i></div>
                 <button class="action-btn-sm bg" onclick="window.runOrphanNodeChecker()"><i class="fa-solid fa-network-wired" style="color:#d97706;"></i></button>
             </div>
         </div>
@@ -224,7 +225,7 @@
 <div class="modal-overlay" id="formModalOverlay"><div class="modal-sheet" id="modalSheetContent"></div></div>
 <canvas id="cad-canvas" style="display:none;"></canvas>
 
-<!-- आपका कस्टम JS फाइल -->
+<!-- Custom JS -->
 <script src="js/app.js"></script>
 
 </body>
