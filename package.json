@@ -1,14 +1,14 @@
 {
-  "name": "com.discom.pro",
-  "displayName": "DISCOM Pro",
+  "name": "discom-pro",
   "version": "1.0.0",
-  "description": "DISCOM Field Survey App",
+  "description": "DISCOM Survey Pro App",
   "main": "index.js",
   "scripts": {
     "build": "cordova build android"
   },
-  "dependencies": {
-    "cordova-android": "^13.0.0"
+  "dependencies": {},
+  "devDependencies": {
+    "cordova": "^12.0.0"
   },
   "cordova": {
     "platforms": [
