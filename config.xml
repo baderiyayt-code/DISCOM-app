@@ -19,7 +19,7 @@
     
     <!-- Native Splash Screen Configuration -->
     <preference name="SplashScreen" value="screen" />
-    <preference name="SplashScreenDelay" value="10000" /> <!-- JS will hide it when ready -->
+    <preference name="SplashScreenDelay" value="10000" />
     <preference name="AutoHideSplashScreen" value="false" />
     <preference name="SplashMaintainAspectRatio" value="true" />
     <preference name="FadeSplashScreen" value="true" />
@@ -28,12 +28,11 @@
     
     <platform name="android">
         <allow-intent href="market:*" />
+        <preference name="AndroidPersistentFileLocation" value="Compatibility" />
     </platform>
 
-    <!-- Automatic Plugins Installation -->
+    <!-- Plugins -->
     <plugin name="cordova-plugin-splashscreen" spec="^6.0.0" />
-    
-    <!-- Mandatory Plugins for Live Location and Export functionality -->
-    <plugin name="cordova-plugin-x-socialsharing" />
     <plugin name="cordova-plugin-geolocation" />
+    <plugin name="cordova-plugin-file" /> <!-- Required for Direct Downloads -->
 </widget>
