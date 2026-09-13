@@ -89,7 +89,7 @@
         </div>
     </div>
 
-    <div id="layer-indicator" data-i18n="hybridMap">Hybrid Map</div>
+    <div id="layer-indicator" data-i18n="hybridMap">Google Hybrid</div>
     <div id="map"></div>
     <div id="reticle-coordinates">0.000000, 0.000000</div>
     <div id="center-placement-pin">📍</div>
@@ -207,6 +207,13 @@
         <div class="menu-link-btn" onclick="window.exportToAutoCAD_DXF()"><i class="fa-solid fa-draw-polygon" style="color:#10b981;"></i> <span data-i18n="exportDxf">Export DXF</span></div>
         <div class="menu-link-btn" onclick="window.exportToGoogleEarth_KML()"><i class="fa-solid fa-earth-americas" style="color:#0ea5e9;"></i> <span data-i18n="exportKml">Export styled KML</span></div>
         <div class="menu-link-btn" onclick="window.exportDataToCSV()"><i class="fa-solid fa-file-csv" style="color:#f59e0b;"></i> <span data-i18n="exportCsv">Export CSV (GE Ready)</span></div>
+        
+        <div class="menu-category-title" data-i18n="import">Backup & Restore</div>
+        <div class="menu-link-btn" onclick="window.exportFullJSONBackup()"><i class="fa-solid fa-download" style="color:#2563eb;"></i> <span>Export Backup (JSON)</span></div>
+        <label class="menu-link-btn">
+            <i class="fa-solid fa-file-import" style="color:#8b5cf6;"></i><span data-i18n="importData">Import Backup (JSON)</span>
+            <input type="file" id="csvFileInput" accept=".json,application/json" style="display:none;" onchange="window.handleImportChoice(event)">
+        </label>
 
         <div class="menu-category-title" data-i18n="system">System</div>
         <div class="menu-link-btn" onclick="window.openSettingsPage()"><i class="fa-solid fa-gear" style="color:#64748b;"></i><span data-i18n="settings">Settings</span></div>
