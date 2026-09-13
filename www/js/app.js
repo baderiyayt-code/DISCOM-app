@@ -186,14 +186,36 @@ const map = L.map('map', {
     rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0 
 }).setView([26.9150, 75.7830], 16);
 
-// Set Map zoom listener for dynamic scaling of icons via CSS classes
-map.on('zoomend', () => { document.getElementById('map').setAttribute('data-zoom', map.getZoom()); });
-document.getElementById('map').setAttribute('data-zoom', map.getZoom());
+// ====== DYNAMIC ZOOM SCALING HIERARCHY ======
+function updateMapZoomClasses() {
+    const z = map.getZoom();
+    const mapEl = document.getElementById('map');
+    
+    // Reset Classes
+    mapEl.classList.remove('hide-consumers', 'hide-lt', 'hide-ht', 'hide-dt', 'hide-gss');
+    
+    // Strict Application Constraints: 
+    // Consumers 21 -> LT Poles 20 -> HT Poles 18 -> DT Icons 17 -> GSS Icon 16
+    if (z < 21) { 
+        mapEl.classList.add('hide-consumers');
+        if (map.hasLayer(featureGroups.consumerLines)) map.removeLayer(featureGroups.consumerLines);
+    } else {
+        if (!map.hasLayer(featureGroups.consumerLines)) map.addLayer(featureGroups.consumerLines);
+    }
+    
+    if (z < 20) mapEl.classList.add('hide-lt');
+    if (z < 18) mapEl.classList.add('hide-ht');
+    if (z < 17) mapEl.classList.add('hide-dt');
+    if (z < 16) mapEl.classList.add('hide-gss');
+}
+
+map.on('zoomend', updateMapZoomClasses);
+setTimeout(updateMapZoomClasses, 100); // Trigger Initial evaluation
 
 const tileLayers = { 
     hybrid: { name: 'Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
     street: { name: 'Google Street', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22 }) },
-    osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }) }
+    osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22 }) }
 };
 let currentTileIndex = 0; const layerKeys = Object.keys(tileLayers); tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
 
@@ -328,7 +350,6 @@ function renderEntireNetwork() {
                 });
                 consMarkers.push(m);
 
-                // Consumer Line Styling (Thinnest, Dotted Black)
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`;
                 const pCoords = getNodeCoords(parentStr);
                 if (pCoords) {
@@ -340,6 +361,9 @@ function renderEntireNetwork() {
         featureGroups.poles.addLayers(poleMarkers);
         featureGroups.dts.addLayers(dtMarkers);
         featureGroups.consumers.addLayers(consMarkers);
+        
+        // Initial map evaluation to clear canvas paths according to zoom
+        updateMapZoomClasses();
 
         let t11 = 0, tLT = 0, dt3ph = 0, dt1ph = 0; 
         net.lines.forEach(l => { if (getLineSpec(l.type).name.includes('LT')) tLT += (l.distanceMeters || 0); else t11 += (l.distanceMeters || 0); });
@@ -428,7 +452,6 @@ window.calcDistance = function(lat1, lon1, lat2, lon2) {
 window.formatDistance = function(m) { return (appState.settings.unit === 'km') ? (m / 1000).toFixed(3) + ' KM' : m.toFixed(1) + ' M'; }
 window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a, b) => window.calcDistance(lat, lng, a.lat, a.lng) - window.calcDistance(lat, lng, b.lat, b.lng)); }
 
-// Thickness Hierarchy implemented via specific line weights (HT > LT)
 function getLineSpec(type) {
     const t = (type || '').toUpperCase();
     if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 2.2, dash: null, filterKey: 'linesLT' };
@@ -836,21 +859,15 @@ window.executeSecureAppReset = function() {
 
 
 /* ====== STRICT EXPORT & IMPORT FUNCTIONALITY ====== */
-// Bulletproof export file fallback logic to resolve "Export Not Working" issue
+// Universal ObjectURL export fallback logic ensuring stability under Cordova & Browser
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
         const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
-        const file = new File([blob], filename, { type: mimeType });
-        
-        // Attempt Native Web Share API first
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            try { await navigator.share({ title: filename, files: [file] }); return; } catch(e) { console.warn("Share API fallback triggered", e); }
-        }
-        
-        // Universal Download Fallback
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.style.display = 'none'; a.href = url; a.download = filename;
+        a.style.display = 'none'; 
+        a.href = url; 
+        a.download = filename;
         document.body.appendChild(a); 
         a.click();
         
@@ -893,7 +910,7 @@ window.handleImportChoice = function(e) {
         }
     };
     reader.readAsText(file);
-    e.target.value = ''; // Reset the input
+    e.target.value = ''; // Reset input so identical file can be selected again
     window.toggleSidebar(false);
 }
 
