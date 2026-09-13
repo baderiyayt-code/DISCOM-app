@@ -180,37 +180,38 @@ window.handleSupabaseLogout = async function() {
     location.reload();
 }
 
-/* ====== MAP LAYER SETUP & LIVE TRACKING ====== */
+/* ====== MAP LAYER SETUP ====== */
 const map = L.map('map', { 
     zoomControl: false, attributionControl: false, preferCanvas: true, 
     rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0 
 }).setView([26.9150, 75.7830], 16);
 
-// ====== DYNAMIC ZOOM SCALING HIERARCHY ======
+
+// ====== STRICT DYNAMIC ZOOM SCALING HIERARCHY ======
 function updateMapZoomClasses() {
     const z = map.getZoom();
     const mapEl = document.getElementById('map');
     
     // Reset Classes
-    mapEl.classList.remove('hide-consumers', 'hide-lt', 'hide-ht', 'hide-dt', 'hide-gss');
+    mapEl.className = 'map-container'; 
     
-    // Strict Application Constraints: 
-    // Consumers 21 -> LT Poles 20 -> HT Poles 18 -> DT Icons 17 -> GSS Icon 16
-    if (z < 21) { 
-        mapEl.classList.add('hide-consumers');
+    // Zoom Requirements: Consumer > 20, LT Poles > 19, LT Line > 18, HT Pole > 17, DT > 16, GSS > 15
+    if (z <= 20) mapEl.classList.add('hide-consumers');
+    if (z <= 19) mapEl.classList.add('hide-lt-poles');
+    if (z <= 18) mapEl.classList.add('hide-lt-lines');
+    if (z <= 17) mapEl.classList.add('hide-ht-poles');
+    if (z <= 16) mapEl.classList.add('hide-dts');
+    if (z <= 15) mapEl.classList.add('mini-gss');
+    
+    // Manage Dotted Consumer Lines based on Consumer Visibility
+    if (z <= 20) {
         if (map.hasLayer(featureGroups.consumerLines)) map.removeLayer(featureGroups.consumerLines);
     } else {
         if (!map.hasLayer(featureGroups.consumerLines)) map.addLayer(featureGroups.consumerLines);
     }
-    
-    if (z < 20) mapEl.classList.add('hide-lt');
-    if (z < 18) mapEl.classList.add('hide-ht');
-    if (z < 17) mapEl.classList.add('hide-dt');
-    if (z < 16) mapEl.classList.add('hide-gss');
 }
-
 map.on('zoomend', updateMapZoomClasses);
-setTimeout(updateMapZoomClasses, 100); // Trigger Initial evaluation
+
 
 const tileLayers = { 
     hybrid: { name: 'Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
@@ -224,13 +225,14 @@ window.toggleMapLayer = function() {
     tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
 }
 
+// FIX: Replaced MarkerCluster with standard LayerGroups to completely prevent icon collapsing & draw delays
 const featureGroups = { 
     gss: L.layerGroup().addTo(map), 
     lines: L.layerGroup().addTo(map), 
     consumerLines: L.layerGroup().addTo(map),
-    poles: L.markerClusterGroup({ disableClusteringAtZoom: 18, maxClusterRadius: 50 }).addTo(map), 
-    dts: L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 50 }).addTo(map), 
-    consumers: L.markerClusterGroup({ disableClusteringAtZoom: 19, maxClusterRadius: 40 }).addTo(map) 
+    poles: L.layerGroup().addTo(map), 
+    dts: L.layerGroup().addTo(map), 
+    consumers: L.layerGroup().addTo(map) 
 };
 
 map.on('move', () => { 
@@ -243,24 +245,45 @@ function centerMapOnGSS() {
     if (gss && typeof gss.lat === 'number') map.setView([gss.lat, gss.lng], 16);
 }
 
+// ====== SECURE LOCATION PERMISSION & LIVE TRACKING ======
 window.liveTrackingId = null;
 window.liveUserMarker = null;
+
 window.toggleLiveTracking = function() {
-    if (!navigator.geolocation) return alert("Geolocation not supported by this device.");
-    if (window.liveTrackingId) {
-        navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
-        if (window.liveUserMarker) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
-        document.getElementById('liveTrackBtn').style.color = '#ef4444'; showToast("Live tracking disabled.");
+    const startTracking = () => {
+        if (!navigator.geolocation) return alert("Geolocation not supported by this device.");
+        
+        if (window.liveTrackingId) {
+            navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
+            if (window.liveUserMarker) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
+            document.getElementById('liveTrackBtn').style.color = '#ef4444'; showToast("Live tracking disabled.");
+        } else {
+            window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
+                const lat = pos.coords.latitude, lng = pos.coords.longitude;
+                if (!window.liveUserMarker) {
+                    const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [30,30] });
+                    window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
+                } else window.liveUserMarker.setLatLng([lat, lng]);
+                map.setView([lat, lng]);
+            }, (err) => alert("GPS Access Error. Ensure location permissions are granted."), { enableHighAccuracy: true });
+            document.getElementById('liveTrackBtn').style.color = '#10b981'; showToast("Live tracking enabled!");
+        }
+    };
+
+    // Strict Cordova Location Permission Check
+    if (window.cordova && cordova.plugins && cordova.plugins.permissions) {
+        const permissions = cordova.plugins.permissions;
+        permissions.checkPermission(permissions.ACCESS_FINE_LOCATION, (status) => {
+            if (status.hasPermission) { startTracking(); } 
+            else {
+                permissions.requestPermission(permissions.ACCESS_FINE_LOCATION, (s) => {
+                    if (s.hasPermission) startTracking();
+                    else alert("Live tracking requires Location Permission!");
+                }, () => alert("Permission request failed."));
+            }
+        });
     } else {
-        window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
-            const lat = pos.coords.latitude, lng = pos.coords.longitude;
-            if (!window.liveUserMarker) {
-                const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [30,30] });
-                window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
-            } else window.liveUserMarker.setLatLng([lat, lng]);
-            map.setView([lat, lng]);
-        }, (err) => alert("GPS Access Error. Ensure location permissions are granted."), { enableHighAccuracy: true });
-        document.getElementById('liveTrackBtn').style.color = '#10b981'; showToast("Live tracking enabled!");
+        startTracking(); // Fallback for pure browser
     }
 }
 
@@ -293,7 +316,10 @@ function renderEntireNetwork() {
             const spec = getLineSpec(line.type); if (!f[spec.filterKey]) return;
             
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25 }).addTo(featureGroups.lines);
-            L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false }).addTo(featureGroups.lines);
+            
+            // Add zoom scaling class to lines based on type
+            L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.className }).addTo(featureGroups.lines);
+            
             hitPoly.on('click', (e) => {
                 const html = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
                 L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
@@ -362,7 +388,7 @@ function renderEntireNetwork() {
         featureGroups.dts.addLayers(dtMarkers);
         featureGroups.consumers.addLayers(consMarkers);
         
-        // Initial map evaluation to clear canvas paths according to zoom
+        // Initial map evaluation to apply zoom classes instantly
         updateMapZoomClasses();
 
         let t11 = 0, tLT = 0, dt3ph = 0, dt1ph = 0; 
@@ -452,10 +478,11 @@ window.calcDistance = function(lat1, lon1, lat2, lon2) {
 window.formatDistance = function(m) { return (appState.settings.unit === 'km') ? (m / 1000).toFixed(3) + ' KM' : m.toFixed(1) + ' M'; }
 window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a, b) => window.calcDistance(lat, lng, a.lat, a.lng) - window.calcDistance(lat, lng, b.lat, b.lng)); }
 
+// Included explicit classNames to tie into the zoom scaling system
 function getLineSpec(type) {
     const t = (type || '').toUpperCase();
-    if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 2.2, dash: null, filterKey: 'linesLT' };
-    return { name: '11 KV LINE', color: '#2563eb', weight: 3.5, dash: null, filterKey: 'lines11' };
+    if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 2.2, dash: null, filterKey: 'linesLT', className: 'lt-line-path' };
+    return { name: '11 KV LINE', color: '#2563eb', weight: 3.5, dash: null, filterKey: 'lines11', className: 'ht-line-path' };
 }
 
 function getNodeCoords(nodeId) { 
@@ -857,17 +884,58 @@ window.executeSecureAppReset = function() {
     localforage.clear().then(() => { localStorage.clear(); location.reload(); });
 }
 
-
-/* ====== STRICT EXPORT & IMPORT FUNCTIONALITY ====== */
-// Universal ObjectURL export fallback logic ensuring stability under Cordova & Browser
+/* ====== STRICT PERMISSIONS EXPORT & IMPORT ====== */
+// Bulletproof Cordova Storage permissions and download fallback
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
         const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
+        const file = new File([blob], filename, { type: mimeType });
+        
+        // Method 1: Web Share API (Works natively on Android to bypass storage scopes)
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try { 
+                await navigator.share({ title: filename, files: [file] }); 
+                return; 
+            } catch(e) { console.warn("Share cancelled or failed", e); }
+        }
+
+        // Method 2: Cordova File Saving with strict permissions
+        if (window.cordova && cordova.file) {
+            const executeNativeSave = () => {
+                const downloadDir = cordova.file.externalRootDirectory + 'Download/';
+                window.resolveLocalFileSystemURL(downloadDir, (dirEntry) => {
+                    dirEntry.getFile(filename, { create: true, exclusive: false }, (fileEntry) => {
+                        fileEntry.createWriter((fileWriter) => {
+                            fileWriter.onwriteend = () => { alert("Saved successfully to Downloads folder!"); };
+                            fileWriter.onerror = (e) => { alert("Failed to save: " + e.toString()); };
+                            fileWriter.write(blob);
+                        });
+                    }, (e) => alert("File access error: " + e.code));
+                }, (e) => alert("Directory access error: Ensure Storage permissions are allowed in app settings."));
+            };
+
+            if (cordova.plugins && cordova.plugins.permissions) {
+                const permissions = cordova.plugins.permissions;
+                permissions.checkPermission(permissions.WRITE_EXTERNAL_STORAGE, (status) => {
+                    if (status.hasPermission) executeNativeSave();
+                    else {
+                        permissions.requestPermission(permissions.WRITE_EXTERNAL_STORAGE, (s) => {
+                            if (s.hasPermission) executeNativeSave();
+                            else alert("Storage permission denied! Cannot save file locally.");
+                        }, () => alert("Permission request failed."));
+                    }
+                });
+                return;
+            } else {
+                executeNativeSave();
+                return;
+            }
+        }
+        
+        // Method 3: Standard Web/Object URL Fallback
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.style.display = 'none'; 
-        a.href = url; 
-        a.download = filename;
+        a.style.display = 'none'; a.href = url; a.download = filename;
         document.body.appendChild(a); 
         a.click();
         
@@ -910,7 +978,7 @@ window.handleImportChoice = function(e) {
         }
     };
     reader.readAsText(file);
-    e.target.value = ''; // Reset input so identical file can be selected again
+    e.target.value = ''; // Reset the input
     window.toggleSidebar(false);
 }
 
