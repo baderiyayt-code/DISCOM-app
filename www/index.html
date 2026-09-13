@@ -15,11 +15,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <!-- Leaflet MarkerCluster Plugin -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
-    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
 
     <!-- Stable Map Rotation Plugin -->
     <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
@@ -212,7 +207,6 @@
         <div class="menu-link-btn" onclick="window.exportFullJSONBackup()"><i class="fa-solid fa-download" style="color:#2563eb;"></i> <span>Export Backup (JSON)</span></div>
         <label class="menu-link-btn">
             <i class="fa-solid fa-file-import" style="color:#8b5cf6;"></i><span data-i18n="importData">Import Backup (JSON)</span>
-            <!-- Hidden Input for File Handling -->
             <input type="file" id="jsonFileInput" accept=".json,application/json" style="display:none;" onchange="window.handleImportChoice(event)">
         </label>
 
