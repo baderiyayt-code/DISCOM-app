@@ -25,7 +25,7 @@ const i18n = {
         hybridMap: "Google Hybrid", htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer",
         line11: "11 KV Line", lineLT: "LT Line", dt3ph: "3-Ph DT", dt1ph: "1-Ph DT", totalCons: "Consumers",
         gssMgmt: "GSS Management", addNewGss: "Add New GSS", manageFdr: "Manage Feeders", 
-        export: "Export (Save to Device)", exportPdf: "Export SLD PDF", exportDxf: "Export DXF", exportKml: "Export styled KML", exportCsv: "Export CSV", 
+        export: "Export (Save to Device)", exportPdf: "Export SLD PDF (A0 Format)", exportDxf: "Export DXF", exportKml: "Export styled KML", exportCsv: "Export CSV", 
         import: "Backup & Restore", importData: "Import Backup (JSON)", system: "System", settings: "Settings", about: "About App",
         appLanguage: "App Language", distUnit: "Distance Unit", gpsInterval: "GPS Polling Interval", gpsAcc: "GPS Accuracy", resetData: "Reset App Data",
         confirmLoc: "Confirm Location", confirmHere: "Confirm Here", cancel: "Cancel", setNewLoc: "Set New Location",
@@ -159,7 +159,7 @@ function updateMapZoomClasses() {
     const z = map.getZoom(); const mapEl = document.getElementById('map');
     mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss');
     
-    // Zoom Rules: Consumer Icons 20 -> LT Poles 19 -> LT Line 18 -> HT Poles 17 -> DT Icons 16 -> GSS Icon 15
+    // Zoom Rules: Consumer(20) -> LT Pole(19) -> LT Line(18) -> HT Pole(17) -> DT(16) -> GSS(15)
     if (z <= 20) mapEl.classList.add('hide-consumers');
     if (z <= 19) mapEl.classList.add('hide-lt-poles');
     if (z <= 18) mapEl.classList.add('hide-lt-lines');
@@ -181,11 +181,14 @@ window.toggleMapLayer = function() {
     tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
 }
 
+// Marker Clustering disabled. Using basic LayerGroups for strict rendering control.
 const featureGroups = { 
-    gss: L.layerGroup().addTo(map), lines: L.layerGroup().addTo(map), consumerLines: L.layerGroup().addTo(map),
-    poles: L.markerClusterGroup({ disableClusteringAtZoom: 18, maxClusterRadius: 50 }).addTo(map), 
-    dts: L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 50 }).addTo(map), 
-    consumers: L.markerClusterGroup({ disableClusteringAtZoom: 19, maxClusterRadius: 40 }).addTo(map) 
+    gss: L.layerGroup().addTo(map), 
+    lines: L.layerGroup().addTo(map), 
+    consumerLines: L.layerGroup().addTo(map),
+    poles: L.layerGroup().addTo(map), 
+    dts: L.layerGroup().addTo(map), 
+    consumers: L.layerGroup().addTo(map) 
 };
 
 map.on('move', () => { const c = map.getCenter(); document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; });
@@ -207,8 +210,8 @@ window.toggleLiveTracking = function() {
         window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
             if (!window.liveUserMarker) {
-                const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [30,30] });
-                window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
+                const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [36,36], iconAnchor: [18,18] });
+                window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 10000}).addTo(map);
             } else window.liveUserMarker.setLatLng([lat, lng]);
             map.setView([lat, lng]);
             document.getElementById('liveTrackBtn').style.color = '#10b981';
@@ -227,7 +230,7 @@ function renderEntireNetwork() {
             if (typeof gss.lat === 'number') {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
                 const gssIcon = L.divIcon({ className: 'gss-square-icon', html: `<span>GSS</span>`, iconSize: [36,36], iconAnchor: [18,18] });
-                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon });
+                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 2000 });
                 m.on('click', (e) => {
                     const html = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
                     L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
@@ -248,8 +251,6 @@ function renderEntireNetwork() {
             });
         });
 
-        const poleMarkers = [], dtMarkers = [], consMarkers = [];
-
         if (f.poles) {
             net.poles.forEach(p => {
                 const isOrphan = appState.orphanPoleIds.has(p.id), isLT = p.lineType === 'LT';
@@ -257,11 +258,11 @@ function renderEntireNetwork() {
                 const iconClass = isLT ? 'lt-pole-icon' : 'pole-marker-icon'; const size = isLT ? [20, 20] : [24, 24];
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2] }) });
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2] }), zIndexOffset: 10 });
                 m.on('click', (e) => {
                     const html = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
                     L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
-                }); poleMarkers.push(m);
+                }); featureGroups.poles.addLayer(m);
             });
         }
 
@@ -270,13 +271,14 @@ function renderEntireNetwork() {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => x.poleNo == d.parentPole); if (p) { d.lat = p.lat; d.lng = p.lng; } }
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id);
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${d.rating}`, iconSize: [28, 28], iconAnchor: [14, 14] }) });
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${d.rating}`, iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: 1000 });
                     
                     m.on('click', (e) => {
                         const locTitle = d.location ? d.location : `DT Code: ${d.code}`;
-                        const html = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
+                        const connDetail = d.parentPole ? `Connected To: Pole ${d.parentPole}` : `Connected To: N/A`;
+                        const html = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br><span style="color:#64748b; font-size:0.8rem;">${connDetail}</span></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
                         L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
-                    }); dtMarkers.push(m);
+                    }); featureGroups.dts.addLayer(m);
                 }
             });
         }
@@ -284,18 +286,17 @@ function renderEntireNetwork() {
         if (f.consumers) {
             net.consumers.forEach(c => {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
-                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'consumer-marker-icon', html: `<i class="fa-solid fa-house"></i>`, iconSize: [16,16], iconAnchor: [8,8] }) });
+                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'consumer-marker-icon', html: `<i class="fa-solid fa-house"></i>`, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 5 });
                 m.on('click', (e) => {
                     const html = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
                     L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
-                }); consMarkers.push(m);
+                }); featureGroups.consumers.addLayer(m);
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
                 if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
             });
         }
 
-        featureGroups.poles.addLayers(poleMarkers); featureGroups.dts.addLayers(dtMarkers); featureGroups.consumers.addLayers(consMarkers);
         updateMapZoomClasses();
 
         let t11 = 0, tLT = 0, dt3ph = 0, dt1ph = 0; 
@@ -441,7 +442,7 @@ window.deleteGssAndFeederStrict = function(code) {
     const conf2 = prompt(`To strictly confirm deletion, please type the GSS code "${code}" below:`);
     if (conf2 !== code) return alert("Deletion cancelled: GSS code did not match.");
 
-    saveSnapshot();
+    saveSnapshot(); map.closePopup();
     if (appState.gssNodes[code]) delete appState.gssNodes[code];
     
     const feedersToDelete = [];
@@ -624,15 +625,22 @@ function deleteDTLogic(dtId, net) {
     net.poles = net.poles.filter(p => !ltPoleIds.includes(String(p.poleNo))); net.dts = net.dts.filter(x => x.id !== dtId);
 }
 function deleteLTPoleLogic(p, net) { net.consumers = net.consumers.filter(c => !(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo))); net.lines = net.lines.filter(l => String(l.fromNode) !== ('POLE_'+p.poleNo) && String(l.toNode) !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== p.id); }
+
 window.deleteEntity = function(type, id) {
-    const net = getActiveNetwork(); if(!confirm(`Are you sure you want to delete this ${type.toUpperCase()}?`)) return; saveSnapshot();
-    if (type === 'line') net.lines = net.lines.filter(x => x.id !== id); else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); else if (type === 'dt') deleteDTLogic(id, net);
+    const net = getActiveNetwork(); if(!confirm(`Are you sure you want to delete this ${type.toUpperCase()}?`)) return; 
+    saveSnapshot(); map.closePopup(); // Ensure popup vanishes
+    
+    if (type === 'line') net.lines = net.lines.filter(x => x.id !== id); 
+    else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); 
+    else if (type === 'dt') deleteDTLogic(id, net);
     else if (type === 'pole') {
         const p = net.poles.find(x => x.id === id);
         if (p) { if (p.lineType === 'LT') deleteLTPoleLogic(p, net); else { const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); dtsOnPole.forEach(dt => deleteDTLogic(dt.id, net)); net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== id); } }
     } else if (type === 'gss') { if (appState.gssNodes[id]) delete appState.gssNodes[id]; }
+    
     renderEntireNetwork(); triggerPersistence(); showToast("Deleted successfully!");
 }
+
 window.openEditModal = function(type, id) {
     map.closePopup(); const net = getActiveNetwork();
     if (type === 'pole') { const p = net.poles.find(x => x.id === id); if (!p) return; openModal(`<div class="sheet-head"><div class="sheet-title">Edit Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>Pole Number (Locked)*</label><input type="text" id="editPoleNo" class="form-input" value="${p.poleNo}" readonly disabled style="background-color:#e2e8f0; cursor:not-allowed; opacity:0.8;"></div><button class="btn-action-primary" onclick="window.saveEditedPole('${p.id}')">Save Changes</button>`); } 
@@ -671,52 +679,40 @@ window.confirmObjectMove = function() {
 }
 window.cancelObjectMove = function() { appState.activeMove = null; document.getElementById('live-move-icon').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
 
-/* ====== STRICT EXPORT & IMPORT FUNCTIONALITY ====== */
-// Bulletproof export file fallback logic to resolve "Export Not Working" issue
+/* ====== DIRECT DEVICE STORAGE EXPORT (NO NATIVE SHARE) ====== */
+function triggerWebDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.style.display = 'none';
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+    showToast("File Downloaded to Device Storage!");
+}
+
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
         const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
         
-        // 1. Cordova Native Plugin Approach (For Android/iOS APK)
-        if (window.plugins && window.plugins.socialsharing) {
-            showToast("Preparing file for export...");
-            const base64Data = await new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.readAsDataURL(blob);
-            });
-            window.plugins.socialsharing.share(
-                'Here is your exported survey data.',
-                filename,
-                base64Data,
-                null,
-                () => showToast("Export menu opened!"), 
-                (err) => alert("Export failed: " + err)
-            );
+        // Cordova Local Storage Direct Download Approach (Requires cordova-plugin-file)
+        if (window.cordova && cordova.file) {
+            const targetDir = cordova.file.externalRootDirectory + 'Download/';
+            window.resolveLocalFileSystemURL(targetDir, function(dirEntry) {
+                dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) {
+                    fileEntry.createWriter(function(fileWriter) {
+                        fileWriter.onwriteend = function() { showToast(`Saved to Downloads/${filename}`); };
+                        fileWriter.onerror = function(e) { alert("Failed to save: " + e.toString()); };
+                        fileWriter.write(blob);
+                    });
+                }, function(err) { triggerWebDownload(blob, filename); });
+            }, function(err) { triggerWebDownload(blob, filename); });
             return;
         }
 
-        // 2. Web Browser Share API Fallback
-        if (navigator.canShare) {
-            const file = new File([blob], filename, { type: mimeType });
-            if (navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({ title: filename, files: [file] });
-                    return;
-                } catch (e) { console.warn("Web Share API failed, using standard download...", e); }
-            }
-        }
-
-        // 3. Standard Web Download Fallback (Desktop/Standard Browser)
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.style.display = 'none';
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-        showToast("File Download Triggered!");
+        // Web/Standard Direct Download Fallback
+        triggerWebDownload(blob, filename);
 
     } catch (err) {
         console.error("Export Error: ", err);
@@ -724,39 +720,142 @@ async function smartExportFile(filename, dataBlobOrText, mimeType) {
     }
 }
 
-// Full Backup Export (JSON)
-window.exportFullJSONBackup = async function() {
-    window.toggleSidebar(false);
-    const backupData = JSON.stringify(appState);
-    await smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json");
+/* ====== PROFESSIONAL SLD PDF GENERATOR (A0 CHART) ====== */
+window.generateCadSLDPdf = async function() { 
+    window.toggleSidebar(false); 
+    const net = getActiveNetwork();
+    if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
+    
+    showToast("Generating Professional SLD...");
+    
+    // Create A0 Landscape Document
+    const { jsPDF } = window.jspdf; 
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' }); 
+    
+    const width = doc.internal.pageSize.getWidth();
+    const height = doc.internal.pageSize.getHeight();
+    
+    // Compute Bounding Box to scale the map to PDF
+    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+    let hasNodes = false;
+    
+    const processNode = (lat, lng) => {
+        if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+        if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
+        hasNodes = true;
+    };
+
+    const gss = appState.gssNodes[net.feeder.parentGss];
+    if (gss && gss.lat) processNode(gss.lat, gss.lng);
+    
+    const htLines = net.lines.filter(l => l.type.includes('11 KV'));
+    let totalHTDist = 0;
+    htLines.forEach(l => {
+        if(l.coords) {
+            processNode(l.coords[0][0], l.coords[0][1]);
+            processNode(l.coords[1][0], l.coords[1][1]);
+        }
+    });
+    net.dts.forEach(d => { if(d.lat) processNode(d.lat, d.lng); });
+
+    if (!hasNodes) return alert("No HT Lines, GSS, or DT data available to plot.");
+
+    const margin = 50;
+    const mapW = width - (margin * 2);
+    const mapH = height - (margin * 2);
+    
+    const latDiff = (maxLat - minLat) || 0.0001;
+    const lngDiff = (maxLng - minLng) || 0.0001;
+    
+    const scaleX = mapW / lngDiff;
+    const scaleY = mapH / latDiff;
+    const scale = Math.min(scaleX, scaleY);
+    
+    const offsetX = margin + (mapW - (lngDiff * scale)) / 2;
+    const offsetY = margin + (mapH - (latDiff * scale)) / 2;
+
+    const project = (lat, lng) => {
+        const x = offsetX + (lng - minLng) * scale;
+        const y = height - (offsetY + (lat - minLat) * scale);
+        return { x, y };
+    };
+
+    // Draw HT Lines and Distance
+    doc.setDrawColor(37, 99, 235); // Blue
+    doc.setLineWidth(2);
+    doc.setFontSize(8); // Small font for distances
+    doc.setTextColor(100, 116, 139);
+
+    htLines.forEach(l => {
+        if(l.coords) {
+            const p1 = project(l.coords[0][0], l.coords[0][1]);
+            const p2 = project(l.coords[1][0], l.coords[1][1]);
+            doc.line(p1.x, p1.y, p2.x, p2.y);
+            
+            const dist = l.distanceMeters || window.calcDistance(l.coords[0][0], l.coords[0][1], l.coords[1][0], l.coords[1][1]);
+            totalHTDist += dist;
+            
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            doc.text(`${dist.toFixed(1)}m`, midX, midY - 2, { align: 'center' });
+        }
+    });
+
+    // Draw DTs
+    let t1ph = 0, t3ph = 0;
+    net.dts.forEach(d => {
+        if(d.phase === 'Single Phase') t1ph++; else t3ph++;
+        if(d.lat) {
+            const pt = project(d.lat, d.lng);
+            doc.setFillColor(245, 158, 11);
+            doc.rect(pt.x - 4, pt.y - 4, 8, 8, 'F');
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+            doc.text(`${d.rating}kVA`, pt.x, pt.y + 8, { align: 'center' });
+        }
+    });
+
+    // Draw GSS
+    if (gss && gss.lat) {
+        const gPt = project(gss.lat, gss.lng);
+        doc.setFillColor(185, 28, 28);
+        doc.rect(gPt.x - 8, gPt.y - 8, 16, 16, 'F');
+        doc.setFontSize(14);
+        doc.setTextColor(185, 28, 28);
+        doc.text("GSS", gPt.x, gPt.y - 10, { align: 'center' });
+    }
+
+    // Professional Title Block (Bottom Right)
+    const tbW = 220; const tbH = 90;
+    const tbX = width - margin - tbW; const tbY = height - margin - tbH;
+
+    doc.setDrawColor(0, 0, 0); doc.setLineWidth(1); doc.setFillColor(255, 255, 255);
+    doc.rect(tbX, tbY, tbW, tbH, 'FD');
+
+    doc.setFontSize(20); doc.setTextColor(0, 0, 0);
+    doc.text("SINGLE LINE DIAGRAM (SLD)", tbX + 110, tbY + 20, { align: 'center' });
+    doc.setFontSize(14);
+    doc.text(`Feeder Name: ${net.feeder.name}`, tbX + 15, tbY + 40);
+    doc.text(`Total HT Distance: ${(totalHTDist / 1000).toFixed(3)} km`, tbX + 15, tbY + 55);
+    doc.text(`Total 1-Phase DTs: ${t1ph}`, tbX + 15, tbY + 70);
+    doc.text(`Total 3-Phase DTs: ${t3ph}`, tbX + 15, tbY + 85);
+
+    const pdfBlob = doc.output('blob');
+    await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, pdfBlob, "application/pdf");
 }
 
-// Backup Import Logic (JSON)
+// Backup System Setup
+window.exportFullJSONBackup = async function() { window.toggleSidebar(false); const backupData = JSON.stringify(appState); await smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json"); }
 window.handleImportChoice = function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
+    const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
     reader.onload = async function(event) {
         try {
-            const content = event.target.result;
-            const importedData = JSON.parse(content);
-            
-            if (importedData.feeders && importedData.gssNodes) {
-                appState = importedData;
-                triggerPersistence();
-                renderEntireNetwork();
-                showToast("Data Imported Successfully!");
-            } else {
-                alert("Invalid Backup Format! File missing core node structures.");
-            }
-        } catch (err) {
-            alert("Error parsing file. Ensure it is a valid JSON backup file.");
-        }
+            const content = event.target.result, importedData = JSON.parse(content);
+            if (importedData.feeders && importedData.gssNodes) { appState = importedData; triggerPersistence(); renderEntireNetwork(); showToast("Data Imported Successfully!"); } 
+            else alert("Invalid Backup Format!");
+        } catch (err) { alert("Error parsing file."); }
     };
-    reader.readAsText(file);
-    e.target.value = ''; // Reset input so identical file can be selected again
-    window.toggleSidebar(false);
+    reader.readAsText(file); e.target.value = ''; window.toggleSidebar(false);
 }
 
 window.getCSVString = function() {
@@ -768,14 +867,11 @@ window.getCSVString = function() {
     net.lines.forEach(l => { if (l.coords && l.coords.length === 2) csv += `"LINESTRING (${l.coords[0][1]} ${l.coords[0][0]}, ${l.coords[1][1]} ${l.coords[1][0]})","${l.type}","LINE","${l.fromNode} ➔ ${l.toNode}","Dist: ${(l.distanceMeters||0).toFixed(1)}m"\n`; });
     return csv;
 }
-
 window.exportDataToCSV = async function() { window.toggleSidebar(false); await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}_GE.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
-
 window.exportToAutoCAD_DXF = async function() { 
     window.toggleSidebar(false); let dxf = "0\nSECTION\n2\nENTITIES\n"; getActiveNetwork().lines.forEach(l => { if (l.coords && l.coords[0] && l.coords[1]) dxf += `0\nLINE\n8\n${l.type.replace(/\s+/g,'_')}\n10\n${l.coords[0][1]}\n20\n${l.coords[0][0]}\n30\n0\n11\n${l.coords[1][1]}\n21\n${l.coords[1][0]}\n31\n0\n`; }); dxf += "0\nENDSEC\n0\nEOF\n"; 
     await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.dxf`, dxf, "application/dxf"); 
 }
-
 window.exportToGoogleEarth_KML = async function() { 
     window.toggleSidebar(false); const esc = u => u.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
     const feederName = esc(getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; 
@@ -784,27 +880,14 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
-window.generateCadSLDPdf = async function() { 
-    window.toggleSidebar(false); const net = getActiveNetwork();
-    if(window.jspdf && window.jspdf.jsPDF) {
-        const { jsPDF } = window.jspdf; const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' }); 
-        pdf.text(`SLD Report: ${net.feeder.name}`, 20, 20);
-        await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, pdf.output('blob'), "application/pdf");
-    } else alert("PDF Generator library load error.");
-}
-
 /* ====== INITIALIZATION & STARTUP ====== */
 async function initializeApplication() {
     try {
-        let data = await localforage.getItem(DB_KEY);
-        if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
-        if (data && data.feeders) appState = data;
-        
-        translateApp(); 
+        let data = await localforage.getItem(DB_KEY); if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
+        if (data && data.feeders) appState = data; translateApp(); 
         if (appState.user && appState.user.isLoggedIn) { applyAuthUIVisuals(); renderEntireNetwork(); centerMapOnGSS(); } 
         else { document.getElementById('app-container').style.display = 'none'; document.getElementById('auth-screen').style.display = 'flex'; }
         if (navigator.splashscreen) setTimeout(() => { navigator.splashscreen.hide(); }, 500);
-
         supabaseClient.auth.getSession().then(({ data }) => {
             if (data && data.session && data.session.user) {
                 appState.user.isLoggedIn = true; appState.user.email = data.session.user.email; appState.user.id = data.session.user.id;
@@ -812,11 +895,7 @@ async function initializeApplication() {
                 applyAuthUIVisuals(); pullFromSupabase(); 
             }
         });
-    } catch (e) {
-        console.error("Initialization Error:", e);
-        if (navigator.splashscreen) navigator.splashscreen.hide();
-    }
+    } catch (e) { console.error("Initialization Error:", e); if (navigator.splashscreen) navigator.splashscreen.hide(); }
 }
-
 document.addEventListener('deviceready', initializeApplication, false); 
 if (!window.cordova) { window.addEventListener('DOMContentLoaded', initializeApplication); }
