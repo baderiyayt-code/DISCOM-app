@@ -80,38 +80,21 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .lt-pole-icon { background-color: #10b981 !important; color: #0f172a !important; border: 2px solid #0f172a; border-radius: 50%; font-size: 8px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
 .consumer-marker-icon { background: #3b82f6; color: white; border: 1.5px solid white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 8px; }
 
-/* HIGH VISIBILITY LIVE TRACKING ICON */
-.live-human-icon { 
-    font-size: 22px; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    width: 36px; 
-    height: 36px; 
-    background: #ff007f; 
-    border: 3px solid #ffffff; 
-    border-radius: 50%; 
-    box-shadow: 0 0 15px rgba(255, 0, 127, 0.8);
-    animation: pulseLocation 1.5s infinite;
-    z-index: 10000 !important;
-}
-@keyframes pulseLocation {
-    0% { box-shadow: 0 0 0 0 rgba(255, 0, 127, 0.7); }
-    70% { box-shadow: 0 0 0 15px rgba(255, 0, 127, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(255, 0, 127, 0); }
-}
+/* Enhanced Live Location Human Icon */
+.live-human-icon { font-size: 26px; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; background: #ef4444; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 15px 5px rgba(239, 68, 68, 0.8); animation: pulseGlow 1.5s infinite; }
+@keyframes pulseGlow { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
 .pole-marker-icon.orphan-pulse, .dt-square-icon.orphan-pulse, .lt-pole-icon.orphan-pulse { background-color: #ef4444 !important; color: white !important; animation: redGlow 1s infinite !important; }
 @keyframes redGlow { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
 /* ====== DYNAMIC ZOOM HIDING HIERARCHY ====== */
-/* Zoom Rules: Consumers(20) -> LT Pole(19) -> LT Line(18) -> HT Pole(17) -> DT Icon(16) -> GSS Icon(15) */
 .hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { opacity: 0 !important; pointer-events: none !important; display: none !important; }
 .hide-lt-poles .lt-pole-icon { opacity: 0 !important; pointer-events: none !important; }
 .hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
 .hide-ht-poles .pole-marker-icon { opacity: 0 !important; pointer-events: none !important; }
 .hide-dt .dt-square-icon { opacity: 0 !important; pointer-events: none !important; }
 .hide-gss .gss-square-icon { opacity: 0 !important; pointer-events: none !important; }
+
 
 /* ====== MODALS & SIDEBAR ====== */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); z-index: 3000; display: none; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.2s; }
