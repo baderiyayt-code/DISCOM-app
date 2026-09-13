@@ -41,7 +41,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .suggestion-item { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; flex-direction: column;}
 .suggestion-item:hover { background: #f1f5f9; }
 
-/* ====== KPI BAR (Mobile Optimized) ====== */
+/* ====== KPI BAR ====== */
 .kpi-row { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 8px; pointer-events: auto; position: relative; z-index: 10; scrollbar-width: none; -ms-overflow-style: none; }
 .kpi-row::-webkit-scrollbar { display: none; }
 .kpi-tile { flex: 0 0 auto; min-width: 75px; background: var(--bg-glass); backdrop-filter: blur(12px); padding: 8px 10px; border-radius: var(--radius-md); text-align: center; border: 1px solid var(--border); box-shadow: var(--shadow-sm); border-top: 3px solid transparent;}
@@ -71,47 +71,34 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 
 .floating-action-bar { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; z-index: 2500; background: #ffffff; border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: none; flex-direction: column; gap: 12px; }
 
-/* ====== PERFECT VECTOR ANCHORING CSS FIX ====== */
-.gss-square-icon, .dt-square-icon, .pole-marker-icon, .lt-pole-icon, .consumer-marker-icon {
-    margin: 0 !important; /* Strictly prevents drifting caused by external margins during rotation */
-    box-sizing: border-box;
-    transition: opacity 0.25s ease; 
-}
+/* ====== MAP MARKER ICONS (Strict Anchoring & Colors) ====== */
+.gss-square-icon, .dt-square-icon, .pole-marker-icon, .lt-pole-icon, .consumer-marker-icon { transition: opacity 0.2s ease; }
 
+/* 1. GSS (Largest) */
 .gss-square-icon { background: #b91c1c; color: white; border: 2px solid white; border-radius: 8px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(185, 28, 28, 0.4);}
-.dt-square-icon { background-color: #f59e0b !important; color: #334155 !important; border: 2px solid white; border-radius: 6px; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; box-shadow: 0 3px 8px rgba(245, 158, 11, 0.4); text-align: center; line-height: 1; padding: 2px;}
+/* 2. DT - Numeric rating only */
+.dt-square-icon { background-color: #f59e0b !important; color: #334155 !important; border: 2px solid white; border-radius: 6px; font-size: 11px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; box-shadow: 0 3px 8px rgba(245, 158, 11, 0.4); }
+/* 3. HT Pole */
 .pole-marker-icon { background-color: #fde047 !important; color: #0f172a !important; border: 2px solid #0f172a; border-radius: 50%; font-size: 9px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
+/* 4. LT Pole */
 .lt-pole-icon { background-color: #10b981 !important; color: #0f172a !important; border: 2px solid #0f172a; border-radius: 50%; font-size: 8px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
+/* 5. Consumer (Smallest) */
 .consumer-marker-icon { background: #3b82f6; color: white; border: 1.5px solid white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 8px; }
 
-/* HTML Canvas Inline Line Distance Label */
-.line-distance-label {
-    background: rgba(255, 255, 255, 0.85);
-    border: 1px solid #2563eb;
-    color: #2563eb;
-    font-size: 9px;
-    font-weight: 800;
-    padding: 2px 4px;
-    border-radius: 4px;
-    white-space: nowrap;
-    pointer-events: none; /* Let clicks pass through to line */
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.live-human-icon { font-size: 26px; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4)); }
+/* Human Live Location Tracking Icon */
+.live-human-icon { font-size: 26px; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.6)); }
 
 .pole-marker-icon.orphan-pulse, .dt-square-icon.orphan-pulse, .lt-pole-icon.orphan-pulse { background-color: #ef4444 !important; color: white !important; animation: redGlow 1s infinite !important; }
 @keyframes redGlow { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
 /* ====== DYNAMIC ZOOM HIDING HIERARCHY ====== */
-/* Zoom Rules: Consumers 20 -> LT Pole 19 -> LT Line 18 -> HT Pole 17 -> DT Icon 16 -> GSS Icon 15 */
+/* Consumers 20 -> LT Pole 19 -> LT Line 18 -> HT Pole 17 -> DT Icon 16 -> GSS Icon 15 */
 .hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { opacity: 0 !important; pointer-events: none !important; display: none !important; }
-.hide-lt-poles .lt-pole-icon { opacity: 0 !important; pointer-events: none !important; }
-.hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
-.hide-ht-poles .pole-marker-icon, .hide-ht-poles .line-distance-label { opacity: 0 !important; pointer-events: none !important; }
-.hide-dt .dt-square-icon { opacity: 0 !important; pointer-events: none !important; }
-.hide-gss .gss-square-icon { opacity: 0 !important; pointer-events: none !important; }
-
+.hide-lt-poles .lt-pole-icon { opacity: 0 !important; pointer-events: none !important; display: none !important; }
+.hide-lt-lines .lt-line-path { opacity: 0 !important; pointer-events: none !important; display: none !important; }
+.hide-ht-poles .pole-marker-icon { opacity: 0 !important; pointer-events: none !important; display: none !important; }
+.hide-dt .dt-square-icon { opacity: 0 !important; pointer-events: none !important; display: none !important; }
+.hide-gss .gss-square-icon { opacity: 0 !important; pointer-events: none !important; display: none !important; }
 
 /* ====== MODALS & SIDEBAR ====== */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); z-index: 3000; display: none; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.2s; }
