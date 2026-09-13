@@ -159,7 +159,7 @@ function updateMapZoomClasses() {
     const z = map.getZoom(); const mapEl = document.getElementById('map');
     mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss');
     
-    // Zoom out Disappear Logic: Consumer(20) -> LT Pole(19) -> LT Line(18) -> HT Pole(17) -> DT(16) -> GSS(15)
+    // Zoom Rules: Consumer Icons 20 -> LT Poles 19 -> LT Line 18 -> HT Poles 17 -> DT Icons 16 -> GSS Icon 15
     if (z <= 20) mapEl.classList.add('hide-consumers');
     if (z <= 19) mapEl.classList.add('hide-lt-poles');
     if (z <= 18) mapEl.classList.add('hide-lt-lines');
@@ -167,7 +167,6 @@ function updateMapZoomClasses() {
     if (z <= 16) mapEl.classList.add('hide-dt');
     if (z <= 15) mapEl.classList.add('hide-gss');
 }
-
 map.on('zoomend', updateMapZoomClasses); setTimeout(updateMapZoomClasses, 100);
 
 const tileLayers = { 
@@ -198,12 +197,13 @@ function centerMapOnGSS() {
 
 window.liveTrackingId = null; window.liveUserMarker = null;
 window.toggleLiveTracking = function() {
-    if (!navigator.geolocation) return alert("Geolocation not supported by this device.");
+    if (!navigator.geolocation) return alert("Geolocation API not found. Please install cordova-plugin-geolocation.");
     if (window.liveTrackingId) {
         navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
         if (window.liveUserMarker) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
         document.getElementById('liveTrackBtn').style.color = '#ef4444'; showToast("Live tracking disabled.");
     } else {
+        showToast("Fetching location...");
         window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
             if (!window.liveUserMarker) {
@@ -211,11 +211,12 @@ window.toggleLiveTracking = function() {
                 window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
             } else window.liveUserMarker.setLatLng([lat, lng]);
             map.setView([lat, lng]);
-        }, (err) => alert("GPS Access Error. Ensure location permissions are granted."), { enableHighAccuracy: true });
-        document.getElementById('liveTrackBtn').style.color = '#10b981'; showToast("Live tracking enabled!");
+            document.getElementById('liveTrackBtn').style.color = '#10b981';
+        }, (err) => {
+            alert("GPS Error: Please ensure Location permissions are granted and GPS is ON. Code: " + err.code);
+        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     }
 }
-
 
 /* ====== GIS CORE LOGIC ====== */
 function renderEntireNetwork() {
@@ -303,7 +304,8 @@ function renderEntireNetwork() {
         
         if(document.getElementById('kpi11')) document.getElementById('kpi11').innerText = window.formatDistance(t11);
         if(document.getElementById('kpiLT')) document.getElementById('kpiLT').innerText = window.formatDistance(tLT);
-        document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph; document.getElementById('kpiCons').innerText = net.consumers.length;
+        document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph;
+        document.getElementById('kpiCons').innerText = net.consumers.length;
         document.getElementById('feederSelectHeader').innerHTML = Object.keys(appState.feeders).map(code => `<option value="${code}" ${code === appState.currentFeederCode ? 'selected':''}>${appState.feeders[code].feeder.name}</option>`).join('');
 
     } catch(err) { console.error("Rendering error:", err); }
@@ -669,58 +671,92 @@ window.confirmObjectMove = function() {
 }
 window.cancelObjectMove = function() { appState.activeMove = null; document.getElementById('live-move-icon').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
 
-window.openAddNewFeederModal = function() {
-    const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}">${g.code} - ${g.name}</option>`).join('');
-    openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> New Feeder</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>Feeder Code (Numeric Only)*</label><input type="number" id="newFdrCode" class="form-input" value="${Object.keys(appState.feeders).length + 1}"></div><div class="form-row"><label>Feeder Name*</label><input type="text" id="newFdrName" class="form-input" placeholder="e.g. City Feed 11kV"></div><div class="form-row"><label>Parent GSS*</label><select id="newFdrGss" class="form-select">${gssOpts}</select></div><button class="btn-action-primary" onclick="window.createNewFeeder()">Create Feeder</button>`);
-}
-window.createNewFeeder = function() {
-    const code = document.getElementById('newFdrCode').value.trim(), name = document.getElementById('newFdrName').value.trim(), gss = document.getElementById('newFdrGss').value;
-    if (!code || !name) return alert("Fill required fields"); 
-    appState.feeders[code] = { feeder: { name, code, subdivCode: "SD-01", parentGss: gss }, poles: [], dts: [], lines: [], consumers: [] };
-    appState.currentFeederCode = code; window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("New Feeder Created!");
-}
-window.openFeederConfigModal = function() {
-    window.toggleSidebar(false); const net = getActiveNetwork(); const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}" ${net.feeder.parentGss==g.code?'selected':''}>${g.code} - ${g.name}</option>`).join('');
-    openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-tower-broadcast"></i> Feeder Config</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>Feeder Name</label><input type="text" id="cfgFeederName" class="form-input" value="${net.feeder.name}"></div><div class="form-row"><label>Parent GSS Source</label><select id="cfgParentGss" class="form-select">${gssOpts}</select></div><button class="btn-action-primary" onclick="window.saveFeederConfiguration()">Save Config</button>`);
-}
-window.saveFeederConfiguration = function() {
-    const net = getActiveNetwork(); net.feeder.name = document.getElementById('cfgFeederName').value; net.feeder.parentGss = document.getElementById('cfgParentGss').value; 
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Configuration Saved!");
-}
-window.openResetConfirmationModal = function() {
-    window.closeSettingsPage(); window.toggleSidebar(false); 
-    openModal(`<div class="sheet-head"><div class="sheet-title" style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Secure App Reset</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="margin-bottom:12px; font-size:0.9rem; color:var(--text-sub);">This action will permanently wipe all survey data, feeders, and settings from your device. This cannot be undone.</p><div class="form-row"><label>Type <b>RESET</b> to confirm</label><input type="text" id="inpAppResetText" class="form-input" placeholder="Type RESET here"></div><button class="btn-action-primary" style="background:#dc2626;" onclick="window.executeSecureAppReset()">Permanently Delete All Data</button>`);
-}
-window.executeSecureAppReset = function() { 
-    const inputVal = document.getElementById('inpAppResetText').value.trim();
-    if (inputVal !== "RESET") return alert("Confirmation failed. You must type 'RESET' exactly.");
-    localforage.clear().then(() => { localStorage.clear(); location.reload(); });
-}
-
 /* ====== STRICT EXPORT & IMPORT FUNCTIONALITY ====== */
+// Bulletproof export file fallback logic to resolve "Export Not Working" issue
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
         const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
-        const url = URL.createObjectURL(blob); const a = document.createElement("a");
-        a.style.display = 'none'; a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click();
+        
+        // 1. Cordova Native Plugin Approach (For Android/iOS APK)
+        if (window.plugins && window.plugins.socialsharing) {
+            showToast("Preparing file for export...");
+            const base64Data = await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+            });
+            window.plugins.socialsharing.share(
+                'Here is your exported survey data.',
+                filename,
+                base64Data,
+                null,
+                () => showToast("Export menu opened!"), 
+                (err) => alert("Export failed: " + err)
+            );
+            return;
+        }
+
+        // 2. Web Browser Share API Fallback
+        if (navigator.canShare) {
+            const file = new File([blob], filename, { type: mimeType });
+            if (navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({ title: filename, files: [file] });
+                    return;
+                } catch (e) { console.warn("Web Share API failed, using standard download...", e); }
+            }
+        }
+
+        // 3. Standard Web Download Fallback (Desktop/Standard Browser)
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
         showToast("File Download Triggered!");
-    } catch (err) { console.error("Export Error: ", err); alert("Export failed: " + err.message); }
+
+    } catch (err) {
+        console.error("Export Error: ", err);
+        alert("Export failed: " + err.message);
+    }
 }
 
-window.exportFullJSONBackup = async function() { window.toggleSidebar(false); const backupData = JSON.stringify(appState); await smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json"); }
+// Full Backup Export (JSON)
+window.exportFullJSONBackup = async function() {
+    window.toggleSidebar(false);
+    const backupData = JSON.stringify(appState);
+    await smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json");
+}
+
+// Backup Import Logic (JSON)
 window.handleImportChoice = function(e) {
-    const file = e.target.files[0]; if (!file) return;
+    const file = e.target.files[0];
+    if (!file) return;
+    
     const reader = new FileReader();
     reader.onload = async function(event) {
         try {
-            const content = event.target.result, importedData = JSON.parse(content);
-            if (importedData.feeders && importedData.gssNodes) { appState = importedData; triggerPersistence(); renderEntireNetwork(); showToast("Data Imported Successfully!"); } 
-            else alert("Invalid Backup Format! File missing core node structures.");
-        } catch (err) { alert("Error parsing file. Ensure it is a valid JSON backup file."); }
+            const content = event.target.result;
+            const importedData = JSON.parse(content);
+            
+            if (importedData.feeders && importedData.gssNodes) {
+                appState = importedData;
+                triggerPersistence();
+                renderEntireNetwork();
+                showToast("Data Imported Successfully!");
+            } else {
+                alert("Invalid Backup Format! File missing core node structures.");
+            }
+        } catch (err) {
+            alert("Error parsing file. Ensure it is a valid JSON backup file.");
+        }
     };
-    reader.readAsText(file); e.target.value = ''; window.toggleSidebar(false);
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input so identical file can be selected again
+    window.toggleSidebar(false);
 }
 
 window.getCSVString = function() {
@@ -732,11 +768,14 @@ window.getCSVString = function() {
     net.lines.forEach(l => { if (l.coords && l.coords.length === 2) csv += `"LINESTRING (${l.coords[0][1]} ${l.coords[0][0]}, ${l.coords[1][1]} ${l.coords[1][0]})","${l.type}","LINE","${l.fromNode} ➔ ${l.toNode}","Dist: ${(l.distanceMeters||0).toFixed(1)}m"\n`; });
     return csv;
 }
+
 window.exportDataToCSV = async function() { window.toggleSidebar(false); await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}_GE.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
+
 window.exportToAutoCAD_DXF = async function() { 
     window.toggleSidebar(false); let dxf = "0\nSECTION\n2\nENTITIES\n"; getActiveNetwork().lines.forEach(l => { if (l.coords && l.coords[0] && l.coords[1]) dxf += `0\nLINE\n8\n${l.type.replace(/\s+/g,'_')}\n10\n${l.coords[0][1]}\n20\n${l.coords[0][0]}\n30\n0\n11\n${l.coords[1][1]}\n21\n${l.coords[1][0]}\n31\n0\n`; }); dxf += "0\nENDSEC\n0\nEOF\n"; 
     await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.dxf`, dxf, "application/dxf"); 
 }
+
 window.exportToGoogleEarth_KML = async function() { 
     window.toggleSidebar(false); const esc = u => u.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
     const feederName = esc(getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; 
@@ -744,22 +783,28 @@ window.exportToGoogleEarth_KML = async function() {
     getActiveNetwork().dts.forEach(d => { if (d.lat) kml += `<Placemark><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>\n`; });
     kml += "</Document>\n</kml>"; await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
+
 window.generateCadSLDPdf = async function() { 
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(window.jspdf && window.jspdf.jsPDF) {
         const { jsPDF } = window.jspdf; const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' }); 
-        pdf.text(`SLD Report: ${net.feeder.name}`, 20, 20); await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, pdf.output('blob'), "application/pdf");
+        pdf.text(`SLD Report: ${net.feeder.name}`, 20, 20);
+        await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, pdf.output('blob'), "application/pdf");
     } else alert("PDF Generator library load error.");
 }
 
 /* ====== INITIALIZATION & STARTUP ====== */
 async function initializeApplication() {
     try {
-        let data = await localforage.getItem(DB_KEY); if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
-        if (data && data.feeders) appState = data; translateApp(); 
+        let data = await localforage.getItem(DB_KEY);
+        if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
+        if (data && data.feeders) appState = data;
+        
+        translateApp(); 
         if (appState.user && appState.user.isLoggedIn) { applyAuthUIVisuals(); renderEntireNetwork(); centerMapOnGSS(); } 
         else { document.getElementById('app-container').style.display = 'none'; document.getElementById('auth-screen').style.display = 'flex'; }
         if (navigator.splashscreen) setTimeout(() => { navigator.splashscreen.hide(); }, 500);
+
         supabaseClient.auth.getSession().then(({ data }) => {
             if (data && data.session && data.session.user) {
                 appState.user.isLoggedIn = true; appState.user.email = data.session.user.email; appState.user.id = data.session.user.id;
@@ -767,7 +812,11 @@ async function initializeApplication() {
                 applyAuthUIVisuals(); pullFromSupabase(); 
             }
         });
-    } catch (e) { console.error("Initialization Error:", e); if (navigator.splashscreen) navigator.splashscreen.hide(); }
+    } catch (e) {
+        console.error("Initialization Error:", e);
+        if (navigator.splashscreen) navigator.splashscreen.hide();
+    }
 }
+
 document.addEventListener('deviceready', initializeApplication, false); 
 if (!window.cordova) { window.addEventListener('DOMContentLoaded', initializeApplication); }
