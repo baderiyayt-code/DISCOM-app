@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    <!-- Leaflet MarkerCluster Plugin for Performance -->
+    <!-- Leaflet MarkerCluster Plugin -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
@@ -29,19 +29,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
 
-    <!-- Custom CSS -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-
-<!-- SPLASH SCREEN -->
-<div id="splash-screen">
-    <div class="splash-logo"><i class="fa-solid fa-bolt-lightning"></i></div>
-    <h1 class="splash-title">DISCOM Pro</h1>
-    <p class="splash-subtitle">Enterprise Survey App</p>
-    <p class="splash-credits" style="font-size: 0.8rem; font-weight: 700; opacity: 0.8; margin-top: 15px; color:#bfdbfe;">Developed by Suraj Singh Mehta</p>
-    <div class="splash-loader"></div>
-</div>
 
 <!-- AUTH SCREEN -->
 <div id="auth-screen" style="display: none;">
@@ -75,8 +65,8 @@
                 <button class="action-btn-sm" onclick="window.openAddNewFeederModal()"><i class="fa-solid fa-plus"></i></button>
             </div>
             <div class="header-actions">
-                <!-- UI UX Fix: Modern Sync Icon -->
-                <div id="sync-indicator" class="sync-icon-box" title="Sync Status"><i class="fa-solid fa-cloud"></i></div>
+                <!-- Sync Icon UI Fix -->
+                <div id="sync-indicator" title="Sync Status"><i class="fa-solid fa-cloud"></i></div>
                 <button class="action-btn-sm bg" onclick="window.runOrphanNodeChecker()"><i class="fa-solid fa-network-wired" style="color:#d97706;"></i></button>
             </div>
         </div>
@@ -225,7 +215,7 @@
 <div class="modal-overlay" id="formModalOverlay"><div class="modal-sheet" id="modalSheetContent"></div></div>
 <canvas id="cad-canvas" style="display:none;"></canvas>
 
-<!-- Custom JS -->
+<!-- Scripts -->
 <script src="js/app.js"></script>
 
 </body>
