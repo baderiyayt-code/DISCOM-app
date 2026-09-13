@@ -22,11 +22,11 @@ let historyStack = [];
 
 const i18n = {
     en: { 
-        hybridMap: "Hybrid Map", htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer",
+        hybridMap: "Google Hybrid", htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer",
         line11: "11 KV Line", lineLT: "LT Line", dt3ph: "3-Ph DT", dt1ph: "1-Ph DT", totalCons: "Consumers",
         gssMgmt: "GSS Management", addNewGss: "Add New GSS", manageFdr: "Manage Feeders", 
         export: "Export (Save to Device)", exportPdf: "Export SLD PDF", exportDxf: "Export DXF", exportKml: "Export styled KML", exportCsv: "Export CSV", 
-        import: "Import", importData: "Import App Data", system: "System", settings: "Settings", about: "About App",
+        import: "Backup & Restore", importData: "Import Backup (JSON)", system: "System", settings: "Settings", about: "About App",
         appLanguage: "App Language", distUnit: "Distance Unit", gpsInterval: "GPS Polling Interval", gpsAcc: "GPS Accuracy", resetData: "Reset App Data",
         confirmLoc: "Confirm Location", confirmHere: "Confirm Here", cancel: "Cancel", setNewLoc: "Set New Location",
         toastSettings: "Settings Saved!", toastDel: "Deleted Successfully!", toastImport: "Imported Successfully!"
@@ -186,8 +186,13 @@ const map = L.map('map', {
     rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0 
 }).setView([26.9150, 75.7830], 16);
 
+// Set Map zoom listener for dynamic scaling of icons via CSS classes
+map.on('zoomend', () => { document.getElementById('map').setAttribute('data-zoom', map.getZoom()); });
+document.getElementById('map').setAttribute('data-zoom', map.getZoom());
+
 const tileLayers = { 
-    hybrid: { name: 'Hybrid Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
+    hybrid: { name: 'Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
+    street: { name: 'Google Street', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22 }) },
     osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }) }
 };
 let currentTileIndex = 0; const layerKeys = Object.keys(tileLayers); tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
@@ -252,7 +257,7 @@ function renderEntireNetwork() {
                 const gssIcon = L.divIcon({ className: 'gss-square-icon', html: `<span>GSS</span>`, iconSize: [36,36], iconAnchor: [18,18] });
                 const m = L.marker([gss.lat, gss.lng], { icon: gssIcon });
                 m.on('click', (e) => {
-                    const html = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
+                    const html = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('gss','${gss.code}')">Delete</button></div></div>`;
                     L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
                 });
                 featureGroups.gss.addLayer(m);
@@ -716,7 +721,7 @@ function deleteDTLogic(dtId, net) {
 function deleteLTPoleLogic(p, net) { net.consumers = net.consumers.filter(c => !(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo))); net.lines = net.lines.filter(l => String(l.fromNode) !== ('POLE_'+p.poleNo) && String(l.toNode) !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== p.id); }
 
 window.deleteEntity = function(type, id) {
-    const net = getActiveNetwork(); if(!confirm("Are you sure you want to delete this item?")) return; saveSnapshot();
+    const net = getActiveNetwork(); if(!confirm(`Are you sure you want to delete this ${type.toUpperCase()}?`)) return; saveSnapshot();
     if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
     else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id);
     else if (type === 'dt') deleteDTLogic(id, net);
@@ -726,6 +731,9 @@ window.deleteEntity = function(type, id) {
             if (p.lineType === 'LT') deleteLTPoleLogic(p, net);
             else { const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); dtsOnPole.forEach(dt => deleteDTLogic(dt.id, net)); net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== id); }
         }
+    }
+    else if (type === 'gss') {
+        if (appState.gssNodes[id]) delete appState.gssNodes[id];
     }
     renderEntireNetwork(); triggerPersistence(); showToast("Deleted successfully!");
 }
@@ -826,19 +834,67 @@ window.executeSecureAppReset = function() {
     localforage.clear().then(() => { localStorage.clear(); location.reload(); });
 }
 
-/* ====== EXPORTS & FALLBACK IMPLEMENTATIONS ====== */
+
+/* ====== STRICT EXPORT & IMPORT FUNCTIONALITY ====== */
+// Bulletproof export file fallback logic to resolve "Export Not Working" issue
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
-    const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
-    const file = new File([blob], filename, { type: mimeType });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ title: filename, files: [file] }); return; } catch(e) {}
+    try {
+        const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
+        const file = new File([blob], filename, { type: mimeType });
+        
+        // Attempt Native Web Share API first
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try { await navigator.share({ title: filename, files: [file] }); return; } catch(e) { console.warn("Share API fallback triggered", e); }
+        }
+        
+        // Universal Download Fallback
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.style.display = 'none'; a.href = url; a.download = filename;
+        document.body.appendChild(a); 
+        a.click();
+        
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+        showToast("File Download Triggered!");
+    } catch (err) {
+        console.error("Export Error: ", err);
+        alert("Export failed: " + err.message);
     }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.style.display = 'none'; a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-    showToast("File Export Triggered!");
+}
+
+// Full Backup Export (JSON)
+window.exportFullJSONBackup = async function() {
+    window.toggleSidebar(false);
+    const backupData = JSON.stringify(appState);
+    await smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json");
+}
+
+// Backup Import Logic (JSON)
+window.handleImportChoice = function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async function(event) {
+        try {
+            const content = event.target.result;
+            const importedData = JSON.parse(content);
+            
+            if (importedData.feeders && importedData.gssNodes) {
+                appState = importedData;
+                triggerPersistence();
+                renderEntireNetwork();
+                showToast("Data Imported Successfully!");
+            } else {
+                alert("Invalid Backup Format! File missing core node structures.");
+            }
+        } catch (err) {
+            alert("Error parsing file. Ensure it is a valid JSON backup file.");
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset the input
+    window.toggleSidebar(false);
 }
 
 window.getCSVString = function() {
