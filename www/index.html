@@ -29,6 +29,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
 
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -65,7 +66,6 @@
                 <button class="action-btn-sm" onclick="window.openAddNewFeederModal()"><i class="fa-solid fa-plus"></i></button>
             </div>
             <div class="header-actions">
-                <!-- Sync Icon UI Fix -->
                 <div id="sync-indicator" title="Sync Status"><i class="fa-solid fa-cloud"></i></div>
                 <button class="action-btn-sm bg" onclick="window.runOrphanNodeChecker()"><i class="fa-solid fa-network-wired" style="color:#d97706;"></i></button>
             </div>
@@ -160,6 +160,17 @@
                 <input type="number" id="setGpsAccuracy" class="form-input" value="10" onchange="window.autoSaveSettings()">
             </div>
         </div>
+
+        <!-- Admin Password Change Section -->
+        <div class="settings-card" id="adminPasswordCard" style="display:none;">
+            <h3 style="font-size: 0.95rem; font-weight: 800; margin-bottom: 10px; color: var(--accent);">Admin Security</h3>
+            <div class="form-row">
+                <label>New Admin Password</label>
+                <input type="password" id="newAdminPassword" class="form-input" placeholder="Enter new password">
+            </div>
+            <button class="btn-action-primary" onclick="window.changeAdminPassword()">Update Password</button>
+        </div>
+
         <div class="settings-card" style="border-color: #ef4444; background:#fef2f2;">
             <button type="button" class="btn-danger-outline" onclick="window.openResetConfirmationModal()"><i class="fa-solid fa-trash-can"></i> <span data-i18n="resetData">Reset App Data</span></button>
         </div>
