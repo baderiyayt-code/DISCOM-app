@@ -32,4 +32,6 @@
 
     <!-- Automatic Plugins Installation -->
     <plugin name="cordova-plugin-splashscreen" spec="^6.0.0" />
+    <plugin name="cordova plugin add cordova-plugin-x-socialsharing/>
+    <plugin name="​cordova plugin add cordova-plugin-geolocation"/>
 </widget>
