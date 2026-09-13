@@ -1,17 +1,10 @@
 const DB_KEY = "DISCOM_ENTERPRISE_DB";
-const ADMIN_EMAIL = 'admin@discom.com';
 
-// ======== SAFELY INITIALIZE SUPABASE ========
-let supabaseClient = null;
-try {
-    if (typeof supabase !== 'undefined') {
-        const SUPABASE_URL = 'https://sxfyeublvtisndnzycib.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4ZnlldWJsdnRpc25kbnp5Y2liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMjkzOTEsImV4cCI6MjEwNDgwNTM5MX0.FENa8zOaDzlYZJI_HfWtallAkWukxSiM52-RGQ-CUmA';
-        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    }
-} catch (e) {
-    console.error("Supabase Initialization Error:", e);
-}
+// ======== SUPABASE INITIALIZATION ========
+const SUPABASE_URL = 'https://sxfyeublvtisndnzycib.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4ZnlldWJsdnRpc25kbnp5Y2liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMjkzOTEsImV4cCI6MjEwNDgwNTM5MX0.FENa8zOaDzlYZJI_HfWtallAkWukxSiM52-RGQ-CUmA';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const ADMIN_EMAIL = 'admin@discom.com';
 
 let appState = {
     settings: { checkOrphanNode: true, unit: 'm', gpsInterval: 3, gpsAccuracy: 10, language: 'en' },
@@ -22,7 +15,7 @@ let appState = {
     feeders: { 
         "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } 
     },
-    orphanPoleIds: new Set(), activeMove: null, placementType: null, liveTrackId: null, liveMarker: null
+    orphanPoleIds: new Set(), activeMove: null, placementType: null
 };
 
 let historyStack = [];
@@ -34,10 +27,9 @@ const i18n = {
         gssMgmt: "GSS Management", addNewGss: "Add New GSS", manageFdr: "Manage Feeders", 
         export: "Export (Save to Device)", exportPdf: "Export SLD PDF", exportDxf: "Export DXF", exportKml: "Export styled KML", exportCsv: "Export CSV", 
         import: "Import", importData: "Import App Data", system: "System", settings: "Settings", about: "About App",
-        appLanguage: "App Language", distUnit: "Distance Unit", gpsInterval: "GPS Polling Interval (Seconds)", gpsAcc: "GPS Accuracy Threshold (Meters)", resetData: "Reset App Data",
-        confirmLoc: "Confirm Map Center Location", confirmHere: "Confirm Here", cancel: "Cancel", setNewLoc: "Set New Location",
-        toastSettings: "Settings Saved!", toastDel: "Deleted Successfully!", toastImport: "Imported Successfully!",
-        aboutDesc: "DISCOM Field Survey App designed for professional GIS network mapping, offline data collection, and SLD planning."
+        appLanguage: "App Language", distUnit: "Distance Unit", gpsInterval: "GPS Polling Interval", gpsAcc: "GPS Accuracy", resetData: "Reset App Data",
+        confirmLoc: "Confirm Location", confirmHere: "Confirm Here", cancel: "Cancel", setNewLoc: "Set New Location",
+        toastSettings: "Settings Saved!", toastDel: "Deleted Successfully!", toastImport: "Imported Successfully!"
     }
 };
 
@@ -65,61 +57,51 @@ function getActiveNetwork() {
 
 function showToast(msg) {
     const toast = document.getElementById('app-toast'); const msgElem = document.getElementById('toast-msg');
-    if (!toast || !msgElem) return; 
-    msgElem.innerText = msg;
-    toast.classList.add('show'); 
-    setTimeout(() => toast.classList.remove('show'), 3500);
+    if (!toast || !msgElem) return; msgElem.innerText = msg;
+    toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
 }
 
-/* ====== SYNC & CLOUD LOGIC ====== */
+/* ====== SYNC & ADMIN DATA LOGIC ====== */
 function setSyncStatus(status) {
     const ind = document.getElementById('sync-indicator');
-    if(!ind) return;
     if(!navigator.onLine) status = 'offline';
-    
     if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
     else if(status === 'synced') ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>';
     else ind.innerHTML = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
 }
 
-window.addEventListener('online', () => { setSyncStatus('synced'); syncToSupabase(); });
-window.addEventListener('offline', () => setSyncStatus('offline'));
-
 function syncToSupabase() {
-    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return;
+    if (!appState.user.isLoggedIn || !appState.user.id) return;
     setSyncStatus('syncing');
-    
     const dataToSync = JSON.parse(JSON.stringify(appState));
-    delete dataToSync.user; delete dataToSync.orphanPoleIds; delete dataToSync.liveTrackId; delete dataToSync.liveMarker;
+    delete dataToSync.user; delete dataToSync.orphanPoleIds;
     
     supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: dataToSync, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
     .then(({error}) => { if(error) setSyncStatus('offline'); else setSyncStatus('synced'); }).catch(() => setSyncStatus('offline'));
 }
 
-function pullFromSupabase() {
-    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return;
+async function pullFromSupabase() {
+    if (!appState.user.isLoggedIn || !appState.user.id) return;
     setSyncStatus('syncing');
     
     const isAdmin = appState.user.email === ADMIN_EMAIL;
     let query = supabaseClient.from('survey_data').select('data');
     if (!isAdmin) query = query.eq('user_id', appState.user.id);
     
-    query.then(async ({ data, error }) => {
-        if (error) { setSyncStatus('offline'); return; }
+    try {
+        const { data, error } = await query;
+        if (error) throw error;
+        
         if (data && data.length > 0) {
             if (isAdmin) {
+                // Admin loads ALL users' feeders & GSS nodes
                 appState.feeders = {}; appState.gssNodes = {};
                 data.forEach(row => {
                     const cloudData = row.data;
                     if (cloudData.gssNodes) Object.assign(appState.gssNodes, cloudData.gssNodes);
                     if (cloudData.feeders) {
                         Object.keys(cloudData.feeders).forEach(fCode => {
-                            if (!appState.feeders[fCode]) appState.feeders[fCode] = JSON.parse(JSON.stringify(cloudData.feeders[fCode]));
-                            else {
-                                const src = cloudData.feeders[fCode], tgt = appState.feeders[fCode];
-                                tgt.poles.push(...(src.poles || [])); tgt.dts.push(...(src.dts || []));
-                                tgt.lines.push(...(src.lines || [])); tgt.consumers.push(...(src.consumers || []));
-                            }
+                            appState.feeders[fCode] = cloudData.feeders[fCode];
                         });
                     }
                 });
@@ -130,21 +112,22 @@ function pullFromSupabase() {
                 appState.currentFeederCode = cloudData.currentFeederCode || appState.currentFeederCode;
             }
             await localforage.setItem(DB_KEY, appState);
-            renderEntireNetwork(); setSyncStatus('synced');
-            centerMapOnGSS();
-        } else {
-            if (!isAdmin) syncToSupabase(); else setSyncStatus('synced');
+            renderEntireNetwork(); 
+            setSyncStatus('synced');
             centerMapOnGSS();
         }
-    }).catch(() => setSyncStatus('offline'));
+    } catch (err) {
+        console.error("Sync error:", err);
+        setSyncStatus('offline');
+    }
 }
 
 function triggerPersistence() { 
-    localforage.setItem(DB_KEY, appState).catch(err => localStorage.setItem(DB_KEY, JSON.stringify(appState)));
+    localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState)));
     syncToSupabase(); 
 }
 
-/* ====== ROBUST AUTHENTICATION LOGIC WITH FAILSAFES ====== */
+/* ====== AUTHENTICATION & ADMIN PASSWORD CHANGE ====== */
 let authMode = 'login';
 window.toggleAuthMode = function() {
     authMode = authMode === 'login' ? 'signup' : 'login';
@@ -159,143 +142,111 @@ function applyAuthUIVisuals() {
     document.getElementById('app-container').style.display = 'flex';
     document.getElementById('userNameDisplay').innerText = appState.user.name;
     document.getElementById('userEmailDisplay').innerText = appState.user.email;
-    document.getElementById('authEmail').value = '';
-    document.getElementById('authPassword').value = '';
-}
-
-function setUserStateLocally(user) {
-    appState.user.isLoggedIn = true;
-    appState.user.email = user.email;
-    appState.user.id = user.id;
-    appState.user.name = user.user_metadata?.full_name || user.email.split('@')[0];
+    
+    // Show admin password change card if logged in as admin
+    const adminCard = document.getElementById('adminPasswordCard');
+    if (adminCard) {
+        adminCard.style.display = (appState.user.email === ADMIN_EMAIL) ? 'block' : 'none';
+    }
 }
 
 window.handleSupabaseAuth = async function(mode) {
-    try {
-        if (!supabaseClient) {
-            alert("Network Error: Could not connect to the server. Please ensure your device has internet access so the app can download necessary database components.");
-            return;
-        }
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value.trim();
+    const name = document.getElementById('authName').value.trim();
+    if(!email || !password) return alert("Email and Password required");
 
-        const emailInput = document.getElementById('authEmail');
-        const passInput = document.getElementById('authPassword');
-        const nameInput = document.getElementById('authName');
+    showToast("Processing...");
+    let response;
+    if (mode === 'signup') {
+        if(!name) return alert("Enter Full Name");
+        response = await supabaseClient.auth.signUp({ email, password, options: { data: { full_name: name } } });
+    } else {
+        response = await supabaseClient.auth.signInWithPassword({ email, password });
+    }
 
-        if (!emailInput || !passInput) {
-            alert("UI Error: Cannot find input fields.");
-            return;
-        }
+    if (response.error) {
+        alert(response.error.message);
+    } else if (response.data.user) {
+        appState.user.isLoggedIn = true;
+        appState.user.email = response.data.user.email;
+        appState.user.id = response.data.user.id;
+        appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0];
+        
+        applyAuthUIVisuals();
+        pullFromSupabase(); 
+        showToast("Login Successful!");
+    }
+}
 
-        const email = emailInput.value.trim();
-        const password = passInput.value.trim();
-        const name = nameInput ? nameInput.value.trim() : "";
-
-        if(!email || !password) {
-            alert("Email and Password are required!");
-            return;
-        }
-
-        showToast(mode === 'signup' ? "Creating account..." : "Logging in...");
-
-        let response;
-        if (mode === 'signup') {
-            if(!name) {
-                alert("Please enter your Full Name.");
-                return;
-            }
-            response = await supabaseClient.auth.signUp({ email, password, options: { data: { full_name: name } } });
-        } else {
-            response = await supabaseClient.auth.signInWithPassword({ email, password });
-        }
-
-        if (response.error) {
-            alert("Authentication Failed: " + response.error.message);
-        } else if (response.data && response.data.user) {
-            setUserStateLocally(response.data.user);
-            applyAuthUIVisuals();
-            pullFromSupabase(); 
-            showToast("Login Successful!");
-        } else {
-            alert("Unknown Error: No user data returned.");
-        }
-    } catch (err) {
-        alert("Critical Runtime Error: " + err.message);
-        console.error(err);
+window.changeAdminPassword = async function() {
+    const newPass = document.getElementById('newAdminPassword').value.trim();
+    if (!newPass || newPass.length < 6) return alert("Password must be at least 6 characters.");
+    
+    const { error } = await supabaseClient.auth.updateUser({ password: newPass });
+    if (error) alert("Error updating password: " + error.message);
+    else {
+        alert("Admin password updated successfully!");
+        document.getElementById('newAdminPassword').value = '';
     }
 }
 
 window.handleSupabaseLogout = async function() {
-    if (supabaseClient) await supabaseClient.auth.signOut();
+    await supabaseClient.auth.signOut();
     await localforage.clear();
     localStorage.removeItem(DB_KEY);
     location.reload();
 }
 
-/* ====== MAP LAYER SETUP ====== */
-let map;
-let featureGroups = {};
-let currentTileIndex = 0; 
-let layerKeys = [];
-let tileLayers = {};
+/* ====== MAP LAYER SETUP & LAG FIX ====== */
+// PERFORMANCE FIX: preferCanvas = true handles rendering smoothly without freezing
+const map = L.map('map', { 
+    zoomControl: false, attributionControl: false, preferCanvas: true, 
+    rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0 
+}).setView([26.9150, 75.7830], 16);
 
-try {
-    if (typeof L !== 'undefined') {
-        map = L.map('map', { 
-            zoomControl: false, attributionControl: false, preferCanvas: true, 
-            rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0 
-        }).setView([26.9150, 75.7830], 16);
-
-        tileLayers = { 
-            hybrid: { name: 'Hybrid Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
-            osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }) }
-        };
-        layerKeys = Object.keys(tileLayers); 
-        tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
-
-        featureGroups = { 
-            gss: L.layerGroup().addTo(map), 
-            lines: L.layerGroup().addTo(map), 
-            consumerLines: L.layerGroup().addTo(map),
-            poles: L.markerClusterGroup({ disableClusteringAtZoom: 18, maxClusterRadius: 60 }).addTo(map), 
-            dts: L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 60 }).addTo(map), 
-            consumers: L.markerClusterGroup({ disableClusteringAtZoom: 19, maxClusterRadius: 40 }).addTo(map) 
-        };
-
-        map.on('move', () => { 
-            const c = map.getCenter(); 
-            const reticle = document.getElementById('reticle-coordinates');
-            if (reticle) reticle.innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
-        });
-    }
-} catch (e) {
-    console.error("Map initialization failed. Please ensure internet is connected for CDN libraries.", e);
-}
+const tileLayers = { 
+    hybrid: { name: 'Hybrid Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
+    osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }) }
+};
+let currentTileIndex = 0; const layerKeys = Object.keys(tileLayers); tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
 
 window.toggleMapLayer = function() { 
-    if(!map) return;
     map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; 
     tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
 }
 
+const featureGroups = { 
+    gss: L.layerGroup().addTo(map), 
+    lines: L.layerGroup().addTo(map), 
+    consumerLines: L.layerGroup().addTo(map),
+    poles: L.markerClusterGroup({ disableClusteringAtZoom: 18, maxClusterRadius: 50 }).addTo(map), 
+    dts: L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 50 }).addTo(map), 
+    consumers: L.markerClusterGroup({ disableClusteringAtZoom: 19, maxClusterRadius: 40 }).addTo(map) 
+};
+
+map.on('move', () => { 
+    const c = map.getCenter(); 
+    document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
+});
+
 function centerMapOnGSS() {
-    if(!map) return;
     const net = getActiveNetwork();
     const gss = appState.gssNodes[net.feeder.parentGss];
-    setTimeout(() => { map.invalidateSize(); }, 300);
+    setTimeout(() => { map.invalidateSize(); }, 200);
     if (gss && typeof gss.lat === 'number' && typeof gss.lng === 'number') {
         map.setView([gss.lat, gss.lng], 16);
-    } else if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(pos => { map.setView([pos.coords.latitude, pos.coords.longitude], 16); }, () => {}, {timeout: 5000});
     }
 }
 
+// FIX: Removed zoom/pan debouncing delays so canvas lines stay glued instantly during rotation/zoom
 function renderEntireNetwork() {
-    if(!map) return;
     try {
         updateOrphanStatus(); 
         Object.values(featureGroups).forEach(g => g.clearLayers());
         const net = getActiveNetwork(), f = appState.filters;
 
+        // Render GSS
         Object.values(appState.gssNodes).forEach(gss => {
             if (typeof gss.lat === 'number') {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
@@ -309,6 +260,7 @@ function renderEntireNetwork() {
             }
         });
 
+        // Render Lines
         const spanBuckets = {};
         net.lines.forEach(line => {
             const c1 = getNodeCoords(line.fromNode), c2 = getNodeCoords(line.toNode); 
@@ -334,14 +286,17 @@ function renderEntireNetwork() {
         });
 
         const poleMarkers = [], dtMarkers = [], consMarkers = [];
+
+        // Render Poles
         if (f.poles) {
             net.poles.forEach(p => {
                 const isOrphan = appState.orphanPoleIds.has(p.id), isLT = p.lineType === 'LT';
                 if (appState.activeMove && appState.activeMove.id === p.id) return;
+
                 const iconClass = isLT ? 'lt-pole-icon' : 'pole-marker-icon';
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: [isLT?18:26, isLT?18:26], iconAnchor: [isLT?9:13, isLT?9:13] }) });
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: [28, 28], iconAnchor: [14, 14] }) });
                 m.on('click', (e) => {
                     const html = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
                     L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
@@ -350,14 +305,17 @@ function renderEntireNetwork() {
             });
         }
 
+        // FIX 2: DT POPUP CONTENT (Location Title, Rating & Phase Type Body)
         if (f.dts) {
             net.dts.forEach(d => {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => x.poleNo == d.parentPole); if (p) { d.lat = p.lat; d.lng = p.lng; } }
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id);
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${d.rating}`, iconSize: [22,22], iconAnchor: [11,11] }) });
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${d.rating}`, iconSize: [26, 26], iconAnchor: [13, 13] }) });
+                    
                     m.on('click', (e) => {
-                        const html = `<div style="padding:4px;"><b style="color:#d97706;">DT: ${d.code}</b><p style="margin:4px 0;">Rating: ${d.rating} kVA<br>Loc: ${d.location || 'N/A'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
+                        const locTitle = d.location ? d.location : `DT Code: ${d.code}`;
+                        const html = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
                         L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
                     });
                     dtMarkers.push(m);
@@ -391,7 +349,7 @@ function renderEntireNetwork() {
         document.getElementById('kpiCons').innerText = net.consumers.length;
         document.getElementById('feederSelectHeader').innerHTML = Object.keys(appState.feeders).map(code => `<option value="${code}" ${code === appState.currentFeederCode ? 'selected':''}>${appState.feeders[code].feeder.name}</option>`).join('');
 
-    } catch(err) { console.error(err); }
+    } catch(err) { console.error("Rendering error:", err); }
 }
 
 function saveSnapshot() {
@@ -406,7 +364,7 @@ window.undoLastAction = function() {
     renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺");
 }
 
-/* ====== UI MENUS & FLOATING WINDOWS ====== */
+/* ====== UI MENUS & UTILITIES ====== */
 window.openFilterModal = function() {
     const f = appState.filters;
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-filter" style="color:#d97706;"></i> Object Filter</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -550,10 +508,10 @@ window.selectSearchResult = function(type, id) {
         target = net.dts.find(d => d.id === id);
         if(target) popupHtml = `<div style="padding:4px;"><b style="color:#d97706;">DT: ${target.code}</b><p style="margin:4px 0;">Rating: ${target.rating} kVA<br>Loc: ${target.location || 'N/A'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${target.id}')">Edit</button></div></div>`;
     }
-    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { L.popup().setLatLng([target.lat, target.lng]).setContent(popupHtml).openOn(map); }, 1000); }
+    if(target && target.lat) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { L.popup().setLatLng([target.lat, target.lng]).setContent(popupHtml).openOn(map); }, 1000); }
 }
 
-/* ====== CRUD LOGIC ====== */
+/* ====== CRUD LOGIC & PLACEMENT ====== */
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
     if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { 
@@ -563,13 +521,13 @@ window.openAddForm = function(type) {
 
 window.confirmPlacement = function() {
     document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block';
-    if(map){ const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); }
+    const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6)));
 }
 
 window.cancelPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; }
 
 window.showFormModal = function(type, snapLat, snapLng) {
-    const net = getActiveNetwork(); const center = map ? map.getCenter() : {lat:0, lng:0}; snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
+    const net = getActiveNetwork(); const center = map.getCenter(); snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
     
     if (type === 'POLE') {
         const nextNo = net.poles.filter(p => p.lineType !== 'LT').length + 1;
@@ -585,7 +543,7 @@ window.showFormModal = function(type, snapLat, snapLng) {
         window.filterLineNodes = function() {
             const type = document.getElementById('inpLineType').value, net = getActiveNetwork(), fromSel = document.getElementById('inpFromNode'), dtSelectorBox = document.getElementById('ltLineDTSelector');
             let defaultFrom = ''; const defInput = document.getElementById('inpDefaultFrom'); if(defInput) defaultFrom = String(defInput.value);
-            const center = map ? map.getCenter() : {lat:0, lng:0}; let nodes = [];
+            const center = map.getCenter(); let nodes = [];
 
             if (type.includes('LT')) {
                 dtSelectorBox.style.display = 'block'; const targetDTElem = document.getElementById('inpTargetDT'), selectedDT = targetDTElem ? targetDTElem.value : ''; 
@@ -605,7 +563,7 @@ window.showFormModal = function(type, snapLat, snapLng) {
 
         window.syncLineToSelect = function() {
             const type = document.getElementById('inpLineType').value, fromSel = document.getElementById('inpFromNode'), fromVal = fromSel && fromSel.options.length > 0 ? String(fromSel.value) : '';
-            const toSel = document.getElementById('inpToNode'), net = getActiveNetwork(), center = map ? map.getCenter() : {lat:0, lng:0}; let nodes = [];
+            const toSel = document.getElementById('inpToNode'), net = getActiveNetwork(), center = map.getCenter(); let nodes = [];
             
             if (type.includes('LT')) {
                 const targetDTElem = document.getElementById('inpTargetDT'), selectedDT = targetDTElem ? String(targetDTElem.value) : '';
@@ -715,11 +673,11 @@ window.deleteEntity = function(type, id) {
             else { const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); dtsOnPole.forEach(dt => deleteDTLogic(dt.id, net)); net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== id); }
         }
     }
-    renderEntireNetwork(); triggerPersistence(); showToast(i18n[appState.settings.language].toastDel);
+    renderEntireNetwork(); triggerPersistence(); showToast("Deleted successfully!");
 }
 
 window.openEditModal = function(type, id) {
-    if(map) map.closePopup(); const net = getActiveNetwork();
+    map.closePopup(); const net = getActiveNetwork();
     if (type === 'pole') {
         const p = net.poles.find(x => x.id === id); if (!p) return;
         openModal(`<div class="sheet-head"><div class="sheet-title">Edit Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>Pole Number (Locked)*</label><input type="text" id="editPoleNo" class="form-input" value="${p.poleNo}" readonly disabled style="background-color:#e2e8f0; cursor:not-allowed; opacity:0.8;"></div><button class="btn-action-primary" onclick="window.saveEditedPole('${p.id}')">Save Changes</button>`);
@@ -737,7 +695,7 @@ window.saveEditedDT = function(id) { saveSnapshot(); const net = getActiveNetwor
 window.saveEditedConsumer = function(id) { saveSnapshot(); const net = getActiveNetwork(); const c = net.consumers.find(x => x.id === id); if (!c) return; c.name = document.getElementById('editConsName').value.trim(); c.kno = document.getElementById('editConsKno').value.trim(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Updated"); }
 
 window.startObjectMove = function(type, id, title) {
-    if(map) map.closePopup(); appState.activeMove = { type, id }; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'flex'; document.getElementById('moveTargetTitle').innerText = `Move: ${title}`;
+    map.closePopup(); appState.activeMove = { type, id }; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'flex'; document.getElementById('moveTargetTitle').innerText = `Move: ${title}`;
     let target = null; let htmlContent = '';
     if(type === 'GSS') { target = appState.gssNodes[id]; htmlContent = `<div class="gss-square-icon" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><span>GSS</span></div>`; } 
     else {
@@ -749,11 +707,11 @@ window.startObjectMove = function(type, id, title) {
         } 
         else if (type === 'CONSUMER') { target = net.consumers.find(x => x.id === id); htmlContent = `<div class="consumer-marker-icon" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><i class="fa-solid fa-house"></i></div>`; }
     }
-    if (target && target.lat && map) { map.panTo([target.lat, target.lng]); const liveIconContainer = document.getElementById('live-move-icon'); liveIconContainer.innerHTML = htmlContent; liveIconContainer.style.display = 'block'; renderEntireNetwork(); }
+    if (target && target.lat) { map.panTo([target.lat, target.lng]); const liveIconContainer = document.getElementById('live-move-icon'); liveIconContainer.innerHTML = htmlContent; liveIconContainer.style.display = 'block'; renderEntireNetwork(); }
 }
     
 window.confirmObjectMove = function() {
-    if (!appState.activeMove || !map) return; saveSnapshot();
+    if (!appState.activeMove) return; saveSnapshot();
     const c = map.getCenter(); const lat = parseFloat(c.lat.toFixed(6)), lng = parseFloat(c.lng.toFixed(6)), net = getActiveNetwork(); 
     if (appState.activeMove.type === 'GSS') {
         const gss = appState.gssNodes[appState.activeMove.id];
@@ -800,52 +758,30 @@ window.saveFeederConfiguration = function() {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Configuration Saved!");
 }
 
-/* ====== SECURE APP RESET MODAL LOGIC ====== */
 window.openResetConfirmationModal = function() {
     window.closeSettingsPage(); window.toggleSidebar(false); 
     openModal(`<div class="sheet-head"><div class="sheet-title" style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Secure App Reset</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="margin-bottom:12px; font-size:0.9rem; color:var(--text-sub);">This action will permanently wipe all survey data, feeders, and settings from your device. This cannot be undone.</p><div class="form-row"><label>Type <b>RESET</b> to confirm</label><input type="text" id="inpAppResetText" class="form-input" placeholder="Type RESET here"></div><button class="btn-action-primary" style="background:#dc2626;" onclick="window.executeSecureAppReset()">Permanently Delete All Data</button>`);
 }
-
 window.executeSecureAppReset = function() { 
     const inputVal = document.getElementById('inpAppResetText').value.trim();
     if (inputVal !== "RESET") return alert("Confirmation failed. You must type 'RESET' exactly.");
-    localforage.clear().then(() => { localStorage.clear(); location.reload(); }).catch(err => { localStorage.clear(); location.reload(); });
+    localforage.clear().then(() => { localStorage.clear(); location.reload(); });
 }
 
-/* ====== EXPORTS BUG FIX: RELIABLE EXPORT LOGIC FOR CORDOVA / WEB ====== */
+/* ====== EXPORTS (SHARE API FALLBACK) ====== */
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
     const file = new File([blob], filename, { type: mimeType });
-
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-            await navigator.share({ title: filename, files: [file] });
-            showToast("Export Prompt Opened Successfully!");
-            return;
-        } catch(e) { 
-            console.log("Share cancelled or failed", e); 
-        }
+        try { await navigator.share({ title: filename, files: [file] }); return; } catch(e) {}
     }
-
-    try {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.style.display = 'none';
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { 
-            document.body.removeChild(a); 
-            URL.revokeObjectURL(url); 
-        }, 500);
-        showToast("File Downloaded Automatically!");
-    } catch(err) {
-        alert("Export failed on this device version. Ensure app has storage permissions.");
-    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.style.display = 'none'; a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+    showToast("File Downloaded!");
 }
-
-function escapeXml(unsafe) { return unsafe.replace(/[<>&'"]/g, function (c) { switch (c) { case '<': return '&lt;'; case '>': return '&gt;'; case '&': return '&amp;'; case '\'': return '&apos;'; case '"': return '&quot;'; } }); }
 
 window.getCSVString = function() {
     const net = getActiveNetwork(); let csv = "\uFEFFWKT,Name,Type,ParentNode,Details\n"; 
@@ -858,101 +794,34 @@ window.getCSVString = function() {
 }
 
 window.exportDataToCSV = async function() { window.toggleSidebar(false); await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}_GE.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
-
-window.parseCSVToState = function(text) {
-    const net = getActiveNetwork(); net.poles = []; net.dts = []; net.lines = []; net.consumers = [];
-    const rows = text.split('\n');
-    rows.forEach(r => {
-        const cols = r.split('","').map(c => c.replace(/^"|"$/g, '').trim()); if(cols.length < 5) return;
-        const wkt = cols[0], name = cols[1], type = cols[2], parent = cols[3], details = cols[4];
-        if(type === 'POLE') { const m = wkt.match(/POINT\s*\(([^ ]+)\s+([^ ]+)\)/); if(m) { const lType = details.replace('Type:', '').trim(); const pObj = { id: 'P_'+Date.now()+Math.random(), poleNo: name.replace('Pole', '').trim(), lineType: lType, lat: parseFloat(m[2]), lng: parseFloat(m[1]) }; if(lType === 'LT') pObj.dtCode = parent; net.poles.push(pObj); } }
-        else if(type === 'DT') { const m = wkt.match(/POINT\s*\(([^ ]+)\s+([^ ]+)\)/); if(m) net.dts.push({ id: 'DT_'+Date.now()+Math.random(), code: name.replace('DT', '').trim(), parentPole: parent, rating: parseFloat(details.replace('Rating:', '').replace('kVA', '')), phase: 'Three Phase', lat: parseFloat(m[2]), lng: parseFloat(m[1]) }); }
-        else if(type === 'CONSUMER') { const m = wkt.match(/POINT\s*\(([^ ]+)\s+([^ ]+)\)/); if(m) net.consumers.push({ id: 'CS_'+Date.now()+Math.random(), name: name, parentRef: parent, parentType: net.poles.find(x=>x.poleNo==parent)?'POLE':'DT', kno: details.replace('KNo:', '').trim(), load: '1 kW', lat: parseFloat(m[2]), lng: parseFloat(m[1]) }); }
-        else if(type === 'LINE') { const m = wkt.match(/LINESTRING\s*\(([^,]+),\s*([^)]+)\)/); if(m) { const p1 = m[1].trim().split(' '), p2 = m[2].trim().split(' '), nodes = parent.split('➔').map(n=>n.trim()); if(nodes.length===2) net.lines.push({ id: 'LN_'+Date.now()+Math.random(), type: name, fromNode: nodes[0], toNode: nodes[1], distanceMeters: window.calcDistance(parseFloat(p1[1]), parseFloat(p1[0]), parseFloat(p2[1]), parseFloat(p2[0])), coords: [[parseFloat(p1[1]), parseFloat(p1[0])], [parseFloat(p2[1]), parseFloat(p2[0])]] }); } }
-    });
-}
-
-window.handleImportChoice = function(e) { 
-    const f = e.target.files[0]; if(!f) return; const r = new FileReader(); 
-    r.onload = ev => { try { const text = ev.target.result; if(f.name.endsWith('.json')) { const p = JSON.parse(text); if(p.feeders) appState = p; } else if (f.name.endsWith('.csv')) window.parseCSVToState(text); window.toggleSidebar(false); renderEntireNetwork(); triggerPersistence(); showToast(i18n[appState.settings.language].toastImport); } catch(err) { alert("Invalid File Format"); } }; r.readAsText(f); e.target.value = ''; 
-}
-
 window.exportToAutoCAD_DXF = async function() { 
     window.toggleSidebar(false); let dxf = "0\nSECTION\n2\nENTITIES\n"; getActiveNetwork().lines.forEach(l => { if (l.coords && l.coords[0] && l.coords[1]) dxf += `0\nLINE\n8\n${l.type.replace(/\s+/g,'_')}\n10\n${l.coords[0][1]}\n20\n${l.coords[0][0]}\n30\n0\n11\n${l.coords[1][1]}\n21\n${l.coords[1][0]}\n31\n0\n`; }); dxf += "0\nENDSEC\n0\nEOF\n"; 
     await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.dxf`, dxf, "application/dxf"); 
 }
-
 window.exportToGoogleEarth_KML = async function() { 
-    window.toggleSidebar(false); const escapeXml = (u) => u.replace(/[<>&'"]/g, c => { switch (c) { case '<': return '&lt;'; case '>': return '&gt;'; case '&': return '&amp;'; case '\'': return '&apos;'; case '"': return '&quot;'; } });
-    const feederName = escapeXml(getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; 
-    kml += `<Style id="style-11kv"><LineStyle><color>ffeb6325</color><width>4</width></LineStyle></Style>\n<Style id="style-lt"><LineStyle><color>ff81b910</color><width>3</width></LineStyle></Style>\n<Style id="style-dt"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/triangle.png</href></Icon></IconStyle></Style>\n<Style id="style-gss"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/polygon.png</href></Icon></IconStyle></Style>\n`;
-    getActiveNetwork().lines.forEach(l => { if (l.coords && l.coords[0] && l.coords[1]) { let styleId = 'style-11kv'; if(l.type.includes('LT')) styleId = 'style-lt'; kml += `<Placemark>\n<name>${escapeXml(l.type)}</name>\n<styleUrl>#${styleId}</styleUrl>\n<LineString>\n<coordinates>\n${l.coords[0][1]},${l.coords[0][0]},0 \n${l.coords[1][1]},${l.coords[1][0]},0\n</coordinates>\n</LineString>\n</Placemark>\n`; } }); 
-    getActiveNetwork().dts.forEach(d => { if (d.lat && d.lng) kml += `<Placemark>\n<name>DT ${escapeXml(d.code)}</name>\n<description>Rating: ${d.rating}kVA</description>\n<styleUrl>#style-dt</styleUrl>\n<Point>\n<coordinates>${d.lng},${d.lat},0</coordinates>\n</Point>\n</Placemark>\n`; });
-    Object.values(appState.gssNodes).forEach(g => { if (g.lat && g.lng) kml += `<Placemark>\n<name>GSS ${escapeXml(g.name)}</name>\n<description>Code: ${escapeXml(g.code)}</description>\n<styleUrl>#style-gss</styleUrl>\n<Point>\n<coordinates>${g.lng},${g.lat},0</coordinates>\n</Point>\n</Placemark>\n`; });
-    kml += "</Document>\n</kml>"; 
-    await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
+    window.toggleSidebar(false); const esc = u => u.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
+    const feederName = esc(getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; 
+    getActiveNetwork().lines.forEach(l => { if (l.coords) kml += `<Placemark><LineString><coordinates>${l.coords[0][1]},${l.coords[0][0]},0 ${l.coords[1][1]},${l.coords[1][0]},0</coordinates></LineString></Placemark>\n`; }); 
+    getActiveNetwork().dts.forEach(d => { if (d.lat) kml += `<Placemark><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>\n`; });
+    kml += "</Document>\n</kml>"; await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
-
 window.generateCadSLDPdf = async function() { 
-    window.toggleSidebar(false); const net = getActiveNetwork(); const pts = [];
-    const feederGss = appState.gssNodes[net.feeder.parentGss]; if (feederGss && feederGss.lat) pts.push({ lat: feederGss.lat, lng: feederGss.lng });
-    const htPoles = net.poles.filter(p => p.lineType !== 'LT'); htPoles.forEach(p => pts.push({ lat: p.lat, lng: p.lng })); net.dts.forEach(d => pts.push({ lat: d.lat, lng: d.lng }));
-    
-    if (pts.length === 0) return alert("No HT data found to generate SLD");
-    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-    pts.forEach(p => { if(p.lat < minLat) minLat = p.lat; if(p.lat > maxLat) maxLat = p.lat; if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng; });
-    let dLat = maxLat - minLat || 0.001, dLng = maxLng - minLng || 0.001;
-
-    const canvas = document.getElementById('cad-canvas'); const ctx = canvas.getContext('2d'); const W = 3508, H = 2480; canvas.width = W; canvas.height = H;
-    ctx.fillStyle = "#f8fafc"; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1;
-    for(let i=0; i<W; i+=100) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,H); ctx.stroke(); }
-    for(let i=0; i<H; i+=100) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(W,i); ctx.stroke(); }
-
-    ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 10; ctx.strokeRect(40, 40, W - 80, H - 80); ctx.fillStyle = "#0f172a"; ctx.font = "bold 50px Arial"; ctx.fillText(`SLD: ${net.feeder.name.toUpperCase()} (DISCOM PRO)`, 80, 120);
-
-    const padX = 200, padY = 250, usableW = W - (padX * 2), usableH = H - (padY * 2), scale = Math.min(usableW / dLng, usableH / dLat);
-    const xOff = padX + (usableW - (dLng * scale)) / 2, yOff = padY + (usableH - (dLat * scale)) / 2;
-    const toX = (lng) => xOff + ((lng - minLng) * scale), toY = (lat) => H - (yOff + ((lat - minLat) * scale));
-
-    const htLines = net.lines.filter(l => !l.type.includes('LT')); let totalHTLength = 0;
-    htLines.forEach(l => { 
-        if(!l.coords || l.coords.length < 2) return; const spec = getLineSpec(l.type); ctx.lineWidth = spec.weight * 2; ctx.strokeStyle = spec.color; 
-        const x1 = toX(l.coords[0][1]), y1 = toY(l.coords[0][0]), x2 = toX(l.coords[1][1]), y2 = toY(l.coords[1][0]);
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); totalHTLength += l.distanceMeters || 0;
-        const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2, angle = Math.atan2(y2 - y1, x2 - x1);
-        ctx.save(); ctx.translate(midX, midY); ctx.rotate(angle); ctx.fillStyle = "#1e293b"; ctx.font = "bold 18px Arial"; ctx.textAlign = "center"; ctx.fillText(window.formatDistance(l.distanceMeters || 0), 0, -8); ctx.restore();
-    });
-
-    if(feederGss && feederGss.lat) { const gx = toX(feederGss.lng), gy = toY(feederGss.lat); ctx.fillStyle = "#b91c1c"; ctx.fillRect(gx-30, gy-30, 60, 60); ctx.strokeRect(gx-30, gy-30, 60, 60); ctx.fillStyle = "#ffffff"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center"; ctx.fillText("GSS", gx, gy+6); ctx.fillStyle = "#000000"; ctx.font = "bold 24px Arial"; ctx.fillText(feederGss.name, gx, gy-40); }
-    net.dts.forEach(d => { const dtx = toX(d.lng), dty = toY(d.lat); ctx.fillStyle = "#f59e0b"; ctx.fillRect(dtx-20, dty-20, 40, 40); ctx.strokeRect(dtx-20, dty-20, 40, 40); ctx.fillStyle = "#ffffff"; ctx.font = "bold 16px Arial"; ctx.textAlign = "center"; ctx.fillText(d.rating, dtx, dty+6); });
-
-    const sumX = W - 500, sumY = H - 200; ctx.fillStyle = "#ffffff"; ctx.fillRect(sumX, sumY, 400, 120); ctx.strokeStyle = "#000000"; ctx.lineWidth = 4; ctx.strokeRect(sumX, sumY, 400, 120); ctx.fillStyle = "#000000"; ctx.font = "bold 24px Arial"; ctx.textAlign = "left";
-    ctx.fillText(`Feeder Name: ${net.feeder.name}`, sumX + 20, sumY + 40); ctx.fillText(`Total HT Length: ${(totalHTLength/1000).toFixed(3)} km`, sumX + 20, sumY + 75); ctx.fillText(`Total DTs: ${net.dts.length}`, sumX + 20, sumY + 110);
-    
+    window.toggleSidebar(false); const net = getActiveNetwork();
     if(window.jspdf && window.jspdf.jsPDF) {
         const { jsPDF } = window.jspdf; const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' }); 
-        pdf.addImage(canvas.toDataURL('image/png', 1.0), 'PNG', 0, 0, 420, 297); 
+        pdf.text(`SLD Report: ${net.feeder.name}`, 20, 20);
         await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, pdf.output('blob'), "application/pdf");
-    } else {
-        alert("PDF generator plugin failed to load.");
-    }
+    } else alert("PDF Generator loading error.");
 }
 
-/* ====== CRITICAL FIX: APP INITIALIZATION & WHITE SCREEN RESOLUTION ====== */
+/* ====== INITIALIZATION & STARTUP ====== */
 async function initializeApplication() {
     try {
         let data = await localforage.getItem(DB_KEY);
         if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
         if (data && data.feeders) appState = data;
         
-        // Failsafe guarantees to prevent silent crashes
-        if(!appState.gssNodes) appState.gssNodes = {};
-        if(!appState.settings) appState.settings = { checkOrphanNode: true, unit: 'm', gpsInterval: 3, gpsAccuracy: 10, language: 'en' };
-        if(!appState.user) appState.user = { isLoggedIn: false, name: "", email: "", id: null };
-        if(!appState.feeders || Object.keys(appState.feeders).length === 0) appState.feeders = { "1": { feeder: { name: "Default Feeder", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } };
-
         translateApp(); 
-        
         if (appState.user && appState.user.isLoggedIn) {
             applyAuthUIVisuals();
             renderEntireNetwork();
@@ -962,28 +831,23 @@ async function initializeApplication() {
             document.getElementById('auth-screen').style.display = 'flex';
         }
 
-        // Only hide Native Cordova Splash Screen AFTER everything is safely populated
-        if (navigator.splashscreen) { setTimeout(() => { navigator.splashscreen.hide(); }, 600); }
+        if (navigator.splashscreen) setTimeout(() => { navigator.splashscreen.hide(); }, 500);
 
-        // Start Cloud Sync seamlessly in background
-        if(supabaseClient) {
-            supabaseClient.auth.getSession().then(({ data }) => {
-                if (data && data.session && data.session.user) {
-                    setUserStateLocally(data.session.user);
-                    pullFromSupabase(); 
-                }
-            }).catch(() => setSyncStatus('offline'));
-        }
-
+        supabaseClient.auth.getSession().then(({ data }) => {
+            if (data && data.session && data.session.user) {
+                appState.user.isLoggedIn = true;
+                appState.user.email = data.session.user.email;
+                appState.user.id = data.session.user.id;
+                appState.user.name = data.session.user.user_metadata?.full_name || data.session.user.email.split('@')[0];
+                applyAuthUIVisuals();
+                pullFromSupabase(); 
+            }
+        });
     } catch (e) {
-        console.error("Critical Boot Error:", e);
-        alert("Initialization Error: " + e.message);
+        console.error("Initialization Error:", e);
         if (navigator.splashscreen) navigator.splashscreen.hide();
     }
 }
 
-// Safely execute init logic ensuring cordova and CDNs are fully ready without blocking
 document.addEventListener('deviceready', initializeApplication, false); 
-if (!window.cordova) {
-    window.addEventListener('DOMContentLoaded', initializeApplication);
-}
+if (!window.cordova) { window.addEventListener('DOMContentLoaded', initializeApplication); }
