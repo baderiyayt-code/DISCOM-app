@@ -72,7 +72,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .floating-action-bar { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; z-index: 2500; background: #ffffff; border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: none; flex-direction: column; gap: 12px; }
 
 /* ====== MAP MARKER ICONS ====== */
-.gss-square-icon, .dt-square-icon, .pole-marker-icon, .lt-pole-icon, .consumer-marker-icon { transition: opacity 0.25s ease; }
+.gss-square-icon, .dt-square-icon, .pole-marker-icon, .lt-pole-icon, .consumer-marker-icon { transition: opacity 0.25s ease; box-sizing: border-box; }
 
 .gss-square-icon { background: #b91c1c; color: white; border: 2px solid white; border-radius: 8px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(185, 28, 28, 0.4);}
 .dt-square-icon { background-color: #f59e0b !important; color: #334155 !important; border: 2px solid white; border-radius: 6px; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; box-shadow: 0 3px 8px rgba(245, 158, 11, 0.4); }
@@ -80,26 +80,10 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .lt-pole-icon { background-color: #10b981 !important; color: #0f172a !important; border: 2px solid #0f172a; border-radius: 50%; font-size: 8px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
 .consumer-marker-icon { background: #3b82f6; color: white; border: 1.5px solid white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 8px; }
 
-/* FIX: Highly Visible Blinking Live Location Icon */
-.live-human-icon { 
-    font-size: 32px; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    width: 44px; 
-    height: 44px; 
-    background: #ffffff; 
-    border-radius: 50%; 
-    border: 3px solid #ef4444; 
-    box-shadow: 0px 4px 12px rgba(239, 68, 68, 0.8);
-    z-index: 5000 !important;
-    animation: liveBlink 1s infinite alternate;
-}
-
-@keyframes liveBlink {
-    0% { transform: scale(1); box-shadow: 0 0 10px rgba(239,68,68,0.5); }
-    100% { transform: scale(1.15); box-shadow: 0 0 25px rgba(239,68,68,1); border-color: #b91c1c; }
-}
+/* FIX: High-Visibility Live Tracking Pulse */
+.live-location-pulse { background-color: #0ea5e9; width: 26px; height: 26px; border-radius: 50%; border: 4px solid white; box-shadow: 0 0 12px rgba(0,0,0,0.6); position: relative; z-index: 5000 !important; }
+.live-location-pulse::after { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; border-radius: 50%; background-color: rgba(14, 165, 233, 0.5); animation: pulse-ring 1.5s infinite cubic-bezier(0.215, 0.61, 0.355, 1); }
+@keyframes pulse-ring { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
 
 .pole-marker-icon.orphan-pulse, .dt-square-icon.orphan-pulse, .lt-pole-icon.orphan-pulse { background-color: #ef4444 !important; color: white !important; animation: redGlow 1s infinite !important; }
 @keyframes redGlow { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
@@ -111,7 +95,6 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .hide-ht-poles .pole-marker-icon { opacity: 0 !important; pointer-events: none !important; }
 .hide-dt .dt-square-icon { opacity: 0 !important; pointer-events: none !important; }
 .hide-gss .gss-square-icon { opacity: 0 !important; pointer-events: none !important; }
-
 
 /* ====== MODALS & SIDEBAR ====== */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); z-index: 3000; display: none; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.2s; }
