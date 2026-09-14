@@ -66,7 +66,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 
 .floating-action-bar { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; z-index: 2500; background: #ffffff; border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: none; flex-direction: column; gap: 12px; }
 
-/* FIX: Absolute transform-origin guarantees marker does not drift on map rotation */
+/* Perfect rotation anchoring without drift */
 .gss-custom-wrapper, .pole-marker-icon, .lt-pole-icon, .dt-square-icon, .consumer-marker-icon {
     transform-origin: center center !important;
     transition: opacity 0.25s ease;
@@ -88,14 +88,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .pole-marker-icon.orphan-pulse, .dt-square-icon.orphan-pulse, .lt-pole-icon.orphan-pulse { background-color: #ef4444 !important; color: white !important; animation: redGlow 1s infinite !important; }
 @keyframes redGlow { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
-/* ====== FIX: EXPLICIT DYNAMIC ZOOM HIDING CLASSES ====== */
-.hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { opacity: 0 !important; pointer-events: none !important; display: none !important; }
-.hide-lt-poles .lt-pole-icon { opacity: 0 !important; pointer-events: none !important; display: none !important;}
-.hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
-.hide-ht-poles .pole-marker-icon { opacity: 0 !important; pointer-events: none !important; display: none !important;}
-.hide-dt .dt-square-icon { opacity: 0 !important; pointer-events: none !important; display: none !important;}
-
-/* GSS Dot Transformation at Level 15 */
+/* GSS Dot Transformation at Level 15 (Managed via map container class) */
 .hide-gss-square .gss-square-icon { display: none !important; }
 .hide-gss-square .gss-mini-dot { display: block !important; }
 
