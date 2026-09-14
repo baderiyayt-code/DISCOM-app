@@ -20,4 +20,5 @@
     </platform>
 
     <plugin name="cordova-plugin-geolocation" />
+    <plugin name="cordova-plugin-file" spec="^8.0.0" />
 </widget>
