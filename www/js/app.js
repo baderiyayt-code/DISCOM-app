@@ -152,7 +152,7 @@ window.changeAdminPassword = async function() {
 window.handleSupabaseLogout = async function() { await supabaseClient.auth.signOut(); await localforage.clear(); localStorage.removeItem(DB_KEY); location.reload(); }
 
 /* ====== MAP LAYER SETUP & LIVE TRACKING ====== */
-// FIX: zoomAnimation and markerZoomAnimation disabled to permanently anchor vectors perfectly on all zooming/rotations.
+// FIX: Permanent Vector Anchoring. Disabled zoom animations to prevent detachment.
 const map = L.map('map', { 
     zoomControl: false, 
     attributionControl: false, 
@@ -193,7 +193,7 @@ window.toggleMapLayer = function() {
     tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
 }
 
-// Marker Clustering disabled to enforce direct canvas anchoring
+// Enforcing precise vector rendering through discrete FeatureGroups
 const featureGroups = { 
     gss: L.featureGroup().addTo(map), 
     lines: L.featureGroup().addTo(map), 
@@ -212,7 +212,7 @@ function centerMapOnGSS() {
 
 window.liveTrackingId = null; window.liveUserMarker = null;
 window.toggleLiveTracking = function() {
-    if (!navigator.geolocation) return alert("Geolocation API not found. Install cordova-plugin-geolocation.");
+    if (!navigator.geolocation) return alert("Geolocation API not found.");
     if (window.liveTrackingId) {
         navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
         if (window.liveUserMarker) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
@@ -241,14 +241,13 @@ function renderEntireNetwork() {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
                 const gssIcon = L.divIcon({ className: 'gss-square-icon', html: `<span>GSS</span>`, iconSize: [36,36], iconAnchor: [18,18] });
                 const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 });
-                m.on('click', (e) => {
+                m.on('click', () => {
                     const html = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
-                    L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
+                    L.popup().setLatLng([gss.lat, gss.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
                 }); featureGroups.gss.addLayer(m);
             }
         });
 
-        // Poles Z-Index mapping -> 200, DTs Z-Index mapping -> 400 (Always on top of poles)
         if (f.poles) {
             net.poles.forEach(p => {
                 const isOrphan = appState.orphanPoleIds.has(p.id), isLT = p.lineType === 'LT';
@@ -257,9 +256,9 @@ function renderEntireNetwork() {
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2] }), zIndexOffset: 200 });
-                m.on('click', (e) => {
+                m.on('click', () => {
                     const html = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
+                    L.popup().setLatLng([p.lat, p.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
                 }); featureGroups.poles.addLayer(m);
             });
         }
@@ -269,13 +268,13 @@ function renderEntireNetwork() {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => x.poleNo == d.parentPole); if (p) { d.lat = p.lat; d.lng = p.lng; } }
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id);
-                    const numericRating = String(d.rating).replace(/[^0-9]/g, ''); // Extract only numbers
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${numericRating}`, iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: 400 });
+                    const numRating = String(d.rating).replace(/[^0-9]/g, '');
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${numRating}`, iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: 400 });
                     
-                    m.on('click', (e) => {
+                    m.on('click', () => {
                         const locTitle = d.location ? d.location : `DT Code: ${d.code}`;
                         const html = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
+                        L.popup().setLatLng([d.lat, d.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
                     }); featureGroups.dts.addLayer(m);
                 }
             });
@@ -288,9 +287,11 @@ function renderEntireNetwork() {
             
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25, className: spec.lineClass }).addTo(featureGroups.lines);
             L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(featureGroups.lines);
-            hitPoly.on('click', (e) => {
+            hitPoly.on('click', () => {
                 const html = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
-                L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
+                const midLat = (c1.lat + c2.lat) / 2;
+                const midLng = (c1.lng + c2.lng) / 2;
+                L.popup().setLatLng([midLat, midLng]).setContent(html).openOn(map); // EXACT LOCATION FIX
             });
         });
 
@@ -298,9 +299,9 @@ function renderEntireNetwork() {
             net.consumers.forEach(c => {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
                 const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'consumer-marker-icon', html: `<i class="fa-solid fa-house"></i>`, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 100 });
-                m.on('click', (e) => {
+                m.on('click', () => {
                     const html = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    L.popup().setLatLng(e.latlng).setContent(html).openOn(map);
+                    L.popup().setLatLng([c.lat, c.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
                 }); featureGroups.consumers.addLayer(m);
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
@@ -355,7 +356,7 @@ window.saveFilters = function() {
 window.autoSaveSettings = function() { 
     appState.settings.unit = document.getElementById('setUnit').value; appState.settings.gpsInterval = parseFloat(document.getElementById('setGpsInterval').value);
     appState.settings.gpsAccuracy = parseFloat(document.getElementById('setGpsAccuracy').value); appState.settings.language = document.getElementById('setLanguage').value;
-    triggerPersistence(); translateApp(); renderEntireNetwork(); showToast("Settings Saved!"); 
+    triggerPersistence(); translateApp(); renderEntireNetwork(); showToast(i18n[appState.settings.language].toastSettings); 
 }
 
 window.toggleSpeedDial = function(force) {
@@ -373,7 +374,7 @@ document.addEventListener('click', function(e) {
         }
     }
 });
-document.addEventListener('pointerdown', function(e) { // Handles touch devices perfectly
+document.addEventListener('pointerdown', function(e) {
     const dial = document.getElementById('speed-dial-menu');
     const fab = document.getElementById('mainFabBtn');
     if (dial && dial.classList.contains('active')) {
@@ -704,12 +705,32 @@ window.confirmObjectMove = function() {
 window.cancelObjectMove = function() { appState.activeMove = null; document.getElementById('live-move-icon').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
 
 
-/* ====== STRICT EXPORT & IMPORT FUNCTIONALITY ====== */
-// Bypass share mechanisms; strictly trigger direct browser download logic.
+/* ====== NATIVE DIRECTORY EXPORT & IMPORT ====== */
+// Advanced "Save to Downloads" using File System Access API with standard fallback
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
-        showToast("Preparing download...");
+        showToast("Preparing file export...");
         const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
+        
+        // 1. Try Native Web File System Access API (Native Folder Picker)
+        if (window.showSaveFilePicker) {
+            try {
+                const ext = filename.split('.').pop();
+                const fileHandle = await window.showSaveFilePicker({
+                    suggestedName: filename,
+                    types: [{ description: 'Survey Data Export', accept: { [mimeType]: ['.' + ext] } }]
+                });
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                showToast("File Saved Successfully to Directory!");
+                return;
+            } catch (e) {
+                console.warn("SaveFilePicker cancelled or failed, falling back to Download Manager...", e);
+            }
+        }
+
+        // 2. Fallback: Trigger standard Download Manager (Silently saves to Downloads folder)
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.style.display = 'none';
@@ -719,7 +740,8 @@ async function smartExportFile(filename, dataBlobOrText, mimeType) {
         a.click();
         
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-        showToast("File Downloaded to device!");
+        showToast("File Downloaded to local storage!");
+
     } catch (err) {
         console.error("Export Error: ", err);
         alert("Export failed: " + err.message);
@@ -755,10 +777,12 @@ window.getCSVString = function() {
     return csv;
 }
 window.exportDataToCSV = async function() { window.toggleSidebar(false); await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}_GE.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
+
 window.exportToAutoCAD_DXF = async function() { 
     window.toggleSidebar(false); let dxf = "0\nSECTION\n2\nENTITIES\n"; getActiveNetwork().lines.forEach(l => { if (l.coords && l.coords[0] && l.coords[1]) dxf += `0\nLINE\n8\n${l.type.replace(/\s+/g,'_')}\n10\n${l.coords[0][1]}\n20\n${l.coords[0][0]}\n30\n0\n11\n${l.coords[1][1]}\n21\n${l.coords[1][0]}\n31\n0\n`; }); dxf += "0\nENDSEC\n0\nEOF\n"; 
     await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.dxf`, dxf, "application/dxf"); 
 }
+
 window.exportToGoogleEarth_KML = async function() { 
     window.toggleSidebar(false); const esc = u => u.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
     const feederName = esc(getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; 
@@ -774,7 +798,7 @@ window.generateCadSLDPdf = async function() {
     
     showToast("Generating A0 SLD PDF...");
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' }); // Huge chart paper size
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
     
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
     const allPoints = [];
