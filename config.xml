@@ -13,9 +13,19 @@
     <allow-intent href="mailto:*" />
     <allow-intent href="geo:*" />
     
+    <!-- Custom App Icon and Strict Splash Screen Images -->
     <icon src="res/icon.png" />
     
-    <!-- Retain Original Splash Screen Setup -->
+    <platform name="android">
+        <!-- Force strict original splash usage across all densities -->
+        <splash src="res/splash.png" density="port-hdpi"/>
+        <splash src="res/splash.png" density="port-ldpi"/>
+        <splash src="res/splash.png" density="port-mdpi"/>
+        <splash src="res/splash.png" density="port-xhdpi"/>
+        <allow-intent href="market:*" />
+    </platform>
+    
+    <!-- Native Splash Screen Configuration -->
     <preference name="SplashScreen" value="screen" />
     <preference name="SplashScreenDelay" value="10000" />
     <preference name="AutoHideSplashScreen" value="false" />
@@ -23,17 +33,9 @@
     <preference name="FadeSplashScreen" value="true" />
     <preference name="FadeSplashScreenDuration" value="500" />
     <preference name="AndroidXEnabled" value="true" />
-    
-    <platform name="android">
-        <allow-intent href="market:*" />
-        
-        <!-- Force explicit mapping to the exact splash.png file for all densities -->
-        <splash src="res/splash.png" density="port-hdpi"/>
-        <splash src="res/splash.png" density="port-ldpi"/>
-        <splash src="res/splash.png" density="port-mdpi"/>
-        <splash src="res/splash.png" density="port-xhdpi"/>
-    </platform>
 
+    <!-- Core Plugins needed for Export and UI -->
     <plugin name="cordova-plugin-splashscreen" spec="^6.0.0" />
     <plugin name="cordova-plugin-file" spec="^8.0.0" />
+    <plugin name="cordova-plugin-geolocation" spec="^5.0.0" />
 </widget>
