@@ -4,9 +4,7 @@ const DB_KEY = "DISCOM_ENTERPRISE_DB";
 const SUPABASE_URL = 'https://sxfyeublvtisndnzycib.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4ZnlldWJsdnRpc25kbnp5Y2liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMjkzOTEsImV4cCI6MjEwNDgwNTM5MX0.FENa8zOaDzlYZJI_HfWtallAkWukxSiM52-RGQ-CUmA';
 let supabaseClient = null;
-if (typeof supabase !== 'undefined') {
-    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-}
+if (typeof supabase !== 'undefined') { supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
 const ADMIN_EMAIL = 'admin@discom.com';
 
 let appState = {
@@ -15,9 +13,7 @@ let appState = {
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
     gssNodes: { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } },
-    feeders: { 
-        "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } 
-    },
+    feeders: { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } },
     orphanPoleIds: new Set(), activeMove: null, placementType: null
 };
 
@@ -53,14 +49,7 @@ const i18n = {
 };
 
 function t(key) { const lang = appState.settings.language || 'en'; return (i18n[lang] && i18n[lang][key]) ? i18n[lang][key] : (i18n['en'][key] || key); }
-
-function translateApp() {
-    document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        if (el.tagName.toLowerCase() === 'input' && el.type === 'text') el.placeholder = t(key);
-        else el.innerHTML = t(key);
-    });
-}
+function translateApp() { document.querySelectorAll('[data-i18n]').forEach(el => { const key = el.getAttribute('data-i18n'); if (el.tagName.toLowerCase() === 'input' && el.type === 'text') el.placeholder = t(key); else el.innerHTML = t(key); }); }
 
 function getActiveNetwork() {
     if (!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
@@ -153,10 +142,10 @@ let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTile
 
 function initMapSystem() {
     if(map) return; 
-    // SVG Rendering for jitter-free rotation
+    // SVG Rendering eliminates rotation desync bugs
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
-    // EXACT ZOOM LEVEL LOGIC (Consumer 20, LT Pole 19, LT Line 18, HT Pole 17, DT 16, GSS 15)
+    // Dynamic Layer Hiding Rules
     function updateMapZoomClasses() {
         if(!map) return;
         const z = map.getZoom(); const mapEl = document.getElementById('map');
@@ -211,7 +200,7 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== EXACT ABSOLUTE POPUP ANCHORING ====== */
+// Absolute Geographic Popups to eradicate drifting
 function openAbsolutePopup(lat, lng, htmlContent, yOffset = -15) {
     if(!map) return;
     L.popup({ offset: [0, yOffset], autoPan: true, closeButton: true })
@@ -232,7 +221,6 @@ function renderEntireNetwork() {
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
                 const gssIcon = L.divIcon({ className: 'gss-custom-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
                 const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 }).addTo(featureGroups.gss);
-                
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
                     openAbsolutePopup(gss.lat, gss.lng, htmlPopup, -18);
@@ -481,7 +469,6 @@ window.saveNewGss = function() {
 };
 window.relocateGss = function(gssCode) { if(map) map.closePopup(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
 
-// Add Feeder
 window.openAddNewFeederModal = function() {
     const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}">${g.code} - ${g.name}</option>`).join('');
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addFeeder">Add Feeder</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -776,7 +763,7 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
-/* ====== CRITICAL FIX: EXACT SLD GENERATOR (AUTO-FIT, HT ONLY, DT SQUARE, NO DECIMALS) ====== */
+/* ====== ADVANCED AUTO-FIT STRICT SLD GENERATOR WITH DIMENSION UNDERLINE ====== */
 window.generateCadSLDPdf = async function() { 
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
@@ -786,24 +773,15 @@ window.generateCadSLDPdf = async function() {
     
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
     
-    // STRICTLY: Only GSS, DTs, and HT Line points are collected for bounding box.
     if(appState.gssNodes[net.feeder.parentGss]) allPoints.push(appState.gssNodes[net.feeder.parentGss]);
     net.dts.forEach(d => allPoints.push(d)); 
-    net.lines.forEach(l => {
-        if(!l.type.includes('LT') && l.coords && l.coords.length === 2) {
-            allPoints.push({lat: l.coords[0][0], lng: l.coords[0][1]});
-            allPoints.push({lat: l.coords[1][0], lng: l.coords[1][1]});
-        }
-    });
-
-    if(allPoints.length === 0) return alert("No HT network data found to plot!");
+    if(allPoints.length === 0) return alert("No DT/GSS nodes found to plot!");
     
     allPoints.forEach(p => {
         if(p.lat < minLat) minLat = p.lat; if(p.lat > maxLat) maxLat = p.lat;
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
-    // Auto-Fit scaling math
     const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
     const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
     
@@ -813,41 +791,53 @@ window.generateCadSLDPdf = async function() {
 
     doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
     
-    // 1. Draw HT Lines with approx distance in center
     net.lines.forEach(l => {
         if(l.type.includes('LT')) return; 
         const c1 = getNodeCoords(l.fromNode), c2 = getNodeCoords(l.toNode);
         if(c1 && c2) {
             const pt1 = getPt(c1.lat, c1.lng), pt2 = getPt(c2.lat, c2.lng);
+            doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
             doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
             
             const dist = Math.round(l.distanceMeters || window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng));
             const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2;
-            let angle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x) * (180 / Math.PI);
-            if (angle > 90 || angle < -90) angle += 180;
+            let rawAngle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x);
+            let angleDeg = rawAngle * (180 / Math.PI);
             
-            doc.setTextColor(0, 0, 0); doc.setFontSize(6);
-            doc.text(`${dist}m`, midX, midY - 1.5, { angle: angle, align: 'center' });
+            if (angleDeg > 90 || angleDeg < -90) { angleDeg += 180; }
+            
+            // TRIGONOMETRY FIX: Text and Underline shifted exactly perpendicular downwards
+            const offsetDist = 4;
+            const perpRad = (angleDeg + 90) * (Math.PI / 180);
+            const textX = midX + Math.cos(perpRad) * offsetDist;
+            const textY = midY + Math.sin(perpRad) * offsetDist;
+            
+            doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+            const txt = `${dist} M`;
+            doc.text(txt, textX, textY, { angle: angleDeg, align: 'center' });
+            
+            const textW = doc.getTextWidth(txt) + 2; 
+            const textRad = angleDeg * (Math.PI / 180);
+            const linePx = Math.cos(perpRad) * (offsetDist + 1.5);
+            const linePy = Math.sin(perpRad) * (offsetDist + 1.5);
+            const lineCenterX = midX + linePx; const lineCenterY = midY + linePy;
+            const lx = (textW / 2) * Math.cos(textRad); const ly = (textW / 2) * Math.sin(textRad);
+
+            doc.setDrawColor(100, 100, 100); doc.setLineWidth(0.3);
+            doc.line(lineCenterX - lx, lineCenterY - ly, lineCenterX + lx, lineCenterY + ly);
         }
     });
 
-    // 2. Draw GSS
-    if(appState.gssNodes[net.feeder.parentGss]) {
-        const g = appState.gssNodes[net.feeder.parentGss];
-        const pt = getPt(g.lat, g.lng);
-        doc.setFillColor(185, 28, 28); doc.rect(pt.x - 6, pt.y - 6, 12, 12, 'FD');
-        doc.setTextColor(255, 255, 255); doc.setFontSize(6); doc.text("GSS", pt.x, pt.y + 2, {align:'center'});
-    }
-
-    // 3. Draw DTs (Square icon, digits inside)
-    net.dts.forEach(d => {
-        if(d.lat && d.lng) {
-            const pt = getPt(d.lat, d.lng);
-            doc.setFillColor(245, 158, 11); 
-            doc.rect(pt.x - 3.5, pt.y - 3.5, 7, 7, 'FD'); 
-            doc.setTextColor(0, 0, 0); doc.setFontSize(5); 
-            const numOnly = String(d.rating).replace(/[^0-9]/g, '');
-            doc.text(numOnly, pt.x, pt.y + 1.8, {align:'center'});
+    allPoints.forEach(p => {
+        const pt = getPt(p.lat, p.lng);
+        if(p.code && p.name && p.name.includes("Substation")) { // GSS
+            doc.setFillColor(185, 28, 28); doc.rect(pt.x - 7, pt.y - 7, 14, 14, 'FD');
+            doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.text("GSS", pt.x, pt.y + 2.5, {align:'center'});
+        } else if(p.rating) { 
+            doc.setFillColor(245, 158, 11); doc.rect(pt.x - 4.5, pt.y - 4.5, 9, 9, 'FD');
+            doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); 
+            const numOnly = String(p.rating).replace(/[^0-9]/g, '');
+            doc.text(numOnly, pt.x, pt.y + 2.2, {align:'center'});
         }
     });
 
@@ -855,6 +845,7 @@ window.generateCadSLDPdf = async function() {
     net.lines.forEach(l => { if(!l.type.includes('LT')) t11 += (l.distanceMeters||0); });
     net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
     
+    doc.setFont("helvetica", "normal");
     doc.setFillColor(255, 255, 255); doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); doc.rect(1189 - 160, 841 - 70, 150, 60, 'FD');
     doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.text("DISCOM SLD REPORT", 1189 - 155, 841 - 55);
     doc.setFontSize(12);
@@ -886,10 +877,13 @@ window.openAboutModal = function() {
     `);
 }
 
+/* ====== Safe Application Initialization ====== */
 let appInitialized = false;
+
 async function initializeApplication() {
     if(appInitialized) return;
     appInitialized = true;
+    
     try {
         document.getElementById('app-container').style.display = 'none'; 
         document.getElementById('auth-screen').style.display = 'flex';
@@ -897,11 +891,20 @@ async function initializeApplication() {
         if (typeof L !== 'undefined') initMapSystem();
 
         let data = null;
-        if (typeof localforage !== 'undefined') { data = await localforage.getItem(DB_KEY); } 
-        else { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
+        if (typeof localforage !== 'undefined') {
+            data = await localforage.getItem(DB_KEY); 
+        } else {
+            const lsData = localStorage.getItem(DB_KEY); 
+            if (lsData) data = JSON.parse(lsData);
+        }
         
-        if (data && data.feeders) appState = data; translateApp(); 
-        if (appState.user && appState.user.isLoggedIn) { applyAuthUIVisuals(); if(map) { renderEntireNetwork(); centerMapOnGSS(); } } 
+        if (data && data.feeders) appState = data; 
+        translateApp(); 
+        
+        if (appState.user && appState.user.isLoggedIn) { 
+            applyAuthUIVisuals(); 
+            if(map) { renderEntireNetwork(); centerMapOnGSS(); }
+        } 
         
         if (supabaseClient) {
             supabaseClient.auth.getSession().then(({ data }) => {
@@ -912,8 +915,11 @@ async function initializeApplication() {
                 }
             });
         }
-    } catch (e) { console.error("Initialization Error:", e); } 
-    finally { if (navigator.splashscreen) setTimeout(() => { navigator.splashscreen.hide(); }, 500); }
+    } catch (e) { 
+        console.error("Initialization Error:", e); 
+    } finally {
+        if (navigator.splashscreen) setTimeout(() => { navigator.splashscreen.hide(); }, 500);
+    }
 }
 
 document.addEventListener('deviceready', initializeApplication, false); 
