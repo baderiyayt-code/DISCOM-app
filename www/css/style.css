@@ -66,11 +66,9 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 
 .floating-action-bar { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; z-index: 2500; background: #ffffff; border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: none; flex-direction: column; gap: 12px; }
 
-.gss-square-icon, .dt-square-icon, .pole-marker-icon, .lt-pole-icon, .consumer-marker-icon { transition: opacity 0.25s ease; }
-
-.gss-wrapper { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.gss-icon-container { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; position: relative; }
 .gss-square-icon { background: #b91c1c; color: white; border: 2px solid white; border-radius: 8px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(185, 28, 28, 0.4);}
-.gss-mini-dot { display: none; width: 12px; height: 12px; background: #ef4444; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+.gss-mini-dot { display: none; background: #ef4444; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
 
 .dt-square-icon { background-color: #f59e0b !important; color: #334155 !important; border: 2px solid white; border-radius: 6px; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; box-shadow: 0 3px 8px rgba(245, 158, 11, 0.4); }
 .pole-marker-icon { background-color: #fde047 !important; color: #0f172a !important; border: 2px solid #0f172a; border-radius: 50%; font-size: 9px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
@@ -84,16 +82,16 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .pole-marker-icon.orphan-pulse, .dt-square-icon.orphan-pulse, .lt-pole-icon.orphan-pulse { background-color: #ef4444 !important; color: white !important; animation: redGlow 1s infinite !important; }
 @keyframes redGlow { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
-/* ====== DYNAMIC ZOOM VISIBILITY HIERARCHY ====== */
-.zoom-hide-consumers .consumer-marker-icon, .zoom-hide-consumers .consumer-line-path { display: none !important; opacity: 0 !important; pointer-events: none !important; }
-.zoom-hide-lt-poles .lt-pole-icon { display: none !important; opacity: 0 !important; pointer-events: none !important; }
-.zoom-hide-lt-lines .lt-line-path { display: none !important; opacity: 0 !important; pointer-events: none !important; }
-.zoom-hide-ht-poles .pole-marker-icon { display: none !important; opacity: 0 !important; pointer-events: none !important; }
-.zoom-hide-dts .dt-square-icon { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+/* ====== FIX: DYNAMIC ZOOM HIDING HIERARCHY ====== */
+.hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { opacity: 0 !important; pointer-events: none !important; display: none !important; }
+.hide-lt-poles .lt-pole-icon { opacity: 0 !important; pointer-events: none !important; }
+.hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
+.hide-ht-poles .pole-marker-icon { opacity: 0 !important; pointer-events: none !important; }
+.hide-dt .dt-square-icon { opacity: 0 !important; pointer-events: none !important; }
 
-/* GSS Red Dot Transformation */
-.zoom-transform-gss .gss-square-icon { display: none !important; }
-.zoom-transform-gss .gss-mini-dot { display: block !important; }
+/* GSS Dot Transformation at Level 13 */
+.hide-gss-square .gss-square-icon { display: none !important; }
+.hide-gss-square .gss-mini-dot { display: block !important; }
 
 /* ====== MODALS & SIDEBAR ====== */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); z-index: 3000; display: none; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.2s; }
