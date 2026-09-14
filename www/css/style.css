@@ -41,7 +41,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .suggestion-item { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; flex-direction: column;}
 .suggestion-item:hover { background: #f1f5f9; }
 
-/* ====== KPI BAR ====== */
+/* ====== KPI BAR (Mobile Optimized) ====== */
 .kpi-row { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 8px; pointer-events: auto; position: relative; z-index: 10; scrollbar-width: none; -ms-overflow-style: none; }
 .kpi-row::-webkit-scrollbar { display: none; }
 .kpi-tile { flex: 0 0 auto; min-width: 75px; background: var(--bg-glass); backdrop-filter: blur(12px); padding: 8px 10px; border-radius: var(--radius-md); text-align: center; border: 1px solid var(--border); box-shadow: var(--shadow-sm); border-top: 3px solid transparent;}
@@ -49,11 +49,9 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .kpi-label { font-size: 0.6rem; color: var(--text-sub); font-weight: 800; text-transform: uppercase; white-space: nowrap;}
 .kpi-val { font-size: 0.95rem; font-weight: 800; margin-top: 2px; }
 
-/* ====== MAP & BOTTOM-LEFT LAYER INDICATOR ====== */
+/* ====== MAP ====== */
 #map { flex: 1; width: 100%; height: 100%; z-index: 1; background: #e2e8f0; }
-
-#layer-indicator { position: absolute; bottom: 20px; left: 16px; top: auto; transform: none; background: var(--bg-glass); color: var(--text-main); padding: 6px 14px; border-radius: 12px; font-size: 0.8rem; font-weight: 800; box-shadow: var(--shadow-sm); z-index: 999; border: 1px solid var(--border); pointer-events:none;}
-
+#layer-indicator { position: absolute; bottom: 20px; left: 16px; background: var(--bg-glass); color: var(--text-main); padding: 6px 14px; border-radius: 12px; font-size: 0.8rem; font-weight: 800; box-shadow: var(--shadow-sm); z-index: 999; border: 1px solid var(--border); pointer-events:none;}
 #reticle-coordinates { position: absolute; bottom: calc(105px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); background: #1e293b; color: #ffffff; padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; box-shadow: var(--shadow-sm); pointer-events: none; z-index: 999; }
 #center-placement-pin { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); z-index: 1500; pointer-events: none; display: none; font-size: 48px; }
 #live-move-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1500; pointer-events: none; display: none; }
@@ -82,7 +80,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .lt-pole-icon { background-color: #10b981 !important; color: #0f172a !important; border: 2px solid #0f172a; border-radius: 50%; font-size: 8px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
 .consumer-marker-icon { background: #3b82f6; color: white; border: 1.5px solid white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 8px; }
 
-/* Highly Visible Live Location Icon */
+/* FIX: Highly Visible Blinking Live Location Icon */
 .live-human-icon { 
     font-size: 32px; 
     display: flex; 
@@ -95,6 +93,12 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
     border: 3px solid #ef4444; 
     box-shadow: 0px 4px 12px rgba(239, 68, 68, 0.8);
     z-index: 5000 !important;
+    animation: liveBlink 1s infinite alternate;
+}
+
+@keyframes liveBlink {
+    0% { transform: scale(1); box-shadow: 0 0 10px rgba(239,68,68,0.5); }
+    100% { transform: scale(1.15); box-shadow: 0 0 25px rgba(239,68,68,1); border-color: #b91c1c; }
 }
 
 .pole-marker-icon.orphan-pulse, .dt-square-icon.orphan-pulse, .lt-pole-icon.orphan-pulse { background-color: #ef4444 !important; color: white !important; animation: redGlow 1s infinite !important; }
