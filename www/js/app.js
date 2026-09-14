@@ -1,9 +1,12 @@
 const DB_KEY = "DISCOM_ENTERPRISE_DB";
 
+// ======== SUPABASE INITIALIZATION (SAFE) ========
 const SUPABASE_URL = 'https://sxfyeublvtisndnzycib.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4ZnlldWJsdnRpc25kbnp5Y2liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMjkzOTEsImV4cCI6MjEwNDgwNTM5MX0.FENa8zOaDzlYZJI_HfWtallAkWukxSiM52-RGQ-CUmA';
 let supabaseClient = null;
-if (typeof supabase !== 'undefined') { supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+if (typeof supabase !== 'undefined') {
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
 const ADMIN_EMAIL = 'admin@discom.com';
 
 let appState = {
@@ -12,14 +15,16 @@ let appState = {
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
     gssNodes: { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } },
-    feeders: { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } },
+    feeders: { 
+        "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } 
+    },
     orphanPoleIds: new Set(), activeMove: null, placementType: null
 };
 
 let historyStack = [];
 let map = null;
 
-/* ====== BILINGUAL ENGINE ====== */
+/* ====== BILINGUAL ENGINE (English & Hindi) ====== */
 const i18n = {
     en: { 
         line11: "11 KV Line", lineLT: "LT Line", dt3ph: "3-Ph DT", dt1ph: "1-Ph DT", totalCons: "Consumers",
@@ -148,38 +153,22 @@ let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTile
 
 function initMapSystem() {
     if(map) return; 
-    map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: true, markerZoomAnimation: true, fadeAnimation: true }).setView([26.9150, 75.7830], 16);
+    // CRITICAL FIX: preferCanvas = false strictly uses SVG rendering. 
+    // This perfectly syncs polylines with DOM Markers during map rotations & zoom.
+    map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: true, markerZoomAnimation: true, fadeAnimation: true }).setView([26.9150, 75.7830], 16);
 
-    /* ====== CRITICAL FIX: NATIVE LEAFLET LAYER TOGGLING FOR CANVAS ====== */
-    // This perfectly hides Canvas Lines and Markers exactly at the required zoom levels without lag.
+    // EXACT ZOOM LEVEL LOGIC
     function updateMapZoomClasses() {
         if(!map) return;
-        const z = map.getZoom(); 
-        const mapEl = document.getElementById('map');
+        const z = map.getZoom(); const mapEl = document.getElementById('map');
         
-        // 1. Consumers & Dotted Lines (<= 20 Hides)
-        if (z <= 20) { map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines); }
-        else { map.addLayer(featureGroups.consumers); map.addLayer(featureGroups.consumerLines); }
-
-        // 2. LT Poles (<= 19 Hides)
-        if (z <= 19) map.removeLayer(featureGroups.ltPoles);
-        else map.addLayer(featureGroups.ltPoles);
-
-        // 3. LT Lines (<= 18 Hides)
-        if (z <= 18) map.removeLayer(featureGroups.ltLines);
-        else map.addLayer(featureGroups.ltLines);
-
-        // 4. HT Poles (<= 17 Hides)
-        if (z <= 17) map.removeLayer(featureGroups.htPoles);
-        else map.addLayer(featureGroups.htPoles);
-
-        // 5. DT Icons (<= 16 Hides)
-        if (z <= 16) map.removeLayer(featureGroups.dts);
-        else map.addLayer(featureGroups.dts);
-
-        // 6. GSS Dot Transformation (Handled via CSS on the map container)
-        if (z <= 15) mapEl.classList.add('hide-gss-square');
-        else mapEl.classList.remove('hide-gss-square');
+        if (z <= 20) { map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines); } else { map.addLayer(featureGroups.consumers); map.addLayer(featureGroups.consumerLines); }
+        if (z <= 19) map.removeLayer(featureGroups.ltPoles); else map.addLayer(featureGroups.ltPoles);
+        if (z <= 18) map.removeLayer(featureGroups.ltLines); else map.addLayer(featureGroups.ltLines);
+        if (z <= 17) map.removeLayer(featureGroups.htPoles); else map.addLayer(featureGroups.htPoles);
+        if (z <= 16) map.removeLayer(featureGroups.dts); else map.addLayer(featureGroups.dts);
+        
+        if (z <= 15) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
     }
     map.on('zoomend', updateMapZoomClasses); 
 
@@ -192,21 +181,8 @@ function initMapSystem() {
 
     window.toggleMapLayer = function() { map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name; }
 
-    // Separated feature groups logically to enable lightning fast native layer hiding
-    featureGroups = { 
-        gss: L.featureGroup().addTo(map), 
-        htLines: L.featureGroup().addTo(map), 
-        ltLines: L.featureGroup().addTo(map), 
-        consumerLines: L.featureGroup().addTo(map), 
-        htPoles: L.featureGroup().addTo(map), 
-        ltPoles: L.featureGroup().addTo(map), 
-        dts: L.featureGroup().addTo(map), 
-        consumers: L.featureGroup().addTo(map) 
-    };
-
+    featureGroups = { gss: L.featureGroup().addTo(map), htLines: L.featureGroup().addTo(map), ltLines: L.featureGroup().addTo(map), consumerLines: L.featureGroup().addTo(map), htPoles: L.featureGroup().addTo(map), ltPoles: L.featureGroup().addTo(map), dts: L.featureGroup().addTo(map), consumers: L.featureGroup().addTo(map) };
     map.on('move', () => { const c = map.getCenter(); document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; });
-    
-    // Initial call to hide elements safely after groups are created
     setTimeout(updateMapZoomClasses, 100);
 }
 
@@ -237,7 +213,6 @@ window.toggleLiveTracking = function() {
 }
 
 /* ====== CRITICAL FIX: ABSOLUTE POPUP ANCHORING ====== */
-// This logic guarantees the popup opens exactly at the LAT/LNG of the object, completely immune to leaflet-rotate map drift.
 function openAbsolutePopup(lat, lng, htmlContent, yOffset = -15) {
     if(!map) return;
     L.popup({ offset: [0, yOffset], autoPan: true, closeButton: true })
@@ -287,9 +262,9 @@ function renderEntireNetwork() {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => x.poleNo == d.parentPole); if (p) { d.lat = p.lat; d.lng = p.lng; } }
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const numRating = String(d.rating).replace(/[^0-9]/g, '');
+                    const locTitle = d.location ? d.location : `DT Code: ${d.code}`;
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${numRating}`, iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: 400 }).addTo(featureGroups.dts);
                     m.on('click', () => {
-                        const locTitle = d.location ? d.location : `DT Code: ${d.code}`;
                         const htmlPopup = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
                         openAbsolutePopup(d.lat, d.lng, htmlPopup, -14);
                     });
@@ -303,7 +278,6 @@ function renderEntireNetwork() {
             const spec = getLineSpec(line.type); if (!f[spec.filterKey]) return;
             
             const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
-            
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25 }).addTo(lineGrp);
             L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false }).addTo(lineGrp);
             
@@ -328,7 +302,6 @@ function renderEntireNetwork() {
             });
         }
 
-        // Fire a zoom update to re-hide properly if needed
         map.fire('zoomend');
 
         let t11 = 0, tLT = 0, dt3ph = 0, dt1ph = 0; 
@@ -509,6 +482,7 @@ window.saveNewGss = function() {
 };
 window.relocateGss = function(gssCode) { if(map) map.closePopup(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
 
+// ====== ADD FEEDER MODULE ======
 window.openAddNewFeederModal = function() {
     const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}">${g.code} - ${g.name}</option>`).join('');
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addFeeder">Add Feeder</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -907,7 +881,7 @@ window.openAboutModal = function() {
     `);
 }
 
-/* ====== CRITICAL FIX: Safe Application Initialization ====== */
+/* ====== Safe Application Initialization ====== */
 let appInitialized = false;
 
 async function initializeApplication() {
