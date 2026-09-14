@@ -8,14 +8,16 @@
 
     <script src="cordova.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
     
+    <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -25,11 +27,14 @@
         <div class="auth-logo"><i class="fa-solid fa-bolt-lightning"></i></div>
         <h2>DISCOM Pro</h2>
         <div id="authForms">
-            <div id="signupNameField" style="display:none;"><input type="text" id="authName" class="auth-input-glass" placeholder="Full Name"></div>
+            <div id="signupNameField" style="display:none;">
+                <input type="text" id="authName" class="auth-input-glass" placeholder="Full Name">
+            </div>
             <input type="email" id="authEmail" class="auth-input-glass" placeholder="Email Address">
             <input type="password" id="authPassword" class="auth-input-glass" placeholder="Password">
-            <button class="btn-action-primary" id="loginBtn" onclick="window.handleSupabaseAuth('login')">Login</button>
-            <button class="btn-action-primary btn-signup" id="signupBtn" onclick="window.handleSupabaseAuth('signup')" style="display:none;">Sign Up</button>
+            
+            <button class="btn-action-primary" id="loginBtn" onclick="window.handleSupabaseAuth('login')">Login to Account</button>
+            <button class="btn-action-primary btn-signup" id="signupBtn" onclick="window.handleSupabaseAuth('signup')" style="display:none;">Create Account</button>
             <span class="auth-toggle-link" onclick="window.toggleAuthMode()" id="authToggleText">Need an account? Sign Up</span>
         </div>
     </div>
@@ -43,19 +48,18 @@
             <div class="header-title-group">
                 <div class="action-btn-sm" onclick="window.toggleSidebar(true)"><i class="fa-solid fa-bars"></i></div>
                 <select id="feederSelectHeader" class="modern-select" onchange="window.switchFeeder(this.value)"></select>
-                <!-- Add Feeder Functionality Activated Here -->
                 <button class="action-btn-sm" onclick="window.openAddNewFeederModal()"><i class="fa-solid fa-plus"></i></button>
             </div>
             <div class="header-actions">
                 <button class="action-btn-sm" onclick="window.toggleSearchBox()"><i class="fa-solid fa-magnifying-glass"></i></button>
-                <div id="sync-indicator"><i class="fa-solid fa-cloud"></i></div>
+                <div id="sync-indicator" title="Sync Status"><i class="fa-solid fa-cloud"></i></div>
                 <button class="action-btn-sm bg" onclick="window.runOrphanNodeChecker()"><i class="fa-solid fa-network-wired" style="color:#d97706;"></i></button>
             </div>
         </div>
         
         <div class="search-box-overlay" id="searchBoxOverlay" style="display:none;">
             <i class="fa-solid fa-magnifying-glass" style="color:var(--text-sub);"></i>
-            <input type="text" id="appSearchBar" class="search-input" autocomplete="off" oninput="window.handleSearch(event)">
+            <input type="text" id="appSearchBar" class="search-input" data-i18n="searchObj" placeholder="Search..." oninput="window.handleSearch(event)" autocomplete="off">
             <i class="fa-solid fa-xmark close-search" onclick="window.toggleSearchBox()"></i>
             <div id="searchSuggestions" class="suggestions-panel"></div>
         </div>
@@ -69,7 +73,7 @@
         </div>
     </div>
 
-    <div id="layer-indicator" data-i18n="hybridMap">Google Hybrid</div>
+    <div id="layer-indicator">Google Hybrid</div>
     <div id="map" class="map-container"></div>
     <div id="reticle-coordinates">0.000000, 0.000000</div>
     <div id="center-placement-pin">📍</div>
@@ -92,10 +96,12 @@
         </div>
     </div>
 
-    <div id="bottom-single-action"><div class="center-plus-fab" id="mainFabBtn" onclick="window.toggleSpeedDial()"><i class="fa-solid fa-plus"></i></div></div>
+    <div id="bottom-single-action">
+        <div class="center-plus-fab" id="mainFabBtn" onclick="window.toggleSpeedDial()"><i class="fa-solid fa-plus"></i></div>
+    </div>
 
     <div id="placement-confirm-bar" class="floating-action-bar">
-        <div><b style="color:var(--accent); font-size:1.0rem;"><i class="fa-solid fa-location-dot"></i> <span data-i18n="confirmLoc">Confirm Location</span></b></div>
+        <div><b style="color:var(--accent); font-size:1.0rem;"><i class="fa-solid fa-location-dot"></i> <span data-i18n="confirmLoc">Confirm Map Center Location</span></b></div>
         <div style="display:flex; gap:8px; margin-top:4px;">
             <button class="btn-action-primary" style="margin:0;" onclick="window.confirmPlacement()" data-i18n="confirmHere">Confirm Here</button>
             <button class="btn-danger-outline" style="margin:0;" onclick="window.cancelPlacement()" data-i18n="cancel">Cancel</button>
@@ -103,7 +109,7 @@
     </div>
 
     <div id="move-confirm-bar" class="floating-action-bar">
-        <div><b id="moveTargetTitle" style="color:var(--accent); font-size:1.0rem;">Target</b></div>
+        <div><b id="moveTargetTitle" style="color:var(--accent); font-size:1.0rem;"><span data-i18n="target">Target</span></b></div>
         <div style="display:flex; gap:8px; margin-top:4px;">
             <button class="btn-action-primary" style="margin:0;" onclick="window.confirmObjectMove()" data-i18n="setNewLoc">Set New Location</button>
             <button class="btn-danger-outline" style="margin:0;" onclick="window.cancelObjectMove()" data-i18n="cancel">Cancel</button>
@@ -125,14 +131,29 @@
                     <option value="hi">हिंदी (Hindi)</option>
                 </select>
             </div>
-            <div class="form-row"><label data-i18n="distUnit">Distance Unit</label><select id="setUnit" class="form-select" onchange="window.autoSaveSettings()"><option value="m">Meters (m)</option><option value="km">Kilometers (km)</option></select></div>
-            <div class="form-row"><label data-i18n="gpsInterval">GPS Polling Interval</label><input type="number" id="setGpsInterval" class="form-input" value="3" onchange="window.autoSaveSettings()"></div>
-            <div class="form-row" style="margin-bottom:0;"><label data-i18n="gpsAcc">GPS Accuracy</label><input type="number" id="setGpsAccuracy" class="form-input" value="10" onchange="window.autoSaveSettings()"></div>
+            <div class="form-row">
+                <label data-i18n="distUnit">Distance Unit</label>
+                <select id="setUnit" class="form-select" onchange="window.autoSaveSettings()">
+                    <option value="m">Meters (m)</option>
+                    <option value="km">Kilometers (km)</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label data-i18n="gpsInterval">GPS Polling Interval (Seconds)</label>
+                <input type="number" id="setGpsInterval" class="form-input" value="3" onchange="window.autoSaveSettings()">
+            </div>
+            <div class="form-row" style="margin-bottom:0;">
+                <label data-i18n="gpsAcc">GPS Accuracy Threshold (Meters)</label>
+                <input type="number" id="setGpsAccuracy" class="form-input" value="10" onchange="window.autoSaveSettings()">
+            </div>
         </div>
 
         <div class="settings-card" id="adminPasswordCard" style="display:none;">
             <h3 style="font-size: 0.95rem; font-weight: 800; margin-bottom: 10px; color: var(--accent);">Admin Security</h3>
-            <div class="form-row"><label>New Admin Password</label><input type="password" id="newAdminPassword" class="form-input" placeholder="Enter new password"></div>
+            <div class="form-row">
+                <label>New Admin Password</label>
+                <input type="password" id="newAdminPassword" class="form-input" placeholder="Enter new password">
+            </div>
             <button class="btn-action-primary" onclick="window.changeAdminPassword()">Update Password</button>
         </div>
 
@@ -169,10 +190,10 @@
         <div class="menu-link-btn" onclick="window.exportToGoogleEarth_KML()"><i class="fa-solid fa-earth-americas" style="color:#0ea5e9;"></i> <span data-i18n="exportKml">Export styled KML</span></div>
         <div class="menu-link-btn" onclick="window.exportDataToCSV()"><i class="fa-solid fa-file-csv" style="color:#f59e0b;"></i> <span data-i18n="exportCsv">Export CSV (GE Ready)</span></div>
         
-        <div class="menu-category-title" data-i18n="import">Backup & Restore</div>
+        <div class="menu-category-title" data-i18n="importLabel">Backup & Restore</div>
         <div class="menu-link-btn" onclick="window.exportFullJSONBackup()"><i class="fa-solid fa-download" style="color:#2563eb;"></i> <span data-i18n="exportJson">Export Backup (JSON)</span></div>
         <label class="menu-link-btn">
-            <i class="fa-solid fa-file-import" style="color:#8b5cf6;"></i><span data-i18n="importData">Import Backup (JSON)</span>
+            <i class="fa-solid fa-file-import" style="color:#8b5cf6;"></i><span data-i18n="importJson">Import Backup (JSON)</span>
             <input type="file" id="jsonFileInput" accept=".json,application/json" style="display:none;" onchange="window.handleImportChoice(event)">
         </label>
 
@@ -182,13 +203,14 @@
         
         <div style="margin-top: auto; padding-top:20px;">
             <div class="menu-link-btn" onclick="window.handleSupabaseLogout()" style="background: rgba(239,68,68,0.1); color: #ef4444;">
-                <i class="fa-solid fa-right-from-bracket"></i> <span>Logout Securely</span>
+                <i class="fa-solid fa-right-from-bracket"></i> <span data-i18n="logout">Logout Securely</span>
             </div>
         </div>
     </div>
 </div>
 
 <div class="modal-overlay" id="formModalOverlay"><div class="modal-sheet" id="modalSheetContent"></div></div>
+
 <script src="js/app.js"></script>
 </body>
 </html>
