@@ -20,7 +20,7 @@ let appState = {
 
 let historyStack = [];
 
-/* ====== FIX: BILINGUAL ENGINE (English & Hindi) ====== */
+/* ====== BILINGUAL ENGINE (English & Hindi) ====== */
 const i18n = {
     en: { 
         line11: "11 KV Line", lineLT: "LT Line", dt3ph: "3-Ph DT", dt1ph: "1-Ph DT", totalCons: "Consumers",
@@ -158,7 +158,7 @@ const map = L.map('map', {
     zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false
 }).setView([26.9150, 75.7830], 16);
 
-// FIX: Dynamic Zoom Hiding Hierarchy (Mapped Exactly to Requirements)
+// FIX: Dynamic Zoom Hiding Hierarchy applied exactly according to new thresholds
 function updateMapZoomClasses() {
     const z = map.getZoom(); const mapEl = document.getElementById('map');
     mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss-square');
@@ -221,13 +221,13 @@ function renderEntireNetwork() {
     try {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(), f = appState.filters;
 
-        // FIX: Strict Filtering by ONLY pulling the parentGss associated with the active feeder
+        // Strict Filtering by ONLY pulling the parentGss associated with the active feeder
         Object.values(appState.gssNodes).forEach(gss => {
-            if (gss.code !== net.feeder.parentGss) return; // Strict Feeder Filter
+            if (gss.code !== net.feeder.parentGss) return;
             if (typeof gss.lat === 'number') {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
-                // GSS Dot & Square configuration (CSS zoom handles visibility)
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
+                // FIX: popupAnchor explicitly forces popups to top center of exact coordinates
                 const gssIcon = L.divIcon({ className: 'gss-custom-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18], popupAnchor: [0, -18] });
                 const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
                 const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 }).bindPopup(htmlPopup);
@@ -243,7 +243,7 @@ function renderEntireNetwork() {
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
                 const htmlPopup = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                // FIX: bindPopup mathematically guarantees exact geometric alignment and removes click drift
+                // FIX: Absolute anchored coordinates via geometry `[width/2, height/2]` mapped into Leaflet natively
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2], popupAnchor: [0, -size[1]/2] }), zIndexOffset: 200 }).bindPopup(htmlPopup);
                 featureGroups.poles.addLayer(m);
             });
@@ -270,7 +270,7 @@ function renderEntireNetwork() {
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25, className: spec.lineClass }).addTo(featureGroups.lines);
             L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(featureGroups.lines);
             
-            // FIX: Lines explicitly open popup exactly at their geometric midpoint to eliminate visual drift
+            // Explicitly force popups to the exact geometric line midpoint natively to kill drift
             hitPoly.on('click', () => {
                 const htmlPopup = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
                 const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2;
@@ -301,7 +301,6 @@ function renderEntireNetwork() {
         document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph;
         document.getElementById('kpiCons').innerText = net.consumers.length;
         
-        // Populate and select current feeder strictly
         const fSelect = document.getElementById('feederSelectHeader');
         if (fSelect) fSelect.innerHTML = Object.keys(appState.feeders).map(code => `<option value="${code}" ${code === appState.currentFeederCode ? 'selected':''}>${appState.feeders[code].feeder.name}</option>`).join('');
 
@@ -397,7 +396,7 @@ function getNodeCoords(nodeId) {
     return null; 
 }
 
-/* ====== FIX: ORPHAN CHECK & GSS AS HT POLE LOGIC ====== */
+/* ====== ORPHAN CHECK & GSS LOGIC ====== */
 window.runOrphanNodeChecker = function() {
     updateOrphanStatus(); const net = getActiveNetwork(), orphanCount = appState.orphanPoleIds.size;
     if (orphanCount === 0) return showToast("No orphan poles or nodes found! Network is fully connected.");
@@ -458,7 +457,7 @@ window.deleteGssAndFeederStrict = function(code) {
 
 window.openAddGssModal = function() {
     window.toggleSidebar(false);
-    openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> Add New GSS</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addNewGss">Add New GSS</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
         <div class="form-row"><label>GSS Code*</label><input type="text" id="inpGssCode" class="form-input" placeholder="e.g. 132"></div>
         <div class="form-row"><label>GSS Name*</label><input type="text" id="inpGssName" class="form-input" placeholder="e.g. 132/33 kV Substation"></div>
         <button class="btn-action-primary" onclick="window.saveNewGss()">Save GSS at Map Center</button>`);
@@ -471,6 +470,45 @@ window.saveNewGss = function() {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("New GSS added successfully!");
 };
 window.relocateGss = function(gssCode) { map.closePopup(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
+
+// ====== FIX: ADD FEEDER (Fully Functional & Populates Map Instantly) ======
+window.openAddNewFeederModal = function() {
+    const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}">${g.code} - ${g.name}</option>`).join('');
+    openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addFeeder">Add Feeder</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="form-row"><label>Feeder Code (Numeric Only)*</label><input type="number" id="newFdrCode" class="form-input" value="${Object.keys(appState.feeders).length + 1}"></div>
+        <div class="form-row"><label>Feeder Name*</label><input type="text" id="newFdrName" class="form-input" placeholder="e.g. City Feed 11kV"></div>
+        <div class="form-row"><label>Parent GSS*</label><select id="newFdrGss" class="form-select">${gssOpts}</select></div>
+        <button class="btn-action-primary" onclick="window.createNewFeeder()" data-i18n="saveFeeder">Save Feeder</button>`);
+}
+window.createNewFeeder = function() {
+    const code = document.getElementById('newFdrCode').value.trim(), name = document.getElementById('newFdrName').value.trim(), gss = document.getElementById('newFdrGss').value;
+    if (!code || !name) return alert(t("errReq")); 
+    appState.feeders[code] = { feeder: { name, code, subdivCode: "SD-01", parentGss: gss }, poles: [], dts: [], lines: [], consumers: [] };
+    appState.currentFeederCode = code; window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(t("toastAdded"));
+}
+
+window.openFeederConfigModal = function() {
+    window.toggleSidebar(false); const net = getActiveNetwork(); 
+    const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}" ${net.feeder.parentGss==g.code?'selected':''}>${g.code} - ${g.name}</option>`).join('');
+    openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-tower-broadcast"></i> <span data-i18n="manageFdr">Manage Feeders</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="form-row"><label>Feeder Name</label><input type="text" id="cfgFeederName" class="form-input" value="${net.feeder.name}"></div>
+        <div class="form-row"><label>Parent GSS Source</label><select id="cfgParentGss" class="form-select">${gssOpts}</select></div>
+        <button class="btn-action-primary" onclick="window.saveFeederConfiguration()">Save Config</button>`);
+}
+window.saveFeederConfiguration = function() {
+    const net = getActiveNetwork(); net.feeder.name = document.getElementById('cfgFeederName').value; net.feeder.parentGss = document.getElementById('cfgParentGss').value; 
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(t("toastSettings"));
+}
+
+window.openResetConfirmationModal = function() {
+    window.closeSettingsPage(); window.toggleSidebar(false); 
+    openModal(`<div class="sheet-head"><div class="sheet-title" style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Secure App Reset</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="margin-bottom:12px; font-size:0.9rem; color:var(--text-sub);">This action will permanently wipe all survey data, feeders, and settings from your device. This cannot be undone.</p><div class="form-row"><label>Type <b>RESET</b> to confirm</label><input type="text" id="inpAppResetText" class="form-input" placeholder="Type RESET here"></div><button class="btn-action-primary" style="background:#dc2626;" onclick="window.executeSecureAppReset()">Permanently Delete All Data</button>`);
+}
+window.executeSecureAppReset = function() { 
+    const inputVal = document.getElementById('inpAppResetText').value.trim();
+    if (inputVal !== "RESET") return alert("Confirmation failed. You must type 'RESET' exactly.");
+    localforage.clear().then(() => { localStorage.clear(); location.reload(); });
+}
 
 function updateOrphanStatus() {
     appState.orphanPoleIds.clear(); const net = getActiveNetwork(), adj = {}, gssCode = net.feeder.parentGss, gssId = 'GSS_' + gssCode; adj[gssId] = [];
@@ -527,12 +565,9 @@ window.showFormModal = function(type, snapLat, snapLng) {
         openModal(`<div class="sheet-head"><div class="sheet-title">Add LT Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select">${dtOpts}</select></div><input type="hidden" id="inpPoleCategory" value="LT"><input type="hidden" id="inpLat" value="${snapLat}"><input type="hidden" id="inpLng" value="${snapLng}"><button class="btn-action-primary" onclick="window.saveNewLTPole()">Save LT Pole</button>`);
     } else if (type === 'LINE') {
         if (net.poles.length === 0) return alert("Add at least one pole first!");
-        
-        // FIX: Allowing GSS connection natively through dropdown by parsing 'GSS_'
         window.filterLineNodes = function() {
             const type = document.getElementById('inpLineType').value, net = getActiveNetwork(), fromSel = document.getElementById('inpFromNode'), dtSelectorBox = document.getElementById('ltLineDTSelector');
             let defaultFrom = ''; const defInput = document.getElementById('inpDefaultFrom'); if(defInput) defaultFrom = String(defInput.value); const center = map.getCenter(); let nodes = [];
-            
             if (type.includes('LT')) {
                 dtSelectorBox.style.display = 'block'; const targetDTElem = document.getElementById('inpTargetDT'), selectedDT = targetDTElem ? targetDTElem.value : ''; if(!selectedDT) return;
                 nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(selectedDT)).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: 'POLE_' + p.poleNo}));
@@ -744,7 +779,6 @@ window.generateCadSLDPdf = async function() {
     
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
     
-    // FIX: Exclude poles/consumers. Map ONLY GSS and DTs
     if(appState.gssNodes[net.feeder.parentGss]) allPoints.push(appState.gssNodes[net.feeder.parentGss]);
     net.dts.forEach(d => allPoints.push(d)); 
     if(allPoints.length === 0) return alert("No DT/GSS nodes found to plot!");
@@ -762,9 +796,9 @@ window.generateCadSLDPdf = async function() {
 
     doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
     
-    // FIX: Draw Only HT Lines with embedded rounded distance
+    // FIX: Render exact inline distance without decimals
     net.lines.forEach(l => {
-        if(l.type.includes('LT')) return; // Strictly omit LT lines
+        if(l.type.includes('LT')) return; 
         const c1 = getNodeCoords(l.fromNode), c2 = getNodeCoords(l.toNode);
         if(c1 && c2) {
             const pt1 = getPt(c1.lat, c1.lng), pt2 = getPt(c2.lat, c2.lng);
@@ -780,14 +814,13 @@ window.generateCadSLDPdf = async function() {
         }
     });
 
-    // FIX: Smaller DT Icons with Rating digit only
     allPoints.forEach(p => {
         const pt = getPt(p.lat, p.lng);
         if(p.code && p.name && p.name.includes("Substation")) { // GSS
             doc.setFillColor(185, 28, 28); doc.rect(pt.x - 6, pt.y - 6, 12, 12, 'FD');
             doc.setTextColor(255, 255, 255); doc.setFontSize(6); doc.text("GSS", pt.x, pt.y + 2, {align:'center'});
         } else if(p.rating) { 
-            doc.setFillColor(245, 158, 11); doc.circle(pt.x, pt.y, 3, 'FD'); // Much smaller
+            doc.setFillColor(245, 158, 11); doc.circle(pt.x, pt.y, 3, 'FD');
             doc.setTextColor(0, 0, 0); doc.setFontSize(5.5); 
             const numOnly = String(p.rating).replace(/[^0-9]/g, '');
             doc.text(numOnly, pt.x, pt.y + 2, {align:'center'});
