@@ -15,8 +15,7 @@
       "android"
     ],
     "plugins": {
-      "cordova-plugin-splashscreen": {},
-      "cordova-plugin-file": {}
+      "cordova-plugin-geolocation": {}
     }
   }
 }
