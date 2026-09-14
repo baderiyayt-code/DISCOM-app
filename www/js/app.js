@@ -152,7 +152,6 @@ window.changeAdminPassword = async function() {
 window.handleSupabaseLogout = async function() { await supabaseClient.auth.signOut(); await localforage.clear(); localStorage.removeItem(DB_KEY); location.reload(); }
 
 /* ====== MAP LAYER SETUP & LIVE TRACKING ====== */
-// FIX: Permanent Vector Anchoring. Disabled zoom animations to prevent detachment.
 const map = L.map('map', { 
     zoomControl: false, 
     attributionControl: false, 
@@ -166,12 +165,10 @@ const map = L.map('map', {
     fadeAnimation: false
 }).setView([26.9150, 75.7830], 16);
 
-// ====== DYNAMIC ZOOM SCALING HIERARCHY ======
 function updateMapZoomClasses() {
     const z = map.getZoom(); const mapEl = document.getElementById('map');
     mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss');
     
-    // Zoom Rules: Consumer Icons 20 -> LT Poles 19 -> LT Line 18 -> HT Poles 17 -> DT Icons 16 -> GSS Icon 15
     if (z <= 20) mapEl.classList.add('hide-consumers');
     if (z <= 19) mapEl.classList.add('hide-lt-poles');
     if (z <= 18) mapEl.classList.add('hide-lt-lines');
@@ -193,7 +190,6 @@ window.toggleMapLayer = function() {
     tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
 }
 
-// Enforcing precise vector rendering through discrete FeatureGroups
 const featureGroups = { 
     gss: L.featureGroup().addTo(map), 
     lines: L.featureGroup().addTo(map), 
@@ -222,8 +218,8 @@ window.toggleLiveTracking = function() {
         window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
             if (!window.liveUserMarker) {
-                const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [44,44] });
-                window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
+                const pulsingIcon = L.divIcon({ className: 'custom-live-location', html: '<div class="live-location-pulse"></div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+                window.liveUserMarker = L.marker([lat, lng], {icon: pulsingIcon, zIndexOffset: 1000}).addTo(map);
             } else window.liveUserMarker.setLatLng([lat, lng]);
             map.setView([lat, lng]);
             document.getElementById('liveTrackBtn').style.color = '#10b981';
@@ -239,11 +235,12 @@ function renderEntireNetwork() {
         Object.values(appState.gssNodes).forEach(gss => {
             if (typeof gss.lat === 'number') {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
+                // Exact anchors corresponding to CSS
                 const gssIcon = L.divIcon({ className: 'gss-square-icon', html: `<span>GSS</span>`, iconSize: [36,36], iconAnchor: [18,18] });
                 const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 });
                 m.on('click', () => {
                     const html = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
-                    L.popup().setLatLng([gss.lat, gss.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                    L.popup().setLatLng([gss.lat, gss.lng]).setContent(html).openOn(map);
                 }); featureGroups.gss.addLayer(m);
             }
         });
@@ -252,13 +249,14 @@ function renderEntireNetwork() {
             net.poles.forEach(p => {
                 const isOrphan = appState.orphanPoleIds.has(p.id), isLT = p.lineType === 'LT';
                 if (appState.activeMove && appState.activeMove.id === p.id) return;
-                const iconClass = isLT ? 'lt-pole-icon' : 'pole-marker-icon'; const size = isLT ? [20, 20] : [24, 24];
+                const iconClass = isLT ? 'lt-pole-icon' : 'pole-marker-icon'; 
+                const size = isLT ? [20, 20] : [24, 24]; // Matching style.css exactly for no drift
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2] }), zIndexOffset: 200 });
                 m.on('click', () => {
                     const html = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    L.popup().setLatLng([p.lat, p.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                    L.popup().setLatLng([p.lat, p.lng]).setContent(html).openOn(map);
                 }); featureGroups.poles.addLayer(m);
             });
         }
@@ -274,7 +272,7 @@ function renderEntireNetwork() {
                     m.on('click', () => {
                         const locTitle = d.location ? d.location : `DT Code: ${d.code}`;
                         const html = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        L.popup().setLatLng([d.lat, d.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                        L.popup().setLatLng([d.lat, d.lng]).setContent(html).openOn(map);
                     }); featureGroups.dts.addLayer(m);
                 }
             });
@@ -291,7 +289,7 @@ function renderEntireNetwork() {
                 const html = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
                 const midLat = (c1.lat + c2.lat) / 2;
                 const midLng = (c1.lng + c2.lng) / 2;
-                L.popup().setLatLng([midLat, midLng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                L.popup().setLatLng([midLat, midLng]).setContent(html).openOn(map);
             });
         });
 
@@ -301,7 +299,7 @@ function renderEntireNetwork() {
                 const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'consumer-marker-icon', html: `<i class="fa-solid fa-house"></i>`, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 100 });
                 m.on('click', () => {
                     const html = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    L.popup().setLatLng([c.lat, c.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                    L.popup().setLatLng([c.lat, c.lng]).setContent(html).openOn(map);
                 }); featureGroups.consumers.addLayer(m);
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
@@ -364,24 +362,15 @@ window.toggleSpeedDial = function(force) {
     const isOpen = force !== undefined ? force : !dial.classList.contains('active'); dial.classList.toggle('active', isOpen); fab.classList.toggle('open', isOpen);
 }
 
-// FIX: FAB Outside Click/Touch Auto-Close 
 document.addEventListener('click', function(e) {
     const dial = document.getElementById('speed-dial-menu');
     const fab = document.getElementById('mainFabBtn');
-    if (dial && dial.classList.contains('active')) {
-        if (!dial.contains(e.target) && !fab.contains(e.target)) {
-            window.toggleSpeedDial(false);
-        }
-    }
+    if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) window.toggleSpeedDial(false); }
 });
 document.addEventListener('pointerdown', function(e) {
     const dial = document.getElementById('speed-dial-menu');
     const fab = document.getElementById('mainFabBtn');
-    if (dial && dial.classList.contains('active')) {
-        if (!dial.contains(e.target) && !fab.contains(e.target)) {
-            window.toggleSpeedDial(false);
-        }
-    }
+    if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) window.toggleSpeedDial(false); }
 });
 
 window.toggleSidebar = function(open) { 
@@ -467,7 +456,6 @@ window.renderGssSidebarList = function() {
     }); container.innerHTML = html;
 };
 
-// Strict GSS Delete Permission Handling
 window.deleteGssAndFeederStrict = function(code) {
     const conf1 = confirm(`WARNING: You are about to delete GSS ${code} and ALL its associated feeders and network data! This cannot be undone. Continue?`);
     if (!conf1) return;
@@ -704,33 +692,22 @@ window.confirmObjectMove = function() {
 }
 window.cancelObjectMove = function() { appState.activeMove = null; document.getElementById('live-move-icon').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
 
-
-/* ====== NATIVE DIRECTORY EXPORT & IMPORT ====== */
-// Advanced "Save to Downloads" using File System Access API with standard fallback
-async function smartExportFile(filename, dataBlobOrText, mimeType) {
-    try {
-        showToast("Preparing file export...");
-        const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
-        
-        // 1. Try Native Web File System Access API (Native Folder Picker)
-        if (window.showSaveFilePicker) {
-            try {
-                const ext = filename.split('.').pop();
-                const fileHandle = await window.showSaveFilePicker({
-                    suggestedName: filename,
-                    types: [{ description: 'Survey Data Export', accept: { [mimeType]: ['.' + ext] } }]
+/* ====== DIRECT DEVICE STORAGE EXPORT (NO SHARE INTENT) ====== */
+window.smartExportFile = function(filename, dataBlobOrText, mimeType) {
+    const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
+    
+    if (window.cordova && cordova.file) {
+        const storageLocation = cordova.file.externalRootDirectory + 'Download/';
+        window.resolveLocalFileSystemURL(storageLocation, function(dirEntry) {
+            dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) {
+                fileEntry.createWriter(function(fileWriter) {
+                    fileWriter.onwriteend = function() { showToast("Saved directly to device Downloads!"); };
+                    fileWriter.onerror = function(e) { console.error(e); showToast("File write error"); };
+                    fileWriter.write(blob);
                 });
-                const writable = await fileHandle.createWritable();
-                await writable.write(blob);
-                await writable.close();
-                showToast("File Saved Successfully to Directory!");
-                return;
-            } catch (e) {
-                console.warn("SaveFilePicker cancelled or failed, falling back to Download Manager...", e);
-            }
-        }
-
-        // 2. Fallback: Trigger standard Download Manager (Silently saves to Downloads folder)
+            }, err => { console.error("Error creating file", err); showToast("File creation error"); });
+        }, err => { console.error("Error resolving directory", err); showToast("Directory access error"); });
+    } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.style.display = 'none';
@@ -740,18 +717,14 @@ async function smartExportFile(filename, dataBlobOrText, mimeType) {
         a.click();
         
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-        showToast("File Downloaded to local storage!");
-
-    } catch (err) {
-        console.error("Export Error: ", err);
-        alert("Export failed: " + err.message);
+        showToast("File Downloaded!");
     }
 }
 
 window.exportFullJSONBackup = async function() {
     window.toggleSidebar(false);
     const backupData = JSON.stringify(appState);
-    await smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json");
+    window.smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json");
 }
 
 window.handleImportChoice = function(e) {
@@ -776,11 +749,11 @@ window.getCSVString = function() {
     net.lines.forEach(l => { if (l.coords && l.coords.length === 2) csv += `"LINESTRING (${l.coords[0][1]} ${l.coords[0][0]}, ${l.coords[1][1]} ${l.coords[1][0]})","${l.type}","LINE","${l.fromNode} ➔ ${l.toNode}","Dist: ${(l.distanceMeters||0).toFixed(1)}m"\n`; });
     return csv;
 }
-window.exportDataToCSV = async function() { window.toggleSidebar(false); await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}_GE.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
+window.exportDataToCSV = async function() { window.toggleSidebar(false); window.smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}_GE.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
 
 window.exportToAutoCAD_DXF = async function() { 
     window.toggleSidebar(false); let dxf = "0\nSECTION\n2\nENTITIES\n"; getActiveNetwork().lines.forEach(l => { if (l.coords && l.coords[0] && l.coords[1]) dxf += `0\nLINE\n8\n${l.type.replace(/\s+/g,'_')}\n10\n${l.coords[0][1]}\n20\n${l.coords[0][0]}\n30\n0\n11\n${l.coords[1][1]}\n21\n${l.coords[1][0]}\n31\n0\n`; }); dxf += "0\nENDSEC\n0\nEOF\n"; 
-    await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.dxf`, dxf, "application/dxf"); 
+    window.smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.dxf`, dxf, "application/dxf"); 
 }
 
 window.exportToGoogleEarth_KML = async function() { 
@@ -788,7 +761,7 @@ window.exportToGoogleEarth_KML = async function() {
     const feederName = esc(getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; 
     getActiveNetwork().lines.forEach(l => { if (l.coords) kml += `<Placemark><LineString><coordinates>${l.coords[0][1]},${l.coords[0][0]},0 ${l.coords[1][1]},${l.coords[1][0]},0</coordinates></LineString></Placemark>\n`; }); 
     getActiveNetwork().dts.forEach(d => { if (d.lat) kml += `<Placemark><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>\n`; });
-    kml += "</Document>\n</kml>"; await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
+    kml += "</Document>\n</kml>"; window.smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
 /* ====== ADVANCED SLD PDF GENERATOR (A0 SIZE + INLINE DISTANCE) ====== */
@@ -821,35 +794,35 @@ window.generateCadSLDPdf = async function() {
 
     doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
     
-    // Draw HT Lines with embedded distance
+    // Plot HT Lines & Distances
     net.lines.forEach(l => {
-        if(!l.type.includes('11 KV')) return;
+        if(l.type.includes('LT')) return; // Strictly HT per requirements
         const c1 = getNodeCoords(l.fromNode), c2 = getNodeCoords(l.toNode);
         if(c1 && c2) {
             const pt1 = getPt(c1.lat, c1.lng), pt2 = getPt(c2.lat, c2.lng);
             doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
             
-            const dist = (l.distanceMeters || window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng)).toFixed(0);
+            const dist = (l.distanceMeters || window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng)).toFixed(1);
             const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2;
             let angle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x) * (180 / Math.PI);
             if (angle > 90 || angle < -90) angle += 180;
             
-            doc.setTextColor(0, 0, 0); doc.setFontSize(8);
-            doc.text(`${dist} M`, midX, midY - 2, { angle: angle, align: 'center' });
+            doc.setTextColor(50, 50, 50); doc.setFontSize(8);
+            doc.text(`${dist}m`, midX, midY - 2, { angle: angle, align: 'center' });
         }
     });
 
-    // Draw Nodes (GSS, HT Poles, DTs)
+    // Plot GSS & DTs with kVA ratings
     allPoints.forEach(p => {
         const pt = getPt(p.lat, p.lng);
         if(p.code && p.name && p.name.includes("Substation")) { // GSS
-            doc.setFillColor(185, 28, 28); doc.rect(pt.x - 6, pt.y - 6, 12, 12, 'FD');
-            doc.setTextColor(255, 255, 255); doc.setFontSize(6); doc.text("GSS", pt.x, pt.y + 2, {align:'center'});
-        } else if(p.rating) { // DT (Numeric Rating Inside)
-            doc.setFillColor(245, 158, 11); doc.rect(pt.x - 5, pt.y - 5, 10, 10, 'FD');
+            doc.setFillColor(185, 28, 28); doc.rect(pt.x - 8, pt.y - 8, 16, 16, 'FD');
+            doc.setTextColor(255, 255, 255); doc.setFontSize(7); doc.text("GSS", pt.x, pt.y + 2.5, {align:'center'});
+        } else if(p.rating) { // DT
+            doc.setFillColor(245, 158, 11); doc.rect(pt.x - 6, pt.y - 6, 12, 12, 'FD');
             doc.setTextColor(0, 0, 0); doc.setFontSize(7); 
             const numOnly = String(p.rating).replace(/[^0-9]/g, '');
-            doc.text(numOnly, pt.x, pt.y + 2.5, {align:'center'});
+            doc.text(`${numOnly}kVA`, pt.x, pt.y + 12, {align:'center'});
         } else if(p.lineType !== 'LT') { // HT Pole
             doc.setFillColor(253, 224, 71); doc.circle(pt.x, pt.y, 3, 'FD');
         }
@@ -859,16 +832,24 @@ window.generateCadSLDPdf = async function() {
     net.lines.forEach(l => { if(!l.type.includes('LT')) t11 += (l.distanceMeters||0); });
     net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
     
-    // Bottom Right Title Block
-    doc.setFillColor(255, 255, 255); doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); doc.rect(1189 - 160, 841 - 70, 150, 60, 'FD');
-    doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.text("DISCOM SLD REPORT", 1189 - 155, 841 - 55);
-    doc.setFontSize(12);
-    doc.text(`Feeder: ${net.feeder.name} (${net.feeder.code})`, 1189 - 155, 841 - 45);
-    doc.text(`Total HT Line: ${(t11/1000).toFixed(3)} KM`, 1189 - 155, 841 - 35);
-    doc.text(`1-Phase DTs: ${dt1ph}`, 1189 - 155, 841 - 25);
-    doc.text(`3-Phase DTs: ${dt3ph}`, 1189 - 155, 841 - 15);
+    // Bottom Right Professional Title Block
+    const blockW = 180, blockH = 75;
+    const tX = 1189 - margin - blockW;
+    const tY = 841 - margin - blockH;
+    
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); 
+    doc.rect(tX, tY, blockW, blockH, 'FD');
+    
+    doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+    doc.text("SINGLE LINE DIAGRAM (SLD)", tX + 10, tY + 15);
+    
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(13);
+    doc.text(`Feeder Name: ${net.feeder.name} (${net.feeder.code})`, tX + 10, tY + 30);
+    doc.text(`Total HT Distance: ${(t11/1000).toFixed(3)} km`, tX + 10, tY + 45);
+    doc.text(`Total 1-Phase DTs: ${dt1ph}`, tX + 10, tY + 55);
+    doc.text(`Total 3-Phase DTs: ${dt3ph}`, tX + 10, tY + 65);
 
-    await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, doc.output('blob'), "application/pdf");
+    window.smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_A0_SLD.pdf`, doc.output('blob'), "application/pdf");
 }
 
 window.openAboutModal = function() {
