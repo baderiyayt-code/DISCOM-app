@@ -82,14 +82,14 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .pole-marker-icon.orphan-pulse, .dt-square-icon.orphan-pulse, .lt-pole-icon.orphan-pulse { background-color: #ef4444 !important; color: white !important; animation: redGlow 1s infinite !important; }
 @keyframes redGlow { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
-/* ====== FIX: DYNAMIC ZOOM HIDING HIERARCHY ====== */
+/* ====== ZOOM HIDING HIERARCHY ====== */
 .hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { opacity: 0 !important; pointer-events: none !important; display: none !important; }
 .hide-lt-poles .lt-pole-icon { opacity: 0 !important; pointer-events: none !important; }
 .hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
 .hide-ht-poles .pole-marker-icon { opacity: 0 !important; pointer-events: none !important; }
 .hide-dt .dt-square-icon { opacity: 0 !important; pointer-events: none !important; }
 
-/* GSS Dot Transformation at Level 13 */
+/* GSS Dot Transformation at Level 15 */
 .hide-gss-square .gss-square-icon { display: none !important; }
 .hide-gss-square .gss-mini-dot { display: block !important; }
 
