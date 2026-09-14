@@ -10,11 +10,13 @@
   "license": "ISC",
   "dependencies": {
     "cordova-android": "^13.0.0",
-    "cordova-plugin-geolocation": "^5.0.0"
+    "cordova-plugin-geolocation": "^5.0.0",
+    "cordova-plugin-file": "^8.0.0"
   },
   "cordova": {
     "plugins": {
-      "cordova-plugin-geolocation": {}
+      "cordova-plugin-geolocation": {},
+      "cordova-plugin-file": {}
     },
     "platforms": [
       "android"
