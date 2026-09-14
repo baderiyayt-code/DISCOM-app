@@ -13,8 +13,6 @@
     <allow-intent href="mailto:*" />
     <allow-intent href="geo:*" />
     
-    <icon src="res/icon.png" />
-    
     <preference name="AndroidXEnabled" value="true" />
     
     <platform name="android">
