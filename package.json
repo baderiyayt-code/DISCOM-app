@@ -1,23 +1,22 @@
 {
   "name": "discom-pro",
   "version": "1.0.0",
-  "description": "Enterprise Survey App for DISCOM",
+  "description": "DISCOM Survey Pro App",
   "main": "index.js",
   "scripts": {
     "build": "cordova build android"
   },
-  "author": "Suraj Singh Mehta",
-  "license": "ISC",
-  "dependencies": {
-    "cordova-android": "^13.0.0",
-    "cordova-plugin-geolocation": "^5.0.0"
+  "dependencies": {},
+  "devDependencies": {
+    "cordova": "^12.0.0"
   },
   "cordova": {
-    "plugins": {
-      "cordova-plugin-geolocation": {}
-    },
     "platforms": [
       "android"
-    ]
+    ],
+    "plugins": {
+      "cordova-plugin-splashscreen": {},
+      "cordova-plugin-file": {}
+    }
   }
 }
