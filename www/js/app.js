@@ -1,6 +1,6 @@
 const DB_KEY = "DISCOM_ENTERPRISE_DB";
 
-// ======== SUPABASE INITIALIZATION (SAFE) ========
+// ======== SUPABASE INITIALIZATION ========
 const SUPABASE_URL = 'https://sxfyeublvtisndnzycib.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4ZnlldWJsdnRpc25kbnp5Y2liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMjkzOTEsImV4cCI6MjEwNDgwNTM5MX0.FENa8zOaDzlYZJI_HfWtallAkWukxSiM52-RGQ-CUmA';
 let supabaseClient = null;
@@ -145,18 +145,19 @@ function initMapSystem() {
     // SVG Rendering eliminates rotation desync bugs
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
-    // Dynamic Layer Hiding Rules
+    // EXACT ZOOM LEVEL LOGIC (19 To 14)
     function updateMapZoomClasses() {
         if(!map) return;
         const z = map.getZoom(); const mapEl = document.getElementById('map');
+        mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss-square');
         
-        if (z <= 20) { map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines); } else { map.addLayer(featureGroups.consumers); map.addLayer(featureGroups.consumerLines); }
-        if (z <= 19) map.removeLayer(featureGroups.ltPoles); else map.addLayer(featureGroups.ltPoles);
-        if (z <= 18) map.removeLayer(featureGroups.ltLines); else map.addLayer(featureGroups.ltLines);
-        if (z <= 17) map.removeLayer(featureGroups.htPoles); else map.addLayer(featureGroups.htPoles);
-        if (z <= 16) map.removeLayer(featureGroups.dts); else map.addLayer(featureGroups.dts);
+        if (z <= 19) { map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines); } else { map.addLayer(featureGroups.consumers); map.addLayer(featureGroups.consumerLines); }
+        if (z <= 18) map.removeLayer(featureGroups.ltPoles); else map.addLayer(featureGroups.ltPoles);
+        if (z <= 17) map.removeLayer(featureGroups.ltLines); else map.addLayer(featureGroups.ltLines);
+        if (z <= 16) map.removeLayer(featureGroups.htPoles); else map.addLayer(featureGroups.htPoles);
+        if (z <= 15) map.removeLayer(featureGroups.dts); else map.addLayer(featureGroups.dts);
         
-        if (z <= 15) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
+        if (z <= 14) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
     }
     map.on('zoomend', updateMapZoomClasses); 
 
@@ -200,15 +201,8 @@ window.toggleLiveTracking = function() {
     }
 }
 
-// Absolute Geographic Popups to eradicate drifting
-function openAbsolutePopup(lat, lng, htmlContent, yOffset = -15) {
-    if(!map) return;
-    L.popup({ offset: [0, yOffset], autoPan: true, closeButton: true })
-      .setLatLng([lat, lng])
-      .setContent(htmlContent)
-      .openOn(map);
-}
-
+/* ====== CRITICAL FIX: EXACT NATIVE POPUPS ====== */
+// By utilizing strict bindPopup(), popups adhere geometrically to the map vectors, ignoring CSS rotation drift.
 function renderEntireNetwork() {
     if(!map) return;
     try {
@@ -219,12 +213,10 @@ function renderEntireNetwork() {
             if (typeof gss.lat === 'number') {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
-                const gssIcon = L.divIcon({ className: 'gss-custom-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
-                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 }).addTo(featureGroups.gss);
-                m.on('click', () => {
-                    const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
-                    openAbsolutePopup(gss.lat, gss.lng, htmlPopup, -18);
-                });
+                const gssIcon = L.divIcon({ className: 'gss-custom-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18], popupAnchor: [0, -18] });
+                const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
+                
+                L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 }).bindPopup(htmlPopup).addTo(featureGroups.gss);
             }
         });
 
@@ -236,11 +228,8 @@ function renderEntireNetwork() {
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
                 const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2] }), zIndexOffset: 200 }).addTo(targetGrp);
-                m.on('click', () => {
-                    const htmlPopup = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    openAbsolutePopup(p.lat, p.lng, htmlPopup, -size[1]/2);
-                });
+                const htmlPopup = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
+                L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2], popupAnchor: [0, -size[1]/2] }), zIndexOffset: 200 }).bindPopup(htmlPopup).addTo(targetGrp);
             });
         }
 
@@ -250,11 +239,8 @@ function renderEntireNetwork() {
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const numRating = String(d.rating).replace(/[^0-9]/g, '');
                     const locTitle = d.location ? d.location : `DT Code: ${d.code}`;
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${numRating}`, iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: 400 }).addTo(featureGroups.dts);
-                    m.on('click', () => {
-                        const htmlPopup = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        openAbsolutePopup(d.lat, d.lng, htmlPopup, -14);
-                    });
+                    const htmlPopup = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
+                    L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${numRating}`, iconSize: [28, 28], iconAnchor: [14, 14], popupAnchor: [0, -14] }), zIndexOffset: 400 }).bindPopup(htmlPopup).addTo(featureGroups.dts);
                 }
             });
         }
@@ -265,27 +251,23 @@ function renderEntireNetwork() {
             const spec = getLineSpec(line.type); if (!f[spec.filterKey]) return;
             
             const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
-            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25 }).addTo(lineGrp);
-            L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false }).addTo(lineGrp);
             
-            hitPoly.on('click', () => {
-                const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2;
-                const htmlPopup = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
-                openAbsolutePopup(midLat, midLng, htmlPopup, 0);
-            });
+            // Native bindPopup seamlessly attaches to the line trajectory
+            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25, className: spec.lineClass }).addTo(lineGrp);
+            L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
+            
+            const htmlPopup = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
+            hitPoly.bindPopup(htmlPopup);
         });
 
         if (f.consumers) {
             net.consumers.forEach(c => {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
-                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'consumer-marker-icon', html: `<i class="fa-solid fa-house"></i>`, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 100 }).addTo(featureGroups.consumers);
-                m.on('click', () => {
-                    const htmlPopup = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    openAbsolutePopup(c.lat, c.lng, htmlPopup, -8);
-                });
+                const htmlPopup = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
+                L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'consumer-marker-icon', html: `<i class="fa-solid fa-house"></i>`, iconSize: [16,16], iconAnchor: [8,8], popupAnchor: [0, -8] }), zIndexOffset: 100 }).bindPopup(htmlPopup).addTo(featureGroups.consumers);
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
-                if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false }).addTo(featureGroups.consumerLines);
+                if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
             });
         }
 
@@ -469,6 +451,7 @@ window.saveNewGss = function() {
 };
 window.relocateGss = function(gssCode) { if(map) map.closePopup(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
 
+// ====== ADD FEEDER MODULE ======
 window.openAddNewFeederModal = function() {
     const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}">${g.code} - ${g.name}</option>`).join('');
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addFeeder">Add Feeder</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -763,7 +746,7 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
-/* ====== ADVANCED AUTO-FIT STRICT SLD GENERATOR WITH DIMENSION UNDERLINE ====== */
+/* ====== CRITICAL FIX: ROTATED AUTO-FIT SLD GENERATOR WITH UNDERLINE ====== */
 window.generateCadSLDPdf = async function() { 
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
@@ -785,9 +768,22 @@ window.generateCadSLDPdf = async function() {
     const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
     const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
     
-    const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; const scale = Math.min(scaleX, scaleY);
-    const offsetX = margin + (pdfW - (lngDiff * scale)) / 2; const offsetY = margin + (pdfH - (latDiff * scale)) / 2;
-    function getPt(lat, lng) { return { x: offsetX + (lng - minLng) * scale, y: 841 - (offsetY + (lat - minLat) * scale) }; }
+    // Check if network is taller than wider. If yes, dynamically rotate by 90 degrees to auto-fit Landscape.
+    const needsRotation = latDiff > lngDiff;
+    let scale, offsetX, offsetY;
+
+    if (needsRotation) {
+        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY);
+        offsetX = margin + (pdfW - (latDiff * scale)) / 2; offsetY = margin + (pdfH - (lngDiff * scale)) / 2;
+    } else {
+        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY);
+        offsetX = margin + (pdfW - (lngDiff * scale)) / 2; offsetY = margin + (pdfH - (latDiff * scale)) / 2;
+    }
+    
+    function getPt(lat, lng) { 
+        if (needsRotation) { return { x: offsetX + (lat - minLat) * scale, y: offsetY + (lng - minLng) * scale }; } 
+        else { return { x: offsetX + (lng - minLng) * scale, y: 841 - (offsetY + (lat - minLat) * scale) }; }
+    }
 
     doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
     
@@ -806,7 +802,6 @@ window.generateCadSLDPdf = async function() {
             
             if (angleDeg > 90 || angleDeg < -90) { angleDeg += 180; }
             
-            // TRIGONOMETRY FIX: Text and Underline shifted exactly perpendicular downwards
             const offsetDist = 4;
             const perpRad = (angleDeg + 90) * (Math.PI / 180);
             const textX = midX + Math.cos(perpRad) * offsetDist;
@@ -891,19 +886,14 @@ async function initializeApplication() {
         if (typeof L !== 'undefined') initMapSystem();
 
         let data = null;
-        if (typeof localforage !== 'undefined') {
-            data = await localforage.getItem(DB_KEY); 
-        } else {
-            const lsData = localStorage.getItem(DB_KEY); 
-            if (lsData) data = JSON.parse(lsData);
-        }
+        if (typeof localforage !== 'undefined') { data = await localforage.getItem(DB_KEY); } 
+        else { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
         
         if (data && data.feeders) appState = data; 
         translateApp(); 
         
         if (appState.user && appState.user.isLoggedIn) { 
-            applyAuthUIVisuals(); 
-            if(map) { renderEntireNetwork(); centerMapOnGSS(); }
+            applyAuthUIVisuals(); if(map) { renderEntireNetwork(); centerMapOnGSS(); }
         } 
         
         if (supabaseClient) {
@@ -915,11 +905,8 @@ async function initializeApplication() {
                 }
             });
         }
-    } catch (e) { 
-        console.error("Initialization Error:", e); 
-    } finally {
-        if (navigator.splashscreen) setTimeout(() => { navigator.splashscreen.hide(); }, 500);
-    }
+    } catch (e) { console.error("Initialization Error:", e); } 
+    finally { if (navigator.splashscreen) setTimeout(() => { navigator.splashscreen.hide(); }, 500); }
 }
 
 document.addEventListener('deviceready', initializeApplication, false); 
