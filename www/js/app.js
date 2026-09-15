@@ -145,25 +145,25 @@ function initMapSystem() {
     // SVG Rendering + Disabled Animations prevents rotation/zoom vector drift completely
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
-    // EXACT ZOOM LEVEL LOGIC 
+    // CRITICAL FIX: Z-Index Panes for Absolute Layering Control
+    map.createPane('dtPane'); map.getPane('dtPane').style.zIndex = 650;
+    map.createPane('htPolePane'); map.getPane('htPolePane').style.zIndex = 620;
+    map.createPane('ltPolePane'); map.getPane('ltPolePane').style.zIndex = 610;
+    map.createPane('consumerPane'); map.getPane('consumerPane').style.zIndex = 600;
+    map.createPane('linePane'); map.getPane('linePane').style.zIndex = 400;
+
+    // EXACT ZOOM LEVEL LOGIC (20 To 13)
     function updateMapZoomClasses() {
         if(!map) return;
-        const z = map.getZoom();
+        const z = map.getZoom(); const mapEl = document.getElementById('map');
+        mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss-square');
         
-        if (z <= 20) { map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines); } else { map.addLayer(featureGroups.consumers); map.addLayer(featureGroups.consumerLines); }
-        if (z <= 18) map.removeLayer(featureGroups.ltPoles); else map.addLayer(featureGroups.ltPoles);
-        if (z <= 17) map.removeLayer(featureGroups.ltLines); else map.addLayer(featureGroups.ltLines);
-        if (z <= 16) map.removeLayer(featureGroups.htPoles); else map.addLayer(featureGroups.htPoles);
-        if (z <= 15) map.removeLayer(featureGroups.dts); else map.addLayer(featureGroups.dts);
-        
-        let gssList = featureGroups.gss.getLayers();
-        gssList.forEach(m => {
-            let el = m.getElement();
-            if(el) {
-                if(z <= 14) { el.querySelector('.gss-square-icon').style.display = 'none'; el.querySelector('.gss-mini-dot').style.display = 'block'; }
-                else { el.querySelector('.gss-square-icon').style.display = 'flex'; el.querySelector('.gss-mini-dot').style.display = 'none'; }
-            }
-        });
+        if (z <= 18) { map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines); } else { map.addLayer(featureGroups.consumers); map.addLayer(featureGroups.consumerLines); }
+        if (z <= 17) map.removeLayer(featureGroups.ltPoles); else map.addLayer(featureGroups.ltPoles);
+        if (z <= 16) map.removeLayer(featureGroups.ltLines); else map.addLayer(featureGroups.ltLines);
+        if (z <= 15) map.removeLayer(featureGroups.htPoles); else map.addLayer(featureGroups.htPoles);
+        if (z <= 14) map.removeLayer(featureGroups.dts); else map.addLayer(featureGroups.dts);
+        if (z <= 13) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
     }
     map.on('zoomend', updateMapZoomClasses); 
 
@@ -207,15 +207,7 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUP ANCHORING (Kills Drift) ====== */
-function triggerPopupExact(lat, lng, htmlContent, yOffset = -15) {
-    if(!map) return;
-    L.popup({ offset: [0, yOffset], autoPan: false, closeButton: true })
-      .setLatLng([lat, lng])
-      .setContent(htmlContent)
-      .openOn(map);
-}
-
+/* ====== CRITICAL FIX: EVENT CLICK POPUP (Absolutely no drift) ====== */
 function renderEntireNetwork() {
     if(!map) return;
     try {
@@ -227,11 +219,11 @@ function renderEntireNetwork() {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
                 const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
-                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 }).addTo(featureGroups.gss);
+                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, pane: 'dtPane' }).addTo(featureGroups.gss);
                 
-                m.on('click', () => {
+                m.on('click', (e) => {
                     const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
-                    triggerPopupExact(gss.lat, gss.lng, htmlPopup, -18);
+                    L.popup({ autoPan: false, offset: [0, -18] }).setLatLng(e.latlng).setContent(htmlPopup).openOn(map);
                 });
             }
         });
@@ -246,10 +238,12 @@ function renderEntireNetwork() {
                 const svg = `<svg width="${r*2}" height="${r*2}" viewBox="0 0 ${r*2} ${r*2}" xmlns="http://www.w3.org/2000/svg"><circle cx="${r}" cy="${r}" r="${r-1}" fill="${color}" stroke="#0f172a" stroke-width="1.5"/><text x="${r}" y="${r+3}" font-size="${fs}" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`;
 
                 const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), zIndexOffset: 1000 }).addTo(targetGrp);
-                m.on('click', () => {
+                const paneName = isLT ? 'ltPolePane' : 'htPolePane';
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), pane: paneName }).addTo(targetGrp);
+                
+                m.on('click', (e) => {
                     const htmlPopup = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(p.lat, p.lng, htmlPopup, -r);
+                    L.popup({ autoPan: false, offset: [0, -r] }).setLatLng(e.latlng).setContent(htmlPopup).openOn(map);
                 });
             });
         }
@@ -268,11 +262,10 @@ function renderEntireNetwork() {
                         svg = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="24" rx="4" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="14" y="18" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
                     }
 
-                    // DT Z-INDEX OFFSET 3000 GUARANTEES IT IS ABOVE POLES AND LINES
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 3000 }).addTo(featureGroups.dts);
-                    m.on('click', () => {
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), pane: 'dtPane' }).addTo(featureGroups.dts);
+                    m.on('click', (e) => {
                         const htmlPopup = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        triggerPopupExact(d.lat, d.lng, htmlPopup, -16);
+                        L.popup({ autoPan: false, offset: [0, -16] }).setLatLng(e.latlng).setContent(htmlPopup).openOn(map);
                     });
                 }
             });
@@ -285,13 +278,12 @@ function renderEntireNetwork() {
             
             const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
             
-            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25 }).addTo(lineGrp);
-            L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false }).addTo(lineGrp);
+            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25, pane: 'linePane' }).addTo(lineGrp);
+            L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, pane: 'linePane' }).addTo(lineGrp);
             
-            hitPoly.on('click', () => {
-                const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2;
+            hitPoly.on('click', (e) => {
                 const htmlPopup = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
-                triggerPopupExact(midLat, midLng, htmlPopup, 0);
+                L.popup({ autoPan: false }).setLatLng(e.latlng).setContent(htmlPopup).openOn(map);
             });
         });
 
@@ -299,14 +291,14 @@ function renderEntireNetwork() {
             net.consumers.forEach(c => {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
                 const svg = `<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="8" fill="#3b82f6" stroke="white" stroke-width="1.5"/><path fill="white" d="M9 3 L3 8 L4 9 L5 8 V14 H8 V10 H10 V14 H13 V8 L14 9 L15 8 Z"/></svg>`;
-                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [18,18], iconAnchor: [9,9] }), zIndexOffset: 500 }).addTo(featureGroups.consumers);
-                m.on('click', () => {
+                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [18,18], iconAnchor: [9,9] }), pane: 'consumerPane' }).addTo(featureGroups.consumers);
+                m.on('click', (e) => {
                     const htmlPopup = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(c.lat, c.lng, htmlPopup, -9);
+                    L.popup({ autoPan: false, offset: [0, -9] }).setLatLng(e.latlng).setContent(htmlPopup).openOn(map);
                 });
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
-                if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false }).addTo(featureGroups.consumerLines);
+                if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false, pane: 'linePane' }).addTo(featureGroups.consumerLines);
             });
         }
 
@@ -809,20 +801,27 @@ window.generateCadSLDPdf = async function() {
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
-    const cx = (minLng + maxLng) / 2; const cy = (minLat + maxLat) / 2;
-    let geoW = maxLng - minLng || 0.0001; let geoH = maxLat - minLat || 0.0001;
+    // Auto-Fit Bounding Box calculation with 15% safety padding
+    const latBuffer = (maxLat - minLat) * 0.15; const lngBuffer = (maxLng - minLng) * 0.15;
+    minLat -= latBuffer; maxLat += latBuffer; minLng -= lngBuffer; maxLng += lngBuffer;
+
+    const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
+    const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
     
-    const pdfW = 1189 - 100; const pdfH = 841 - 150;
-    const isRotated = geoH > geoW;
-    if (isRotated) { let temp = geoW; geoW = geoH; geoH = temp; }
+    const needsRotation = latDiff > lngDiff;
+    let scale, offsetX, offsetY;
 
-    const scaleX = pdfW / geoW; const scaleY = pdfH / geoH; 
-    const scale = Math.min(scaleX, scaleY) * 0.95; // 5% Safe boundary margin
-
+    if (needsRotation) {
+        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY);
+        offsetX = margin + (pdfW - (latDiff * scale)) / 2; offsetY = margin + (pdfH - (lngDiff * scale)) / 2;
+    } else {
+        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY);
+        offsetX = margin + (pdfW - (lngDiff * scale)) / 2; offsetY = margin + (pdfH - (latDiff * scale)) / 2;
+    }
+    
     function getPt(lat, lng) { 
-        let dx = lng - cx; let dy = lat - cy;
-        if (isRotated) { let rx = -dy; let ry = dx; dx = rx; dy = ry; }
-        return { x: (1189 / 2) + (dx * scale), y: ((841 - 80) / 2) - (dy * scale) };
+        if (needsRotation) { return { x: offsetX + (lat - minLat) * scale, y: offsetY + (lng - minLng) * scale }; } 
+        else { return { x: offsetX + (lng - minLng) * scale, y: 841 - (offsetY + (lat - minLat) * scale) }; }
     }
 
     doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
