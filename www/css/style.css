@@ -79,6 +79,12 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .hide-consumers .consumer-line-path { display: none !important; pointer-events: none !important; }
 .hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
 
+.hide-gss-square .gss-square-icon { display: none !important; }
+.hide-gss-square .gss-mini-dot { display: block !important; }
+.gss-icon-container { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; position: relative; }
+.gss-square-icon { background: #b91c1c; color: white; border: 2px solid white; border-radius: 8px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(185, 28, 28, 0.4);}
+.gss-mini-dot { display: none; background: #ef4444; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+
 /* ====== MODALS & SIDEBAR ====== */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); z-index: 3000; display: none; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.2s; }
 .modal-overlay.open { display: flex; opacity: 1; }
