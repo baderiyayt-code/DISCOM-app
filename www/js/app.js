@@ -44,7 +44,7 @@ const i18n = {
         toastSettings: "सेटिंग्स सहेजी गईं!", toastDel: "सफलतापूर्वक हटा दिया गया!", toastImport: "सफलतापूर्वक आयात किया गया!",
         addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT कोड)...",
         htPole: "एचटी पोल", ltPole: "एलटी पोल", line: "लाइन", dt: "डीटी (ट्रांसफार्मर)", consumer: "उपभोक्ता", logout: "सुरक्षित लॉगआउट",
-        errReq: "कृपया आवश्यक फ़ील्ड भरें", alertExists: "आइटम पहले से मौजूद है", toastAdded: "सफलतापूर्वक जोड़ा गया", confDel: "क्याരുവ वाकई इसे हटाना चाहते हैं?"
+        errReq: "कृपया आवश्यक फ़ील्ड भरें", alertExists: "आइटम पहले से मौजूद है", toastAdded: "सफलतापूर्वक जोड़ा गया", confDel: "क्या आप वाकई इसे हटाना चाहते हैं?"
     }
 };
 
@@ -59,11 +59,17 @@ function getActiveNetwork() {
     return net;
 }
 
-function showToast(msg) { const toast = document.getElementById('app-toast'); const msgElem = document.getElementById('toast-msg'); if (!toast || !msgElem) return; msgElem.innerText = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500); }
+function showToast(msg) {
+    const toast = document.getElementById('app-toast'); const msgElem = document.getElementById('toast-msg');
+    if (!toast || !msgElem) return; msgElem.innerText = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
+}
 
 function setSyncStatus(status) {
-    const ind = document.getElementById('sync-indicator'); if(!navigator.onLine) status = 'offline';
-    if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>'; else if(status === 'synced') ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>'; else ind.innerHTML = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
+    const ind = document.getElementById('sync-indicator');
+    if(!navigator.onLine) status = 'offline';
+    if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
+    else if(status === 'synced') ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>';
+    else ind.innerHTML = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
 }
 
 function syncToSupabase() {
@@ -92,16 +98,26 @@ async function pullFromSupabase() {
     } catch (err) { console.error("Sync error:", err); setSyncStatus('offline'); }
 }
 
-function triggerPersistence() { if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); else localStorage.setItem(DB_KEY, JSON.stringify(appState)); syncToSupabase(); }
+function triggerPersistence() { 
+    if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); 
+    else localStorage.setItem(DB_KEY, JSON.stringify(appState)); syncToSupabase(); 
+}
 
 let authMode = 'login';
 window.toggleAuthMode = function() {
-    authMode = authMode === 'login' ? 'signup' : 'login'; document.getElementById('loginBtn').style.display = authMode === 'login' ? 'inline-block' : 'none'; document.getElementById('signupBtn').style.display = authMode === 'signup' ? 'inline-block' : 'none'; document.getElementById('signupNameField').style.display = authMode === 'signup' ? 'block' : 'none'; document.getElementById('authToggleText').innerText = authMode === 'login' ? "Need an account? Sign Up" : "Already have an account? Login";
+    authMode = authMode === 'login' ? 'signup' : 'login';
+    document.getElementById('loginBtn').style.display = authMode === 'login' ? 'inline-block' : 'none';
+    document.getElementById('signupBtn').style.display = authMode === 'signup' ? 'inline-block' : 'none';
+    document.getElementById('signupNameField').style.display = authMode === 'signup' ? 'block' : 'none';
+    document.getElementById('authToggleText').innerText = authMode === 'login' ? "Need an account? Sign Up" : "Already have an account? Login";
 }
+
 function applyAuthUIVisuals() {
-    document.getElementById('auth-screen').style.display = 'none'; document.getElementById('app-container').style.display = 'flex'; document.getElementById('userNameDisplay').innerText = appState.user.name; document.getElementById('userEmailDisplay').innerText = appState.user.email;
+    document.getElementById('auth-screen').style.display = 'none'; document.getElementById('app-container').style.display = 'flex';
+    document.getElementById('userNameDisplay').innerText = appState.user.name; document.getElementById('userEmailDisplay').innerText = appState.user.email;
     const adminCard = document.getElementById('adminPasswordCard'); if (adminCard) adminCard.style.display = (appState.user.email === ADMIN_EMAIL) ? 'block' : 'none';
 }
+
 window.handleSupabaseAuth = async function(mode) {
     if(!supabaseClient) return alert("Network Error: Supabase connection failed.");
     const email = document.getElementById('authEmail').value.trim(), password = document.getElementById('authPassword').value.trim(), name = document.getElementById('authName').value.trim();
@@ -109,7 +125,8 @@ window.handleSupabaseAuth = async function(mode) {
     if (mode === 'signup') { if(!name) return alert("Enter Full Name"); response = await supabaseClient.auth.signUp({ email, password, options: { data: { full_name: name } } }); } else response = await supabaseClient.auth.signInWithPassword({ email, password });
     if (response.error) alert(response.error.message);
     else if (response.data.user) {
-        appState.user.isLoggedIn = true; appState.user.email = response.data.user.email; appState.user.id = response.data.user.id; appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0];
+        appState.user.isLoggedIn = true; appState.user.email = response.data.user.email; appState.user.id = response.data.user.id;
+        appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0];
         applyAuthUIVisuals(); pullFromSupabase(); showToast("Login Successful!");
     }
 }
@@ -128,18 +145,25 @@ function initMapSystem() {
     // SVG Rendering + Disabled Animations prevents rotation/zoom vector drift completely
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
-    // FIX: Reduced Zoom Level Hierarchy
+    // EXACT ZOOM LEVEL LOGIC 
     function updateMapZoomClasses() {
         if(!map) return;
-        const z = map.getZoom(); const mapEl = document.getElementById('map');
+        const z = map.getZoom();
         
-        if (z <= 18) { map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines); } else { map.addLayer(featureGroups.consumers); map.addLayer(featureGroups.consumerLines); }
-        if (z <= 17) map.removeLayer(featureGroups.ltPoles); else map.addLayer(featureGroups.ltPoles);
-        if (z <= 16) map.removeLayer(featureGroups.ltLines); else map.addLayer(featureGroups.ltLines);
-        if (z <= 15) map.removeLayer(featureGroups.htPoles); else map.addLayer(featureGroups.htPoles);
-        if (z <= 14) map.removeLayer(featureGroups.dts); else map.addLayer(featureGroups.dts);
+        if (z <= 20) { map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines); } else { map.addLayer(featureGroups.consumers); map.addLayer(featureGroups.consumerLines); }
+        if (z <= 18) map.removeLayer(featureGroups.ltPoles); else map.addLayer(featureGroups.ltPoles);
+        if (z <= 17) map.removeLayer(featureGroups.ltLines); else map.addLayer(featureGroups.ltLines);
+        if (z <= 16) map.removeLayer(featureGroups.htPoles); else map.addLayer(featureGroups.htPoles);
+        if (z <= 15) map.removeLayer(featureGroups.dts); else map.addLayer(featureGroups.dts);
         
-        if (z <= 13) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
+        let gssList = featureGroups.gss.getLayers();
+        gssList.forEach(m => {
+            let el = m.getElement();
+            if(el) {
+                if(z <= 14) { el.querySelector('.gss-square-icon').style.display = 'none'; el.querySelector('.gss-mini-dot').style.display = 'block'; }
+                else { el.querySelector('.gss-square-icon').style.display = 'flex'; el.querySelector('.gss-mini-dot').style.display = 'none'; }
+            }
+        });
     }
     map.on('zoomend', updateMapZoomClasses); 
 
@@ -183,9 +207,7 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX: EXACT LAT/LNG POPUP GENERATOR ====== */
-// AutoPan disabled to stop viewport shifting during map rotation. 
-// Uses EXACT geographic database coordinates so it NEVER drifts.
+/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUP ANCHORING (Kills Drift) ====== */
 function triggerPopupExact(lat, lng, htmlContent, yOffset = -15) {
     if(!map) return;
     L.popup({ offset: [0, yOffset], autoPan: false, closeButton: true })
@@ -204,7 +226,7 @@ function renderEntireNetwork() {
             if (typeof gss.lat === 'number') {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
-                const gssIcon = L.divIcon({ className: 'gss-custom-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
+                const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
                 const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 }).addTo(featureGroups.gss);
                 
                 m.on('click', () => {
@@ -218,14 +240,16 @@ function renderEntireNetwork() {
             net.poles.forEach(p => {
                 const isOrphan = appState.orphanPoleIds.has(p.id), isLT = p.lineType === 'LT';
                 if (appState.activeMove && appState.activeMove.id === p.id) return;
-                const iconClass = isLT ? 'lt-pole-icon' : 'pole-marker-icon'; const size = isLT ? [20, 20] : [24, 24];
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
+                const color = isLT ? '#10b981' : '#fde047'; const r = isLT ? 10 : 12; const fs = isLT ? 9 : 10;
+                const svg = `<svg width="${r*2}" height="${r*2}" viewBox="0 0 ${r*2} ${r*2}" xmlns="http://www.w3.org/2000/svg"><circle cx="${r}" cy="${r}" r="${r-1}" fill="${color}" stroke="#0f172a" stroke-width="1.5"/><text x="${r}" y="${r+3}" font-size="${fs}" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`;
+
                 const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2] }), zIndexOffset: 200 }).addTo(targetGrp);
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), zIndexOffset: 1000 }).addTo(targetGrp);
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(p.lat, p.lng, htmlPopup, -size[1]/2);
+                    triggerPopupExact(p.lat, p.lng, htmlPopup, -r);
                 });
             });
         }
@@ -236,10 +260,19 @@ function renderEntireNetwork() {
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const numRating = String(d.rating).replace(/[^0-9]/g, '');
                     const locTitle = d.location ? d.location : `DT Code: ${d.code}`;
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${numRating}`, iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: 400 }).addTo(featureGroups.dts);
+                    
+                    let svg = '';
+                    if(d.phase === 'Single Phase') {
+                        svg = `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><polygon points="16,2 30,30 2,30" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="16" y="24" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
+                    } else {
+                        svg = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="24" rx="4" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="14" y="18" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
+                    }
+
+                    // DT Z-INDEX OFFSET 3000 GUARANTEES IT IS ABOVE POLES AND LINES
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 3000 }).addTo(featureGroups.dts);
                     m.on('click', () => {
                         const htmlPopup = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        triggerPopupExact(d.lat, d.lng, htmlPopup, -14);
+                        triggerPopupExact(d.lat, d.lng, htmlPopup, -16);
                     });
                 }
             });
@@ -265,10 +298,11 @@ function renderEntireNetwork() {
         if (f.consumers) {
             net.consumers.forEach(c => {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
-                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'consumer-marker-icon', html: `<i class="fa-solid fa-house"></i>`, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 100 }).addTo(featureGroups.consumers);
+                const svg = `<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="8" fill="#3b82f6" stroke="white" stroke-width="1.5"/><path fill="white" d="M9 3 L3 8 L4 9 L5 8 V14 H8 V10 H10 V14 H13 V8 L14 9 L15 8 Z"/></svg>`;
+                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [18,18], iconAnchor: [9,9] }), zIndexOffset: 500 }).addTo(featureGroups.consumers);
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(c.lat, c.lng, htmlPopup, -8);
+                    triggerPopupExact(c.lat, c.lng, htmlPopup, -9);
                 });
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
@@ -304,6 +338,7 @@ window.undoLastAction = function() {
     renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺");
 }
 
+/* ====== UI MENUS & UTILITIES ====== */
 window.openFilterModal = function() {
     const f = appState.filters;
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-filter" style="color:#d97706;"></i> Object Filter</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -691,6 +726,12 @@ window.confirmObjectMove = function() {
 }
 window.cancelObjectMove = function() { appState.activeMove = null; document.getElementById('live-move-icon').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
 
+/* ====== FILE EXPORT LOGIC WITH DYNAMIC DATETIME STRING ====== */
+function getFormattedDateTime() {
+    const d = new Date(); const pad = (n) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
         showToast("Preparing file export...");
@@ -714,7 +755,7 @@ async function smartExportFile(filename, dataBlobOrText, mimeType) {
     } catch (err) { console.error("Export Error: ", err); alert("Export failed: " + err.message); }
 }
 
-window.exportFullJSONBackup = async function() { window.toggleSidebar(false); const backupData = JSON.stringify(appState); await smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json"); }
+window.exportFullJSONBackup = async function() { window.toggleSidebar(false); const backupData = JSON.stringify(appState); await smartExportFile(`DISCOM_Backup_${getFormattedDateTime()}.json`, backupData, "application/json"); }
 window.handleImportChoice = function(e) {
     const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
     reader.onload = async function(event) {
@@ -736,17 +777,17 @@ window.getCSVString = function() {
     net.lines.forEach(l => { if (l.coords && l.coords.length === 2) csv += `"LINESTRING (${l.coords[0][1]} ${l.coords[0][0]}, ${l.coords[1][1]} ${l.coords[1][0]})","${l.type}","LINE","${l.fromNode} ➔ ${l.toNode}","Dist: ${(l.distanceMeters||0).toFixed(1)}m"\n`; });
     return csv;
 }
-window.exportDataToCSV = async function() { window.toggleSidebar(false); await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}_GE.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
+window.exportDataToCSV = async function() { window.toggleSidebar(false); await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
 window.exportToAutoCAD_DXF = async function() { 
     window.toggleSidebar(false); let dxf = "0\nSECTION\n2\nENTITIES\n"; getActiveNetwork().lines.forEach(l => { if (l.coords && l.coords[0] && l.coords[1]) dxf += `0\nLINE\n8\n${l.type.replace(/\s+/g,'_')}\n10\n${l.coords[0][1]}\n20\n${l.coords[0][0]}\n30\n0\n11\n${l.coords[1][1]}\n21\n${l.coords[1][0]}\n31\n0\n`; }); dxf += "0\nENDSEC\n0\nEOF\n"; 
-    await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.dxf`, dxf, "application/dxf"); 
+    await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.dxf`, dxf, "application/dxf"); 
 }
 window.exportToGoogleEarth_KML = async function() { 
     window.toggleSidebar(false); const esc = u => u.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
     const feederName = esc(getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; 
     getActiveNetwork().lines.forEach(l => { if (l.coords) kml += `<Placemark><LineString><coordinates>${l.coords[0][1]},${l.coords[0][0]},0 ${l.coords[1][1]},${l.coords[1][0]},0</coordinates></LineString></Placemark>\n`; }); 
     getActiveNetwork().dts.forEach(d => { if (d.lat) kml += `<Placemark><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>\n`; });
-    kml += "</Document>\n</kml>"; await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
+    kml += "</Document>\n</kml>"; await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
 /* ====== CRITICAL FIX: EXACT SLD AUTO-FIT AND ROTATION ====== */
@@ -768,24 +809,20 @@ window.generateCadSLDPdf = async function() {
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
-    const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
-    const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
+    const cx = (minLng + maxLng) / 2; const cy = (minLat + maxLat) / 2;
+    let geoW = maxLng - minLng || 0.0001; let geoH = maxLat - minLat || 0.0001;
     
-    // Auto-Fit Math for 90 Degree Rotation if Taller than Wide
-    let scaleX, scaleY, scale, offsetX, offsetY;
-    const needsRotation = latDiff > lngDiff;
+    const pdfW = 1189 - 100; const pdfH = 841 - 150;
+    const isRotated = geoH > geoW;
+    if (isRotated) { let temp = geoW; geoW = geoH; geoH = temp; }
 
-    if (needsRotation) {
-        scaleX = pdfW / latDiff; scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY);
-        offsetX = margin + (pdfW - (latDiff * scale)) / 2; offsetY = margin + (pdfH - (lngDiff * scale)) / 2;
-    } else {
-        scaleX = pdfW / lngDiff; scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY);
-        offsetX = margin + (pdfW - (lngDiff * scale)) / 2; offsetY = margin + (pdfH - (latDiff * scale)) / 2;
-    }
-    
+    const scaleX = pdfW / geoW; const scaleY = pdfH / geoH; 
+    const scale = Math.min(scaleX, scaleY) * 0.95; // 5% Safe boundary margin
+
     function getPt(lat, lng) { 
-        if (needsRotation) { return { x: offsetX + (lat - minLat) * scale, y: offsetY + (lng - minLng) * scale }; } 
-        else { return { x: offsetX + (lng - minLng) * scale, y: 841 - (offsetY + (lat - minLat) * scale) }; }
+        let dx = lng - cx; let dy = lat - cy;
+        if (isRotated) { let rx = -dy; let ry = dx; dx = rx; dy = ry; }
+        return { x: (1189 / 2) + (dx * scale), y: ((841 - 80) / 2) - (dy * scale) };
     }
 
     doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
@@ -833,10 +870,14 @@ window.generateCadSLDPdf = async function() {
             doc.setFillColor(185, 28, 28); doc.rect(pt.x - 7, pt.y - 7, 14, 14, 'FD');
             doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.text("GSS", pt.x, pt.y + 2.5, {align:'center'});
         } else if(p.rating) { 
-            doc.setFillColor(245, 158, 11); doc.rect(pt.x - 4.5, pt.y - 4.5, 9, 9, 'FD');
-            doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); 
             const numOnly = String(p.rating).replace(/[^0-9]/g, '');
-            doc.text(numOnly, pt.x, pt.y + 2.2, {align:'center'});
+            if(p.phase === 'Single Phase') {
+                doc.setFillColor(245, 158, 11); doc.triangle(pt.x, pt.y - 6, pt.x - 6, pt.y + 4, pt.x + 6, pt.y + 4, 'FD');
+                doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.text(numOnly, pt.x, pt.y + 2.5, {align:'center'});
+            } else {
+                doc.setFillColor(245, 158, 11); doc.rect(pt.x - 4.5, pt.y - 4.5, 9, 9, 'FD');
+                doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.text(numOnly, pt.x, pt.y + 2.2, {align:'center'});
+            }
         }
     });
 
@@ -853,7 +894,7 @@ window.generateCadSLDPdf = async function() {
     doc.text(`1-Phase DTs: ${dt1ph}`, 1189 - 155, 841 - 25);
     doc.text(`3-Phase DTs: ${dt3ph}`, 1189 - 155, 841 - 15);
 
-    await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, doc.output('blob'), "application/pdf");
+    await smartExportFile(`SLD_Feeder_${net.feeder.code}_${getFormattedDateTime()}.pdf`, doc.output('blob'), "application/pdf");
 }
 
 window.openAboutModal = function() {
