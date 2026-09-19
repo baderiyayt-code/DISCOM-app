@@ -8,8 +8,27 @@
     --shadow-sm: 0 4px 12px rgba(0,0,0,0.06); --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
+/* DARK MODE OVERRIDES */
+[data-theme="dark"] {
+    --bg-base: #0f172a;
+    --bg-glass: rgba(15, 23, 42, 0.85);
+    --bg-sheet: #1e293b;
+    --text-main: #f8fafc;
+    --text-sub: #94a3b8;
+    --border: rgba(255, 255, 255, 0.1);
+    --shadow-sm: 0 4px 12px rgba(0,0,0,0.4);
+    --shadow-md: 0 8px 24px rgba(0,0,0,0.6);
+}
+
+[data-theme="dark"] .leaflet-popup-content-wrapper, [data-theme="dark"] .leaflet-popup-tip { background: var(--bg-sheet); color: var(--text-main); }
+[data-theme="dark"] .modern-select { background: #334155; color: var(--text-main); border: 1px solid var(--border); }
+[data-theme="dark"] .action-btn-sm.bg { background: #334155; color: var(--text-main); }
+[data-theme="dark"] .form-input, [data-theme="dark"] .form-select { background: #0f172a; color: var(--text-main); border: 1px solid var(--border); }
+[data-theme="dark"] .sheet-close-btn { background: #334155; color: var(--text-main); }
+[data-theme="dark"] .suggestion-item:hover { background: #334155; }
+
 * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-base); color: var(--text-main); }
+body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-base); color: var(--text-main); transition: background 0.3s, color 0.3s; }
 #app-container { position: relative; width: 100%; height: 100%; display: none; flex-direction: column; }
 
 #auth-screen { position: fixed; inset: 0; background: linear-gradient(135deg, #1e3a8a, #2563eb); z-index: 50000; display: flex; align-items: center; justify-content: center; }
@@ -61,12 +80,12 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 #speed-dial-menu { position: absolute; bottom: calc(95px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%) scale(0.9); width: calc(100% - 24px); max-width: 450px; background: var(--bg-glass); backdrop-filter: blur(20px); border-radius: var(--radius-lg); padding: 14px; box-shadow: var(--shadow-md); opacity: 0; pointer-events: none; transition: all 0.2s; z-index: 1001; }
 #speed-dial-menu.active { opacity: 1; pointer-events: auto; transform: translateX(-50%) scale(1); }
 .dial-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-.dial-card { background: #ffffff; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 4px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; box-shadow: var(--shadow-sm); }
+.dial-card { background: var(--bg-sheet); color: var(--text-main); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 4px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; box-shadow: var(--shadow-sm); }
 
-.floating-action-bar { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; z-index: 2500; background: #ffffff; border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: none; flex-direction: column; gap: 12px; }
+.floating-action-bar { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; z-index: 2500; background: var(--bg-sheet); color: var(--text-main); border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: none; flex-direction: column; gap: 12px; }
 
 /* SVG Markers & Animations */
-.svg-marker-wrapper { transform-origin: center center !important; display: flex; align-items: center; justify-content: center; background: transparent; border: none; }
+.svg-marker-wrapper { transform-origin: center center !important; display: flex; align-items: center; justify-content: center; background: transparent; border: none; transition: none !important; }
 .fa-svg-icon { font-family: "Font Awesome 6 Free", sans-serif; font-weight: 900; }
 
 .live-human-icon { background-color: #007cff; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5); position: relative; z-index: 5000 !important; }
@@ -106,14 +125,14 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 
 #settings-page { position: fixed; inset: 0; background: var(--bg-base); z-index: 5000; transform: translateX(100%); transition: transform 0.2s; display: flex; flex-direction: column; }
 #settings-page.open { transform: translateX(0); }
-.settings-header { background: #ffffff; padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+.settings-header { background: var(--bg-sheet); padding: 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
 .settings-body { flex: 1; overflow-y: auto; padding: 16px; }
-.settings-card { background: #ffffff; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 12px; }
+.settings-card { background: var(--bg-sheet); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 12px; }
 
 #sidebarBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 4400; display: none; opacity: 0; transition: opacity 0.3s; }
 #sidebarBackdrop.open { display: block; opacity: 1; }
 
-#sidebar-drawer { position: fixed; top: 0; left: 0; width: 80%; max-width: 300px; height: 100%; background: #ffffff; z-index: 4500; transform: translateX(-100%); transition: transform 0.2s; display: flex; flex-direction: column; box-shadow: var(--shadow-md); }
+#sidebar-drawer { position: fixed; top: 0; left: 0; width: 80%; max-width: 300px; height: 100%; background: var(--bg-sheet); z-index: 4500; transform: translateX(-100%); transition: transform 0.2s; display: flex; flex-direction: column; box-shadow: var(--shadow-md); }
 #sidebar-drawer.open { transform: translateX(0); }
 .sidebar-header-gradient { padding: 24px 16px 16px; background: linear-gradient(135deg, #1e3a8a, #2563eb); color: white; }
 .user-profile-img { width: 50px; height: 50px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #2563eb; background: white;}
