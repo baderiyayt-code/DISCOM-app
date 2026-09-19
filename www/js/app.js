@@ -143,16 +143,8 @@ let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTile
 function initMapSystem() {
     if(map) return; 
     
-    // CRITICAL FIX 1: preferCanvas: true + animations enabled. 
-    // This allows Leaflet to natively sync SVG rendering with DOM positions during rotation.
-    map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: true, markerZoomAnimation: true, fadeAnimation: true }).setView([26.9150, 75.7830], 16);
-
-    // CRITICAL FIX 2: Strict Z-Index Hierarchy Panes (DT ALWAYS ON TOP)
-    map.createPane('dtPane'); map.getPane('dtPane').style.zIndex = 650;
-    map.createPane('htPolePane'); map.getPane('htPolePane').style.zIndex = 620;
-    map.createPane('ltPolePane'); map.getPane('ltPolePane').style.zIndex = 610;
-    map.createPane('consumerPane'); map.getPane('consumerPane').style.zIndex = 600;
-    map.createPane('linePane'); map.getPane('linePane').style.zIndex = 400;
+    // CRITICAL FIX: preferCanvas = true completely fixes Vector-to-Marker desync/tearing during rotation!
+    map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0 }).setView([26.9150, 75.7830], 16);
 
     // EXACT ZOOM LEVEL LOGIC 
     function updateMapZoomClasses() {
@@ -179,7 +171,7 @@ function initMapSystem() {
 
     window.toggleMapLayer = function() { map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name; }
 
-    featureGroups = { gss: L.featureGroup().addTo(map), htLines: L.featureGroup().addTo(map), ltLines: L.featureGroup().addTo(map), consumerLines: L.featureGroup().addTo(map), htPoles: L.featureGroup().addTo(map), ltPoles: L.featureGroup().addTo(map), dts: L.featureGroup().addTo(map), consumers: L.featureGroup().addTo(map) };
+    featureGroups = { gss: L.layerGroup().addTo(map), htLines: L.layerGroup().addTo(map), ltLines: L.layerGroup().addTo(map), consumerLines: L.layerGroup().addTo(map), htPoles: L.layerGroup().addTo(map), ltPoles: L.layerGroup().addTo(map), dts: L.layerGroup().addTo(map), consumers: L.layerGroup().addTo(map) };
     map.on('move', () => { const c = map.getCenter(); document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; });
     setTimeout(updateMapZoomClasses, 100);
 }
@@ -210,7 +202,7 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX 3: ABSOLUTE EVENT POPUP ANCHORING ====== */
+/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUP ANCHORING (Kills Drift) ====== */
 function triggerPopupExact(lat, lng, htmlContent, yOffset = -10) {
     if(!map) return;
     // autoPan: false completely disables Leaflet's flawed bounding rect shift during rotation
@@ -226,13 +218,12 @@ function renderEntireNetwork() {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(), f = appState.filters;
 
         Object.values(appState.gssNodes).forEach(gss => {
-            // FIX: String cast guarantees no type-mismatch hiding
-            if (String(gss.code) !== String(net.feeder.parentGss)) return;
+            if (String(gss.code) !== String(net.feeder.parentGss)) return; // Strict Feeder Checking
             if (typeof gss.lat === 'number') {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
                 const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
-                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, pane: 'dtPane' }).addTo(featureGroups.gss);
+                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 }).addTo(featureGroups.gss);
                 
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
@@ -251,9 +242,8 @@ function renderEntireNetwork() {
                 const svg = `<svg width="${r*2}" height="${r*2}" viewBox="0 0 ${r*2} ${r*2}" xmlns="http://www.w3.org/2000/svg"><circle cx="${r}" cy="${r}" r="${r-1}" fill="${color}" stroke="#0f172a" stroke-width="1.5"/><text x="${r}" y="${r+3}" font-size="${fs}" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`;
 
                 const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
-                const paneName = isLT ? 'ltPolePane' : 'htPolePane';
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), zIndexOffset: 1000 }).addTo(targetGrp);
                 
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), pane: paneName }).addTo(targetGrp);
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
                     triggerPopupExact(p.lat, p.lng, htmlPopup, -r);
@@ -275,7 +265,8 @@ function renderEntireNetwork() {
                         svg = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="24" rx="4" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="14" y="18" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
                     }
 
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), pane: 'dtPane' }).addTo(featureGroups.dts);
+                    // Strict zIndexOffset 3000 ensures it sits above lines and poles forever
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 3000 }).addTo(featureGroups.dts);
                     m.on('click', () => {
                         const htmlPopup = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
                         triggerPopupExact(d.lat, d.lng, htmlPopup, -16);
@@ -291,12 +282,12 @@ function renderEntireNetwork() {
             
             const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
             
-            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25, pane: 'linePane' }).addTo(lineGrp);
-            L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, pane: 'linePane' }).addTo(lineGrp);
+            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25, className: spec.lineClass }).addTo(lineGrp);
+            L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
             
             hitPoly.on('click', (e) => {
                 const htmlPopup = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
-                // EXACT CLICK COORDINATE POPUP (E.LATLNG)
+                // Trigger exactly at touch coordinates
                 triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, 0);
             });
         });
@@ -305,14 +296,14 @@ function renderEntireNetwork() {
             net.consumers.forEach(c => {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
                 const svg = `<svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="8" fill="#3b82f6" stroke="white" stroke-width="1.5"/><path fill="white" d="M9 3 L3 8 L4 9 L5 8 V14 H8 V10 H10 V14 H13 V8 L14 9 L15 8 Z"/></svg>`;
-                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [18,18], iconAnchor: [9,9] }), pane: 'consumerPane' }).addTo(featureGroups.consumers);
+                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [18,18], iconAnchor: [9,9] }), zIndexOffset: 100 }).addTo(featureGroups.consumers);
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
                     triggerPopupExact(c.lat, c.lng, htmlPopup, -9);
                 });
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
-                if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false, pane: 'linePane' }).addTo(featureGroups.consumerLines);
+                if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
             });
         }
 
@@ -795,7 +786,7 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
-/* ====== CRITICAL FIX: EXACT SLD AUTO-FIT ROTATION & 25% BUFFER ====== */
+/* ====== CRITICAL FIX: EXACT SLD AUTO-FIT WITH 25% BUFFER ====== */
 window.generateCadSLDPdf = async function() { 
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
@@ -814,22 +805,22 @@ window.generateCadSLDPdf = async function() {
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
-    // CRITICAL FIX: 25% Spatial Zoom-Out Buffer prevents truncation
+    // CRITICAL FIX: 25% Spatial Zoom-Out Buffer 
     const latBuffer = (maxLat - minLat) * 0.25; const lngBuffer = (maxLng - minLng) * 0.25;
     minLat -= latBuffer; maxLat += latBuffer; minLng -= lngBuffer; maxLng += lngBuffer;
 
     const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
     const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
     
-    // Auto-Rotate Logic Matrix
+    // Dynamic Rotation Matrix to fit vertically dominant networks
     const needsRotation = latDiff > lngDiff;
     let scale, offsetX, offsetY;
 
     if (needsRotation) {
-        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY);
+        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.75;
         offsetX = margin + (pdfW - (latDiff * scale)) / 2; offsetY = margin + (pdfH - (lngDiff * scale)) / 2;
     } else {
-        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY);
+        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.75;
         offsetX = margin + (pdfW - (lngDiff * scale)) / 2; offsetY = margin + (pdfH - (latDiff * scale)) / 2;
     }
     
