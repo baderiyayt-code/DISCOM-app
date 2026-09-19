@@ -65,8 +65,17 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 
 .floating-action-bar { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; z-index: 2500; background: #ffffff; border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: none; flex-direction: column; gap: 12px; }
 
-/* FIX: Removed 'transition: none' which was breaking Leaflet SVG vs DOM Sync during rotation */
-.svg-marker-wrapper { transform-origin: center center !important; display: flex; align-items: center; justify-content: center; }
+/* Custom Marker Styling - No animation blocking properties used */
+.svg-marker-wrapper { display: flex; align-items: center; justify-content: center; }
+
+.gss-icon-container { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; position: relative; }
+.gss-square-icon { background: #b91c1c; color: white; border: 2px solid white; border-radius: 8px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(185, 28, 28, 0.4);}
+.gss-mini-dot { display: none; background: #ef4444; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+
+.dt-square-icon { background-color: #f59e0b !important; color: #334155 !important; border: 2px solid white; border-radius: 6px; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; box-shadow: 0 3px 8px rgba(245, 158, 11, 0.4); }
+.pole-marker-icon { background-color: #fde047 !important; color: #0f172a !important; border: 2px solid #0f172a; border-radius: 50%; font-size: 9px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
+.lt-pole-icon { background-color: #10b981 !important; color: #0f172a !important; border: 2px solid #0f172a; border-radius: 50%; font-size: 8px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
+.consumer-marker-icon { background: #3b82f6; color: white; border: 1.5px solid white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 8px; }
 
 .live-human-icon { background-color: #007cff; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5); position: relative; z-index: 5000 !important; }
 .live-human-icon::after { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; border-radius: 50%; background-color: rgba(0, 124, 255, 0.4); animation: pulse-ring 1.5s infinite cubic-bezier(0.215, 0.61, 0.355, 1); }
