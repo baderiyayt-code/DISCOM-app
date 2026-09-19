@@ -65,31 +65,25 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 
 .floating-action-bar { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; z-index: 2500; background: #ffffff; border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: none; flex-direction: column; gap: 12px; }
 
-/* FIX: Absolute Rotation Lock for Markers */
-.svg-marker-wrapper { 
-    transform-origin: center center !important; 
-    display: flex; align-items: center; justify-content: center; 
-    background: transparent !important; 
-    border: none !important;
-}
+/* SVG Markers & Animations */
+.svg-marker-wrapper { transform-origin: center center !important; display: flex; align-items: center; justify-content: center; }
+
+/* FA support for inline SVG icons */
+.fa-svg-icon { font-family: "Font Awesome 6 Free", sans-serif; font-weight: 900; }
 
 .live-human-icon { background-color: #007cff; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5); position: relative; z-index: 5000 !important; }
 .live-human-icon::after { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; border-radius: 50%; background-color: rgba(0, 124, 255, 0.4); animation: pulse-ring 1.5s infinite cubic-bezier(0.215, 0.61, 0.355, 1); }
 @keyframes pulse-ring { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
 
-.orphan-pulse svg circle, .orphan-pulse svg rect, .orphan-pulse svg polygon { fill: #ef4444 !important; animation: redGlow 1s infinite !important; }
+.orphan-pulse svg circle, .orphan-pulse svg rect, .orphan-pulse svg polygon, .orphan-pulse svg path { fill: #ef4444 !important; animation: redGlow 1s infinite !important; }
 @keyframes redGlow { 0% { filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0.8)); } 70% { filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0)); } 100% { filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0)); } }
 
-/* ====== LAYER MANAGEMENT CLASSES ====== */
-.hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { display: none !important; pointer-events: none !important; }
-.hide-lt-poles .lt-pole-icon { display: none !important; pointer-events: none !important; }
+/* CSS Classes for Zoom Layer Management */
+.hide-consumers .consumer-line-path { display: none !important; pointer-events: none !important; }
 .hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
-.hide-ht-poles .pole-marker-icon { display: none !important; pointer-events: none !important; }
-.hide-dt .dt-square-icon { display: none !important; pointer-events: none !important; }
-
-/* GSS Dot Transformation at Level 13 */
 .hide-gss-square .gss-square-icon { display: none !important; }
 .hide-gss-square .gss-mini-dot { display: block !important; }
+
 .gss-icon-container { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; position: relative; }
 .gss-square-icon { background: #b91c1c; color: white; border: 2px solid white; border-radius: 8px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(185, 28, 28, 0.4);}
 .gss-mini-dot { display: none; background: #ef4444; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
