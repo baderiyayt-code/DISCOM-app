@@ -37,7 +37,7 @@ const i18n = {
         line11: "11 केवी लाइन", lineLT: "एलटी लाइन", dt3ph: "3-फेज डीटी", dt1ph: "1-फेज डीटी", totalCons: "उपभोक्ता",
         gssMgmt: "जीएसएस प्रबंधन", addNewGss: "नया जीएसएस जोड़ें", manageFdr: "फीडर प्रबंधन", 
         export: "डेटा निर्यात (डाउनलोड)", exportPdf: "एसएलडी पीडीएफ (SLD PDF)", exportDxf: "DXF निर्यात", exportKml: "KML निर्यात", exportCsv: "CSV निर्यात", 
-        importLabel: "बैकअप और रीस्टोर", exportJson: "बैकअप निर्यात (JSON)", importJson: "बैकअप आयात (JSON)", system: "सिस्टम", settings: "सेटिंग्स", about: "ऐप के बारे में",
+        importLabel: "बैकअप और रीस्टोर", exportJson: "बैकअप निर्यात (JSON)", importJson: "बैकअप आयात (JSON)", system: "सिस्टम", settings: "सेटिंग्स", about: "ऐप के بارے में",
         appLanguage: "ऐप की भाषा", distUnit: "दूरी इकाई", gpsInterval: "जीपीएस अंतराल", gpsAcc: "जीपीएस सटीकता", resetData: "ऐप डेटा रीसेट करें",
         confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान सेट करें", target: "लक्ष्य",
         toastSettings: "सेटिंग्स सहेजी गईं!", toastDel: "सफलतापूर्वक हटा दिया गया!", toastImport: "सफलतापूर्वक आयात किया गया!",
@@ -170,10 +170,8 @@ window.capturePhoto = function(targetId) {
 function initMapSystem() {
     if(map) return; 
     
-    // CRITICAL FIX: Custom Panes REMOVED. preferCanvas: true + Native Panes mathematically prevents Rotation Vector Tearing
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
-    // EXACT ZOOM LEVEL LOGIC
     function updateMapZoomClasses() {
         if(!map) return;
         const z = map.getZoom(); const mapEl = document.getElementById('map');
@@ -229,7 +227,7 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX: EXACT ABSOLUTE EVENT POPUPS (KILLS ROTATION DRIFT FOREVER) ====== */
+/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUPS ====== */
 function triggerPopupExact(lat, lng, htmlContent, yOffset = -10) {
     if(!map) return;
     L.popup({ autoPan: false, closeButton: true, offset: [0, yOffset] })
@@ -254,7 +252,6 @@ function renderEntireNetwork() {
     try {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(), f = appState.filters;
 
-        // CRITICAL FIX: Direct active GSS rendering resolves visibility issue
         const activeGss = appState.gssNodes[net.feeder.parentGss];
         if (activeGss && typeof activeGss.lat === 'number') {
             if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
@@ -262,9 +259,9 @@ function renderEntireNetwork() {
                 const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
                 const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 4000 }).addTo(featureGroups.gss);
                 
-                m.on('click', (e) => {
+                m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${activeGss.name}</b><br><small>Code: ${activeGss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${activeGss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${activeGss.code}')">Relocate</button></div></div>`;
-                    triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, -18);
+                    triggerPopupExact(activeGss.lat, activeGss.lng, htmlPopup, -18);
                 });
             }
         }
@@ -293,10 +290,10 @@ function renderEntireNetwork() {
                 const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), zIndexOffset: zOff }).addTo(targetGrp);
                 
-                m.on('click', (e) => {
+                m.on('click', () => {
                     let photoHtml = p.photo ? `<img src="${p.photo}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:6px;">` : '';
                     const htmlPopup = `<div style="padding:4px; max-width:200px;">${photoHtml}<b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'} | Cond: <b>${p.condition || 'OK'}</b><br>Struct: ${p.structure || 'Single'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, -r);
+                    triggerPopupExact(p.lat, p.lng, htmlPopup, -r);
                 });
             });
         }
@@ -315,9 +312,8 @@ function renderEntireNetwork() {
                         svg = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="24" rx="4" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="14" y="18" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
                     }
 
-                    // CRITICAL FIX: DT Z-Index massively inflated (9000) to physically overlap HT and LT Poles
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 9000 }).addTo(featureGroups.dts);
-                    m.on('click', (e) => {
+                    m.on('click', () => {
                         let dtCons = net.consumers.filter(c => {
                             if (c.parentType === 'DT' && String(c.parentRef) === String(d.code)) return true;
                             if (c.parentType === 'POLE') {
@@ -330,7 +326,7 @@ function renderEntireNetwork() {
 
                         let photoHtml = d.photo ? `<img src="${d.photo}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:6px;">` : '';
                         const htmlPopup = `<div style="padding:6px; min-width:200px;">${photoHtml}<b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.85rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b> | Mount: <b>${d.mountedOn || 'Single Pole'}</b><br>Consumers: <b>${totCons}</b> | Total Load: <b>${totLoad.toFixed(2)} kW</b><br>SrNo: ${d.srNo || 'N/A'} | TN: ${d.tn || 'N/A'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, -16);
+                        triggerPopupExact(d.lat, d.lng, htmlPopup, -16);
                     });
                 }
             });
@@ -356,10 +352,11 @@ function renderEntireNetwork() {
                 const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
                 L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
                 
-                hitPoly.on('click', (e) => {
+                hitPoly.on('click', () => {
+                    const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2;
                     let crossStr = line.hasCrossing ? `<br><b style="color:#ef4444;">Crossing:</b> ${line.crossingRemark || 'Yes'}` : '';
                     const htmlPopup = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name} (${line.phaseType || 'Single Phase'})</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b>${crossStr}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('line','${line.id}')">Edit</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, 0);
+                    triggerPopupExact(midLat, midLng, htmlPopup, 0);
                 });
             });
 
@@ -388,10 +385,10 @@ function renderEntireNetwork() {
                 const svg = `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><text x="11" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text></svg>`;
                 
                 const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [22,22], iconAnchor: [11,11] }), zIndexOffset: 100 }).addTo(featureGroups.consumers);
-                m.on('click', (e) => {
+                m.on('click', () => {
                     let photoHtml = c.photo ? `<img src="${c.photo}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:6px;">` : '';
                     const htmlPopup = `<div style="padding:4px; max-width:200px;">${photoHtml}<b>${c.name}</b><p style="color:#64748b; margin:4px 0; font-size:0.8rem;">K-No: ${c.kno} | A/C: ${c.acNo || 'N/A'}<br>M-No: ${c.meterNo || 'N/A'}</p><p style="margin:4px 0; font-size:0.8rem;">Type: <b>${c.conType || 'DS'}</b> | Status: <b>${c.status || 'Regular'}</b><br>Load: ${c.load || '1 kW'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, -11);
+                    triggerPopupExact(c.lat, c.lng, htmlPopup, -11);
                 });
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
@@ -475,7 +472,6 @@ window.toggleSidebar = function(open) {
 window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); translateApp(); }
 window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); }
 
-// CRITICAL FIX 1: JS Settings Error resolved (setTheme matches DOM ID)
 window.openSettingsPage = function() { 
     window.toggleSidebar(false); 
     document.getElementById('setUnit').value = appState.settings.unit || 'm';
@@ -922,6 +918,7 @@ window.saveConsumerData = function(editId) {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
 
+// Full Form Editing Modal
 window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
 
 function deleteDTLogic(dtId, net) {
@@ -1031,12 +1028,12 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
-/* ====== CRITICAL FIX: EXACT SLD AUTO-FIT WITH 20% BUFFER & NO TEXT ====== */
+/* ====== CRITICAL FIX: SLD WITHOUT TEXT ====== */
 window.generateCadSLDPdf = async function() { 
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
     
-    showToast("Generating Auto-Fit SLD PDF...");
+    showToast("Generating Buffered Auto-Fit SLD PDF...");
     const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
     
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
@@ -1050,22 +1047,20 @@ window.generateCadSLDPdf = async function() {
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
-    // 20% Spatial Zoom-Out Buffer 
-    const latBuffer = (maxLat - minLat) * 0.20; const lngBuffer = (maxLng - minLng) * 0.20;
+    const latBuffer = (maxLat - minLat) * 0.25; const lngBuffer = (maxLng - minLng) * 0.25;
     minLat -= latBuffer; maxLat += latBuffer; minLng -= lngBuffer; maxLng += lngBuffer;
 
     const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
     const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
     
-    // Auto-Rotate Logic Matrix
     const needsRotation = latDiff > lngDiff;
     let scale, offsetX, offsetY;
 
     if (needsRotation) {
-        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.80;
+        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.75;
         offsetX = margin + (pdfW - (latDiff * scale)) / 2; offsetY = margin + (pdfH - (lngDiff * scale)) / 2;
     } else {
-        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.80;
+        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.75;
         offsetX = margin + (pdfW - (lngDiff * scale)) / 2; offsetY = margin + (pdfH - (latDiff * scale)) / 2;
     }
     
@@ -1098,8 +1093,6 @@ window.generateCadSLDPdf = async function() {
                 doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
             }
             
-            // Text rendering removed as requested
-
             if (l.hasCrossing) {
                 const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2;
                 doc.setDrawColor(239, 68, 68); doc.setLineWidth(1);
@@ -1181,7 +1174,6 @@ async function initializeApplication() {
         
         if (data && data.feeders) appState = data; 
         
-        // CRITICAL FIX: Trigger Dark Mode on load
         if(appState.settings.darkMode) document.documentElement.setAttribute('data-theme', 'dark');
 
         translateApp(); 
