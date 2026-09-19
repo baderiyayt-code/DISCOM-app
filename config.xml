@@ -22,8 +22,7 @@
         <allow-intent href="market:*" />
     </platform>
 
+    <plugin name="cordova-plugin-camera" />
     <plugin name="cordova-plugin-geolocation" />
     <plugin name="cordova-plugin-file" />
-    <plugin name="cordova-plugin-camera" />
-
 </widget>
