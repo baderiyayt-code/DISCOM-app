@@ -141,7 +141,6 @@ let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTile
 /* ====== CAMERA INTEGRATION ====== */
 window.capturePhoto = function(targetId) {
     if (window.cordova && navigator.camera) {
-        // High compression Base64 saves perfectly and prevents storage issues
         navigator.camera.getPicture(
             function(imageData) {
                 const b64 = "data:image/jpeg;base64," + imageData;
@@ -171,7 +170,7 @@ window.capturePhoto = function(targetId) {
 function initMapSystem() {
     if(map) return; 
     
-    // CRITICAL FIX: No Panes, Native Canvas Rendering prevents rotation drift tearing.
+    // CRITICAL FIX: Custom Panes REMOVED. preferCanvas: true + Native Panes mathematically prevents Rotation Vector Tearing
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
     // EXACT ZOOM LEVEL LOGIC
@@ -230,7 +229,7 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUPS (NO ROTATION DRIFT) ====== */
+/* ====== CRITICAL FIX: EXACT ABSOLUTE EVENT POPUPS (KILLS ROTATION DRIFT FOREVER) ====== */
 function triggerPopupExact(lat, lng, htmlContent, yOffset = -10) {
     if(!map) return;
     L.popup({ autoPan: false, closeButton: true, offset: [0, yOffset] })
@@ -255,7 +254,7 @@ function renderEntireNetwork() {
     try {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(), f = appState.filters;
 
-        // CRITICAL FIX: Direct GSS Selection (Fixes missing icon issue)
+        // CRITICAL FIX: Direct active GSS rendering resolves visibility issue
         const activeGss = appState.gssNodes[net.feeder.parentGss];
         if (activeGss && typeof activeGss.lat === 'number') {
             if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
@@ -316,7 +315,8 @@ function renderEntireNetwork() {
                         svg = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="24" rx="4" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="14" y="18" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
                     }
 
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 3000 }).addTo(featureGroups.dts);
+                    // CRITICAL FIX: DT Z-Index massively inflated (9000) to physically overlap HT and LT Poles
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 9000 }).addTo(featureGroups.dts);
                     m.on('click', (e) => {
                         let dtCons = net.consumers.filter(c => {
                             if (c.parentType === 'DT' && String(c.parentRef) === String(d.code)) return true;
@@ -344,7 +344,6 @@ function renderEntireNetwork() {
             const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
             
             let linesToDraw = [];
-            // CRITICAL FIX: UG CABLE OVERRIDE
             if(line.phaseType === 'Three Phase' && !line.type.includes('UG CABLE')) {
                 linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, -1.5), color: '#ef4444' }); // Red
                 linesToDraw.push({ coords: line.coords, color: '#eab308' }); // Yellow
@@ -452,7 +451,7 @@ window.autoSaveSettings = function() {
     appState.settings.gpsInterval = parseFloat(document.getElementById('setGpsInterval').value);
     appState.settings.gpsAccuracy = parseFloat(document.getElementById('setGpsAccuracy').value); 
     appState.settings.language = document.getElementById('setLanguage').value;
-    appState.settings.darkMode = document.getElementById('setDarkMode').value === 'true';
+    appState.settings.darkMode = document.getElementById('setTheme').value === 'dark';
     
     document.documentElement.setAttribute('data-theme', appState.settings.darkMode ? 'dark' : 'light');
     triggerPersistence(); translateApp(); renderEntireNetwork(); showToast(t("toastSettings")); 
@@ -476,13 +475,14 @@ window.toggleSidebar = function(open) {
 window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); translateApp(); }
 window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); }
 
+// CRITICAL FIX 1: JS Settings Error resolved (setTheme matches DOM ID)
 window.openSettingsPage = function() { 
     window.toggleSidebar(false); 
     document.getElementById('setUnit').value = appState.settings.unit || 'm';
     document.getElementById('setGpsInterval').value = appState.settings.gpsInterval || 3; 
     document.getElementById('setGpsAccuracy').value = appState.settings.gpsAccuracy || 10;
     document.getElementById('setLanguage').value = appState.settings.language || 'en'; 
-    document.getElementById('setDarkMode').value = appState.settings.darkMode ? 'true' : 'false';
+    document.getElementById('setTheme').value = appState.settings.darkMode ? 'dark' : 'light';
     document.getElementById('settings-page').classList.add('open'); 
 }
 window.closeSettingsPage = function() { document.getElementById('settings-page').classList.remove('open'); }
@@ -657,10 +657,10 @@ window.handleSearch = function(e) {
 }
 window.clearSearch = function() { document.getElementById('appSearchBar').value = ''; document.getElementById('searchSuggestions').classList.remove('active'); }
 window.selectSearchResult = function(type, id) {
-    const net = getActiveNetwork(); window.clearSearch(); window.toggleSearchBox(); let target = null;
-    if(type === 'CONSUMER') target = net.consumers.find(c => c.id === id); 
-    else if(type === 'DT') target = net.dts.find(d => d.id === id);
-    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); }
+    const net = getActiveNetwork(); window.clearSearch(); window.toggleSearchBox(); let target = null, popupHtml = '';
+    if(type === 'CONSUMER') { target = net.consumers.find(c => c.id === id); if(target) popupHtml = `<div style="padding:4px;"><b>${target.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${target.kno} | Connected to: ${target.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${target.id}')">Edit</button></div></div>`; } 
+    else if(type === 'DT') { target = net.dts.find(d => d.id === id); if(target) popupHtml = `<div style="padding:4px;"><b style="color:#d97706;">DT: ${target.code}</b><p style="margin:4px 0;">Rating: ${target.rating} kVA<br>Loc: ${target.location || 'N/A'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${target.id}')">Edit</button></div></div>`; }
+    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { triggerPopupExact(target.lat, target.lng, popupHtml, -10); }, 1000); }
 }
 
 /* ====== EXPANDED FORMS ====== */
@@ -813,7 +813,6 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
             <div class="form-row"><label>Select Parent DT*</label><select id="inpConsDT" class="form-select" onchange="window.filterConsumerPoles()" ${isEdit?'disabled':''}>${dtOpts}</select></div>
             <div class="form-row"><label>Connects To (LT Pole / DT)*</label><select id="inpConsParent" class="form-select" ${isEdit?'disabled':''}></select></div>
             
-            <!-- CRITICAL FIX 3: Strict Validations on A/C and K-No. -->
             <div class="form-grid-2">
                 <div class="form-row"><label>K-Number (12 Digits)*</label><input type="text" id="inpConsKno" class="form-input" value="${existingObj.kno||''}" maxlength="12" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,12);"></div>
                 <div class="form-row"><label>A/C No. (8 Digits)*</label><input type="text" id="inpConsAcNo" class="form-input" value="${existingObj.acNo||''}" maxlength="8" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,8);"></div>
@@ -907,7 +906,6 @@ window.saveConsumerData = function(editId) {
     const meterNo = document.getElementById('inpConsMeter').value.trim(); const conType = document.getElementById('inpConsType').value; const status = document.getElementById('inpConsStatus').value; const load = document.getElementById('inpConsLoad').value.trim(); const photo = document.getElementById('inpConsPhoto').value;
     if (!name || !kno || !acNo) return alert(t("errReq")); 
     
-    // Strict Validation
     if(kno.length !== 12) return alert("K-Number must be exactly 12 digits!");
     if(acNo.length !== 8) return alert("A/C No. must be exactly 8 digits!");
 
@@ -1033,7 +1031,7 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
-/* ====== CRITICAL FIX: EXACT SLD TEXT REMOVAL & ROTATION FIX ====== */
+/* ====== CRITICAL FIX: EXACT SLD AUTO-FIT WITH 20% BUFFER & NO TEXT ====== */
 window.generateCadSLDPdf = async function() { 
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
@@ -1052,22 +1050,22 @@ window.generateCadSLDPdf = async function() {
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
-    // 25% Spatial Zoom-Out Buffer 
-    const latBuffer = (maxLat - minLat) * 0.25; const lngBuffer = (maxLng - minLng) * 0.25;
+    // 20% Spatial Zoom-Out Buffer 
+    const latBuffer = (maxLat - minLat) * 0.20; const lngBuffer = (maxLng - minLng) * 0.20;
     minLat -= latBuffer; maxLat += latBuffer; minLng -= lngBuffer; maxLng += lngBuffer;
 
     const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
     const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
     
-    // Auto-Rotate Logic
+    // Auto-Rotate Logic Matrix
     const needsRotation = latDiff > lngDiff;
     let scale, offsetX, offsetY;
 
     if (needsRotation) {
-        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.75;
+        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.80;
         offsetX = margin + (pdfW - (latDiff * scale)) / 2; offsetY = margin + (pdfH - (lngDiff * scale)) / 2;
     } else {
-        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.75;
+        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.80;
         offsetX = margin + (pdfW - (lngDiff * scale)) / 2; offsetY = margin + (pdfH - (latDiff * scale)) / 2;
     }
     
@@ -1084,7 +1082,6 @@ window.generateCadSLDPdf = async function() {
         if(c1 && c2) {
             const pt1 = getPt(c1.lat, c1.lng), pt2 = getPt(c2.lat, c2.lng);
             
-            // CRITICAL FIX: Removed Dimension Text & Underlines from SLD
             if (l.phaseType === 'Three Phase' && !l.type.includes('UG CABLE')) {
                 const dx = pt2.x - pt1.x; const dy = pt2.y - pt1.y;
                 const len = Math.sqrt(dx*dx + dy*dy) || 0.001;
@@ -1101,6 +1098,8 @@ window.generateCadSLDPdf = async function() {
                 doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
             }
             
+            // Text rendering removed as requested
+
             if (l.hasCrossing) {
                 const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2;
                 doc.setDrawColor(239, 68, 68); doc.setLineWidth(1);
