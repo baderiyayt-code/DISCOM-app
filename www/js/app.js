@@ -8,7 +8,7 @@ if (typeof supabase !== 'undefined') { supabaseClient = supabase.createClient(SU
 const ADMIN_EMAIL = 'admin@discom.com';
 
 let appState = {
-    settings: { checkOrphanNode: true, unit: 'm', gpsInterval: 3, gpsAccuracy: 10, language: 'en' },
+    settings: { checkOrphanNode: true, unit: 'm', gpsInterval: 3, gpsAccuracy: 10, language: 'en', darkMode: false },
     user: { isLoggedIn: false, name: "", email: "", id: null },
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
@@ -138,10 +138,10 @@ window.handleSupabaseLogout = async function() { if(supabaseClient) await supaba
 
 let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTileIndex = 0;
 
-/* ====== CRITICAL FIX: COMPRESSED BASE64 PHOTO CAPTURE ====== */
+/* ====== CAMERA INTEGRATION ====== */
 window.capturePhoto = function(targetId) {
     if (window.cordova && navigator.camera) {
-        // Highly compressed Base64 data guarantees DOM rendering and prevents LocalForage crash
+        // High compression Base64 saves perfectly and prevents storage issues
         navigator.camera.getPicture(
             function(imageData) {
                 const b64 = "data:image/jpeg;base64," + imageData;
@@ -171,10 +171,10 @@ window.capturePhoto = function(targetId) {
 function initMapSystem() {
     if(map) return; 
     
-    // CRITICAL FIX: Custom Panes REMOVED. preferCanvas: true perfectly syncs Line+Marker during rotation!
+    // CRITICAL FIX: No Panes, Native Canvas Rendering prevents rotation drift tearing.
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
-    // EXACT ZOOM LEVEL LOGIC 
+    // EXACT ZOOM LEVEL LOGIC
     function updateMapZoomClasses() {
         if(!map) return;
         const z = map.getZoom(); const mapEl = document.getElementById('map');
@@ -230,7 +230,7 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUP ANCHORING ====== */
+/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUPS (NO ROTATION DRIFT) ====== */
 function triggerPopupExact(lat, lng, htmlContent, yOffset = -10) {
     if(!map) return;
     L.popup({ autoPan: false, closeButton: true, offset: [0, yOffset] })
@@ -255,20 +255,20 @@ function renderEntireNetwork() {
     try {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(), f = appState.filters;
 
-        Object.values(appState.gssNodes).forEach(gss => {
-            if (String(gss.code) !== String(net.feeder.parentGss)) return;
-            if (typeof gss.lat === 'number') {
-                if (appState.activeMove && appState.activeMove.id === gss.code) return; 
+        // CRITICAL FIX: Direct GSS Selection (Fixes missing icon issue)
+        const activeGss = appState.gssNodes[net.feeder.parentGss];
+        if (activeGss && typeof activeGss.lat === 'number') {
+            if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
                 const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
-                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 4000 }).addTo(featureGroups.gss);
+                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 4000 }).addTo(featureGroups.gss);
                 
-                m.on('click', () => {
-                    const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
-                    triggerPopupExact(gss.lat, gss.lng, htmlPopup, -18);
+                m.on('click', (e) => {
+                    const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${activeGss.name}</b><br><small>Code: ${activeGss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${activeGss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${activeGss.code}')">Relocate</button></div></div>`;
+                    triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, -18);
                 });
             }
-        });
+        }
 
         if (f.poles) {
             net.poles.forEach(p => {
@@ -294,10 +294,10 @@ function renderEntireNetwork() {
                 const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), zIndexOffset: zOff }).addTo(targetGrp);
                 
-                m.on('click', () => {
+                m.on('click', (e) => {
                     let photoHtml = p.photo ? `<img src="${p.photo}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:6px;">` : '';
                     const htmlPopup = `<div style="padding:4px; max-width:200px;">${photoHtml}<b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'} | Cond: <b>${p.condition || 'OK'}</b><br>Struct: ${p.structure || 'Single'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(p.lat, p.lng, htmlPopup, -r);
+                    triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, -r);
                 });
             });
         }
@@ -316,9 +316,8 @@ function renderEntireNetwork() {
                         svg = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="24" rx="4" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="14" y="18" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
                     }
 
-                    // DT Strictly gets Z-Index 3000 to sit on top
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 3000 }).addTo(featureGroups.dts);
-                    m.on('click', () => {
+                    m.on('click', (e) => {
                         let dtCons = net.consumers.filter(c => {
                             if (c.parentType === 'DT' && String(c.parentRef) === String(d.code)) return true;
                             if (c.parentType === 'POLE') {
@@ -331,7 +330,7 @@ function renderEntireNetwork() {
 
                         let photoHtml = d.photo ? `<img src="${d.photo}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:6px;">` : '';
                         const htmlPopup = `<div style="padding:6px; min-width:200px;">${photoHtml}<b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.85rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b> | Mount: <b>${d.mountedOn || 'Single Pole'}</b><br>Consumers: <b>${totCons}</b> | Total Load: <b>${totLoad.toFixed(2)} kW</b><br>SrNo: ${d.srNo || 'N/A'} | TN: ${d.tn || 'N/A'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        triggerPopupExact(d.lat, d.lng, htmlPopup, -16);
+                        triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, -16);
                     });
                 }
             });
@@ -345,7 +344,7 @@ function renderEntireNetwork() {
             const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
             
             let linesToDraw = [];
-            // CRITICAL FIX: IF UG CABLE, DRAW SINGLE BLACK LINE EVEN IF 3-PHASE
+            // CRITICAL FIX: UG CABLE OVERRIDE
             if(line.phaseType === 'Three Phase' && !line.type.includes('UG CABLE')) {
                 linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, -1.5), color: '#ef4444' }); // Red
                 linesToDraw.push({ coords: line.coords, color: '#eab308' }); // Yellow
@@ -358,7 +357,6 @@ function renderEntireNetwork() {
                 const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
                 L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
                 
-                // EXACT TOUCH POPUP FOR LINES (e.latlng)
                 hitPoly.on('click', (e) => {
                     let crossStr = line.hasCrossing ? `<br><b style="color:#ef4444;">Crossing:</b> ${line.crossingRemark || 'Yes'}` : '';
                     const htmlPopup = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name} (${line.phaseType || 'Single Phase'})</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b>${crossStr}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('line','${line.id}')">Edit</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div></div>`;
@@ -391,10 +389,10 @@ function renderEntireNetwork() {
                 const svg = `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><text x="11" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text></svg>`;
                 
                 const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [22,22], iconAnchor: [11,11] }), zIndexOffset: 100 }).addTo(featureGroups.consumers);
-                m.on('click', () => {
+                m.on('click', (e) => {
                     let photoHtml = c.photo ? `<img src="${c.photo}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:6px;">` : '';
-                    const htmlPopup = `<div style="padding:4px; max-width:200px;">${photoHtml}<b>${c.name}</b><p style="color:#64748b; margin:4px 0; font-size:0.8rem;">K-No: ${c.kno} | M-No: ${c.meterNo || 'N/A'}</p><p style="margin:4px 0; font-size:0.8rem;">Type: <b>${c.conType || 'DS'}</b> | Status: <b>${c.status || 'Regular'}</b><br>Load: ${c.load || '1 kW'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(c.lat, c.lng, htmlPopup, -11);
+                    const htmlPopup = `<div style="padding:4px; max-width:200px;">${photoHtml}<b>${c.name}</b><p style="color:#64748b; margin:4px 0; font-size:0.8rem;">K-No: ${c.kno} | A/C: ${c.acNo || 'N/A'}<br>M-No: ${c.meterNo || 'N/A'}</p><p style="margin:4px 0; font-size:0.8rem;">Type: <b>${c.conType || 'DS'}</b> | Status: <b>${c.status || 'Regular'}</b><br>Load: ${c.load || '1 kW'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
+                    triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, -11);
                 });
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
@@ -450,8 +448,13 @@ window.saveFilters = function() {
 }
 
 window.autoSaveSettings = function() { 
-    appState.settings.unit = document.getElementById('setUnit').value; appState.settings.gpsInterval = parseFloat(document.getElementById('setGpsInterval').value);
-    appState.settings.gpsAccuracy = parseFloat(document.getElementById('setGpsAccuracy').value); appState.settings.language = document.getElementById('setLanguage').value;
+    appState.settings.unit = document.getElementById('setUnit').value; 
+    appState.settings.gpsInterval = parseFloat(document.getElementById('setGpsInterval').value);
+    appState.settings.gpsAccuracy = parseFloat(document.getElementById('setGpsAccuracy').value); 
+    appState.settings.language = document.getElementById('setLanguage').value;
+    appState.settings.darkMode = document.getElementById('setDarkMode').value === 'true';
+    
+    document.documentElement.setAttribute('data-theme', appState.settings.darkMode ? 'dark' : 'light');
     triggerPersistence(); translateApp(); renderEntireNetwork(); showToast(t("toastSettings")); 
 }
 
@@ -474,9 +477,13 @@ window.openModal = function(html) { document.getElementById('modalSheetContent')
 window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); }
 
 window.openSettingsPage = function() { 
-    window.toggleSidebar(false); document.getElementById('setUnit').value = appState.settings.unit || 'm';
-    document.getElementById('setGpsInterval').value = appState.settings.gpsInterval || 3; document.getElementById('setGpsAccuracy').value = appState.settings.gpsAccuracy || 10;
-    document.getElementById('setLanguage').value = appState.settings.language || 'en'; document.getElementById('settings-page').classList.add('open'); 
+    window.toggleSidebar(false); 
+    document.getElementById('setUnit').value = appState.settings.unit || 'm';
+    document.getElementById('setGpsInterval').value = appState.settings.gpsInterval || 3; 
+    document.getElementById('setGpsAccuracy').value = appState.settings.gpsAccuracy || 10;
+    document.getElementById('setLanguage').value = appState.settings.language || 'en'; 
+    document.getElementById('setDarkMode').value = appState.settings.darkMode ? 'true' : 'false';
+    document.getElementById('settings-page').classList.add('open'); 
 }
 window.closeSettingsPage = function() { document.getElementById('settings-page').classList.remove('open'); }
 
@@ -537,7 +544,7 @@ window.toggleGssFolder = function() {
 window.renderGssSidebarList = function() {
     const container = document.getElementById('gssListContainer'); if (!container) return; let html = '';
     Object.values(appState.gssNodes).forEach(gss => {
-        html += `<div style="display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:8px; border-radius:6px; margin-top:6px; border:1px solid var(--border);">
+        html += `<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-base); padding:8px; border-radius:6px; margin-top:6px; border:1px solid var(--border);">
             <div><b style="font-size:0.85rem;">${gss.name}</b><br><small style="color:var(--text-sub);">Code: ${gss.code}</small></div>
             <div style="display:flex; gap:4px;">
                 <button class="action-btn-sm bg" onclick="window.relocateGss('${gss.code}')" title="Relocate GSS"><i class="fa-solid fa-location-crosshairs"></i></button>
@@ -650,10 +657,10 @@ window.handleSearch = function(e) {
 }
 window.clearSearch = function() { document.getElementById('appSearchBar').value = ''; document.getElementById('searchSuggestions').classList.remove('active'); }
 window.selectSearchResult = function(type, id) {
-    const net = getActiveNetwork(); window.clearSearch(); window.toggleSearchBox(); let target = null, popupHtml = '';
-    if(type === 'CONSUMER') { target = net.consumers.find(c => c.id === id); if(target) popupHtml = `<div style="padding:4px;"><b>${target.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${target.kno} | Connected to: ${target.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${target.id}')">Edit</button></div></div>`; } 
-    else if(type === 'DT') { target = net.dts.find(d => d.id === id); if(target) popupHtml = `<div style="padding:4px;"><b style="color:#d97706;">DT: ${target.code}</b><p style="margin:4px 0;">Rating: ${target.rating} kVA<br>Loc: ${target.location || 'N/A'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${target.id}')">Edit</button></div></div>`; }
-    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { triggerPopupExact(target.lat, target.lng, popupHtml, -10); }, 1000); }
+    const net = getActiveNetwork(); window.clearSearch(); window.toggleSearchBox(); let target = null;
+    if(type === 'CONSUMER') target = net.consumers.find(c => c.id === id); 
+    else if(type === 'DT') target = net.dts.find(d => d.id === id);
+    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); }
 }
 
 /* ====== EXPANDED FORMS ====== */
@@ -686,7 +693,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         const photoB64 = existingObj.photo || ''; const showPhoto = (existingObj.condition==='Tilted'||existingObj.condition==='Damaged') ? 'block' : 'none';
         
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit HT Pole':'Add HT Pole'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Pole Number*</label><input type="number" id="inpPoleNo" class="form-input" value="${nextNo}" ${isEdit?'readonly disabled style="background:#e2e8f0;"':''}></div>
+            <div class="form-row"><label>Pole Number*</label><input type="number" id="inpPoleNo" class="form-input" value="${nextNo}" ${isEdit?'readonly disabled style="background:var(--bg-base);"':''}></div>
             <div class="form-row"><label>Pole Structure</label><select id="inpPoleStruct" class="form-select"><option value="Single" ${selStruct('Single')}>Single Pole</option><option value="Double" ${selStruct('Double')}>Double Pole</option><option value="Lattice Tower" ${selStruct('Lattice Tower')}>Lattice Tower</option><option value="Rail Pole" ${selStruct('Rail Pole')}>Rail Pole</option></select></div>
             <div class="form-row"><label>Condition</label><select id="inpPoleCond" class="form-select" onchange="document.getElementById('polePhotoDiv').style.display = (this.value==='Tilted'||this.value==='Damaged')?'block':'none'"><option value="OK" ${selCond('OK')}>OK</option><option value="Tilted" ${selCond('Tilted')}>Tilted</option><option value="Damaged" ${selCond('Damaged')}>Damaged</option></select></div>
             <div id="polePhotoDiv" style="display:${showPhoto}; margin-bottom:12px;">
@@ -708,7 +715,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
 
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit LT Pole':'Add LT Pole'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             ${isEdit ? `<div class="form-row"><label>Pole Number</label><input type="text" class="form-input" value="${existingObj.poleNo}" disabled></div>` : ''}
-            <div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select" ${isEdit?'disabled style="background:#e2e8f0;"':''}>${dtOpts}</select></div>
+            <div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select" ${isEdit?'disabled style="background:var(--bg-base);"':''}>${dtOpts}</select></div>
             <div class="form-row"><label>Pole Structure</label><select id="inpPoleStruct" class="form-select"><option value="Single" ${selStruct('Single')}>Single Pole</option><option value="Double" ${selStruct('Double')}>Double Pole</option><option value="Rail Pole" ${selStruct('Rail Pole')}>Rail Pole</option></select></div>
             <div class="form-row"><label>Condition</label><select id="inpPoleCond" class="form-select" onchange="document.getElementById('polePhotoDiv').style.display = (this.value==='Tilted'||this.value==='Damaged')?'block':'none'"><option value="OK" ${selCond('OK')}>OK</option><option value="Tilted" ${selCond('Tilted')}>Tilted</option><option value="Damaged" ${selCond('Damaged')}>Damaged</option></select></div>
             <div id="polePhotoDiv" style="display:${showPhoto}; margin-bottom:12px;">
@@ -738,8 +745,8 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
                 if (parentGss) nodes.push({id: 'GSS_'+parentGss.code, title: 'GSS ('+parentGss.code+')', lat: parentGss.lat, lng: parentGss.lng});
             }
             nodes = window.sortByDistance(nodes, center.lat, center.lng); if (!defaultFrom && nodes.length > 0) defaultFrom = nodes[0].id;
-            let optsHtml = ''; nodes.forEach(n => { optsHtml += `<option value="${n.id}" ${n.id === defaultFrom ? 'selected' : ''}>${n.title} (${window.formatDistance(window.calcDistance(center.lat, center.lng, n.lat, n.lng))})</option>`; });
-            fromSel.innerHTML = optsHtml; window.syncLineToSelect();
+            fromSel.innerHTML = nodes.map(n => `<option value="${n.id}" ${n.id === defaultFrom ? 'selected' : ''}>${n.title} (${window.formatDistance(window.calcDistance(center.lat, center.lng, n.lat, n.lng))})</option>`).join('');
+            window.syncLineToSelect();
         };
         window.syncLineToSelect = function() {
             const type = document.getElementById('inpLineType').value, fromSel = document.getElementById('inpFromNode'), fromVal = fromSel && fromSel.options.length > 0 ? String(fromSel.value) : '';
@@ -805,9 +812,16 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit Consumer':'Add Consumer'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div class="form-row"><label>Select Parent DT*</label><select id="inpConsDT" class="form-select" onchange="window.filterConsumerPoles()" ${isEdit?'disabled':''}>${dtOpts}</select></div>
             <div class="form-row"><label>Connects To (LT Pole / DT)*</label><select id="inpConsParent" class="form-select" ${isEdit?'disabled':''}></select></div>
-            <div class="form-grid-2"><div class="form-row"><label>K-Number*</label><input type="number" id="inpConsKno" class="form-input" value="${existingObj.kno||''}"></div><div class="form-row"><label>Meter No</label><input type="text" id="inpConsMeter" class="form-input" value="${existingObj.meterNo||''}"></div></div>
+            
+            <!-- CRITICAL FIX 3: Strict Validations on A/C and K-No. -->
+            <div class="form-grid-2">
+                <div class="form-row"><label>K-Number (12 Digits)*</label><input type="text" id="inpConsKno" class="form-input" value="${existingObj.kno||''}" maxlength="12" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,12);"></div>
+                <div class="form-row"><label>A/C No. (8 Digits)*</label><input type="text" id="inpConsAcNo" class="form-input" value="${existingObj.acNo||''}" maxlength="8" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,8);"></div>
+            </div>
+            
             <div class="form-grid-2"><div class="form-row"><label>Consumer Type</label><select id="inpConsType" class="form-select"><option value="DS" ${selType('DS')}>DS</option><option value="NDS" ${selType('NDS')}>NDS</option><option value="AG" ${selType('AG')}>AG</option><option value="SIP/MIP" ${selType('SIP/MIP')}>SIP/MIP</option><option value="PHED" ${selType('PHED')}>PHED</option><option value="Other" ${selType('Other')}>Other</option></select></div><div class="form-row"><label>Status</label><select id="inpConsStatus" class="form-select"><option value="Regular" ${selStat('Regular')}>Regular</option><option value="DC" ${selStat('DC')}>DC</option><option value="PDC" ${selStat('PDC')}>PDC</option></select></div></div>
-            <div class="form-grid-2"><div class="form-row"><label>Consumer Name*</label><input type="text" id="inpConsName" class="form-input" value="${existingObj.name||''}"></div><div class="form-row"><label>Load</label><input type="text" id="inpConsLoad" class="form-input" value="${existingObj.load||'1 kW'}"></div></div>
+            <div class="form-grid-2"><div class="form-row"><label>Consumer Name*</label><input type="text" id="inpConsName" class="form-input" value="${existingObj.name||''}"></div><div class="form-row"><label>Meter No.</label><input type="text" id="inpConsMeter" class="form-input" value="${existingObj.meterNo||''}"></div></div>
+            <div class="form-row"><label>Load (kW)</label><input type="number" id="inpConsLoad" class="form-input" value="${existingObj.load||'1'}"></div>
             <div style="margin-bottom:12px;">
                 <button class="btn-camera" onclick="window.capturePhoto('inpConsPhoto')"><i class="fa-solid fa-camera"></i> Capture Premises</button>
                 <input type="hidden" id="inpConsPhoto" value="${photoB64}">
@@ -889,18 +903,23 @@ window.saveDTData = function(editId) {
 }
 
 window.saveConsumerData = function(editId) {
-    saveSnapshot(); const parentRef = document.getElementById('inpConsParent').value, kno = document.getElementById('inpConsKno').value.trim(), name = document.getElementById('inpConsName').value.trim();
+    saveSnapshot(); const parentRef = document.getElementById('inpConsParent').value, kno = document.getElementById('inpConsKno').value.trim(), acNo = document.getElementById('inpConsAcNo').value.trim(), name = document.getElementById('inpConsName').value.trim();
     const meterNo = document.getElementById('inpConsMeter').value.trim(); const conType = document.getElementById('inpConsType').value; const status = document.getElementById('inpConsStatus').value; const load = document.getElementById('inpConsLoad').value.trim(); const photo = document.getElementById('inpConsPhoto').value;
-    if (!name || !kno) return alert(t("errReq")); const net = getActiveNetwork();
+    if (!name || !kno || !acNo) return alert(t("errReq")); 
     
+    // Strict Validation
+    if(kno.length !== 12) return alert("K-Number must be exactly 12 digits!");
+    if(acNo.length !== 8) return alert("A/C No. must be exactly 8 digits!");
+
+    const net = getActiveNetwork();
     if(editId) {
         let c = net.consumers.find(x => x.id === editId); if(!c) return;
-        c.kno = kno; c.name = name; c.meterNo = meterNo; c.conType = conType; c.status = status; c.load = load; c.photo = photo;
+        c.kno = kno; c.acNo = acNo; c.name = name; c.meterNo = meterNo; c.conType = conType; c.status = status; c.load = load; c.photo = photo;
     } else {
         if(net.consumers.some(c => String(c.kno) === String(kno))) return alert("K-Number already exists in this feeder!");
         let parentType = 'POLE'; const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); if (!p) parentType = 'DT';
         const lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value);
-        net.consumers.push({ id: 'CS_'+Date.now(), parentRef, parentType, kno, meterNo, conType, status, name, load, photo, lat, lng }); 
+        net.consumers.push({ id: 'CS_'+Date.now(), parentRef, parentType, kno, acNo, meterNo, conType, status, name, load, photo, lat, lng }); 
     }
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
@@ -1014,11 +1033,12 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
+/* ====== CRITICAL FIX: EXACT SLD TEXT REMOVAL & ROTATION FIX ====== */
 window.generateCadSLDPdf = async function() { 
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
     
-    showToast("Generating Buffered Auto-Fit SLD PDF...");
+    showToast("Generating Auto-Fit SLD PDF...");
     const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
     
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
@@ -1032,12 +1052,14 @@ window.generateCadSLDPdf = async function() {
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
+    // 25% Spatial Zoom-Out Buffer 
     const latBuffer = (maxLat - minLat) * 0.25; const lngBuffer = (maxLng - minLng) * 0.25;
     minLat -= latBuffer; maxLat += latBuffer; minLng -= lngBuffer; maxLng += lngBuffer;
 
     const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
     const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
     
+    // Auto-Rotate Logic
     const needsRotation = latDiff > lngDiff;
     let scale, offsetX, offsetY;
 
@@ -1062,7 +1084,7 @@ window.generateCadSLDPdf = async function() {
         if(c1 && c2) {
             const pt1 = getPt(c1.lat, c1.lng), pt2 = getPt(c2.lat, c2.lng);
             
-            // CRITICAL FIX: UG CABLE OVERRIDE
+            // CRITICAL FIX: Removed Dimension Text & Underlines from SLD
             if (l.phaseType === 'Three Phase' && !l.type.includes('UG CABLE')) {
                 const dx = pt2.x - pt1.x; const dy = pt2.y - pt1.y;
                 const len = Math.sqrt(dx*dx + dy*dy) || 0.001;
@@ -1079,34 +1101,8 @@ window.generateCadSLDPdf = async function() {
                 doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
             }
             
-            const dist = Math.round(l.distanceMeters || window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng));
-            const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2;
-            let rawAngle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x);
-            let angleDeg = rawAngle * (180 / Math.PI);
-            
-            if (angleDeg > 90 || angleDeg < -90) { angleDeg += 180; }
-            
-            const offsetDist = 4;
-            const perpRad = (angleDeg + 90) * (Math.PI / 180);
-            const textX = midX + Math.cos(perpRad) * offsetDist;
-            const textY = midY + Math.sin(perpRad) * offsetDist;
-            
-            doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
-            const txt = `${dist} M`;
-            
-            doc.text(txt, textX, textY, { angle: angleDeg, align: 'center', baseline: 'bottom' });
-            
-            const textW = doc.getTextWidth(txt) + 2; 
-            const textRad = angleDeg * (Math.PI / 180);
-            const linePx = Math.cos(perpRad) * (offsetDist - 1);
-            const linePy = Math.sin(perpRad) * (offsetDist - 1);
-            const lineCenterX = midX + linePx; const lineCenterY = midY + linePy;
-            const lx = (textW / 2) * Math.cos(textRad); const ly = (textW / 2) * Math.sin(textRad);
-
-            doc.setDrawColor(100, 100, 100); doc.setLineWidth(0.3);
-            doc.line(lineCenterX - lx, lineCenterY - ly, lineCenterX + lx, lineCenterY + ly);
-
             if (l.hasCrossing) {
+                const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2;
                 doc.setDrawColor(239, 68, 68); doc.setLineWidth(1);
                 doc.line(midX - 2, midY - 2, midX + 2, midY + 2);
                 doc.line(midX - 2, midY + 2, midX + 2, midY - 2);
@@ -1158,7 +1154,7 @@ window.openAboutModal = function() {
         <div class="auth-logo" style="color:var(--accent); font-size:3rem; margin-bottom:10px;"><i class="fa-solid fa-bolt-lightning"></i></div>
         <h2 style="font-size:1.4rem; font-weight:800; margin-bottom:5px;">DISCOM Survey Pro</h2>
         <p style="color:var(--text-sub); font-size:0.9rem; margin-bottom:20px;">Enterprise Survey App for DISCOM</p>
-        <div style="background:#f1f5f9; padding:15px; border-radius:12px; border:1px solid var(--border);">
+        <div style="background:var(--bg-base); padding:15px; border-radius:12px; border:1px solid var(--border);">
             <p style="font-weight:700; font-size:1rem; color:var(--text-main);">Developed by</p>
             <p style="font-size:1.2rem; font-weight:900; color:var(--accent); margin-top:4px;">Suraj Singh Mehta</p>
         </div>
@@ -1185,6 +1181,10 @@ async function initializeApplication() {
         else { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
         
         if (data && data.feeders) appState = data; 
+        
+        // CRITICAL FIX: Trigger Dark Mode on load
+        if(appState.settings.darkMode) document.documentElement.setAttribute('data-theme', 'dark');
+
         translateApp(); 
         
         if (appState.user && appState.user.isLoggedIn) { 
