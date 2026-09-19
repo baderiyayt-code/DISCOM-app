@@ -101,7 +101,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .btn-action-primary { width: 100%; padding: 14px; background: var(--accent); color: white; border: none; border-radius: var(--radius-md); font-weight: 700; cursor: pointer; margin-top: 8px; }
 .btn-danger-outline { width: 100%; padding: 12px; background: rgba(239, 68, 68, 0.05); color: #ef4444; border: 1px solid #ef4444; border-radius: var(--radius-md); font-weight: 700; cursor: pointer; margin-top: 8px; }
 
-.photo-preview { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-top: 8px; border: 1px solid var(--border); display: none; background: #e2e8f0; }
+.photo-preview { width: 100%; height: 150px; max-height: 150px; object-fit: cover; border-radius: 8px; margin-top: 8px; border: 1px solid var(--border); display: none; background: #e2e8f0; }
 .btn-camera { background: #f1f5f9; color: var(--accent); border: 1px solid var(--accent); width: 100%; padding: 12px; border-radius: var(--radius-md); font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
 
 #settings-page { position: fixed; inset: 0; background: var(--bg-base); z-index: 5000; transform: translateX(100%); transition: transform 0.2s; display: flex; flex-direction: column; }
