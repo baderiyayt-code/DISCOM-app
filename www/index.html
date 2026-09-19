@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
-    <!-- CRITICAL FIX: This prevents Cordova from blocking CDNs, fixing the White Screen Issue -->
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob: gap: https://ssl.gstatic.com; img-src * data: content: blob:;">
+    <!-- CRITICAL FIX: Added file: and content: to img-src to allow local photo rendering -->
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob: gap: https://ssl.gstatic.com file:; img-src * data: content: blob: file: cdvphotolibrary: 'unsafe-inline';">
     
     <meta name="theme-color" content="#1e3a8a">
     <title>DISCOM Survey Pro</title>
