@@ -15,7 +15,6 @@
     
     <preference name="AndroidXEnabled" value="true" />
     
-    <!-- Enforce Strict App Icon Usage -->
     <icon src="res/icon.png" />
     
     <platform name="android">
