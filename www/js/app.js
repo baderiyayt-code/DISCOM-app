@@ -31,7 +31,8 @@ const i18n = {
         confirmLoc: "Confirm Map Center Location", confirmHere: "Confirm Here", cancel: "Cancel", setNewLoc: "Set New Location", target: "Target",
         toastSettings: "Settings Saved!", toastDel: "Deleted Successfully!", toastImport: "Imported Successfully!",
         addFeeder: "Add Feeder", saveFeeder: "Save Feeder", searchObj: "Search K-No, Name, DT Code...",
-        htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer", logout: "Logout Securely"
+        htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer", logout: "Logout Securely",
+        errReq: "Please fill required fields", alertExists: "Item already exists", toastAdded: "Added successfully", confDel: "Are you sure you want to delete this?"
     },
     hi: {
         line11: "11 केवी लाइन", lineLT: "एलटी लाइन", dt3ph: "3-फेज डीटी", dt1ph: "1-फेज डीटी", totalCons: "उपभोक्ता",
@@ -42,7 +43,8 @@ const i18n = {
         confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान सेट करें", target: "लक्ष्य",
         toastSettings: "सेटिंग्स सहेजी गईं!", toastDel: "सफलतापूर्वक हटा दिया गया!", toastImport: "सफलतापूर्वक आयात किया गया!",
         addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT कोड)...",
-        htPole: "एचटी पोल", ltPole: "एलटी पोल", line: "लाइन", dt: "डीटी (ट्रांसफार्मर)", consumer: "उपभोक्ता", logout: "सुरक्षित लॉगआउट"
+        htPole: "एचटी पोल", ltPole: "एलटी पोल", line: "लाइन", dt: "डीटी (ट्रांसफार्मर)", consumer: "उपभोक्ता", logout: "सुरक्षित लॉगआउट",
+        errReq: "कृपया आवश्यक फ़ील्ड भरें", alertExists: "आइटम पहले से मौजूद है", toastAdded: "सफलतापूर्वक जोड़ा गया", confDel: "क्या आप वाकई इसे हटाना चाहते हैं?"
     }
 };
 
@@ -141,7 +143,7 @@ let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTile
 function initMapSystem() {
     if(map) return; 
     
-    // CRITICAL: SVG Rendering + Disabled Animations prevents rotation vector tearing
+    // SVG Rendering + Disabled Animations prevents rotation vector drift
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
     // CRITICAL: Strict Panes enforce Z-Index during all transformations
@@ -162,6 +164,7 @@ function initMapSystem() {
         if (z <= 16) map.removeLayer(featureGroups.ltLines); else map.addLayer(featureGroups.ltLines);
         if (z <= 15) map.removeLayer(featureGroups.htPoles); else map.addLayer(featureGroups.htPoles);
         if (z <= 14) map.removeLayer(featureGroups.dts); else map.addLayer(featureGroups.dts);
+        
         if (z <= 13) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
     }
     map.on('zoomend', updateMapZoomClasses); 
@@ -206,9 +209,10 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUPS (NO DRIFT) ====== */
+/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUP ANCHORING (Kills Drift) ====== */
 function triggerPopupExact(lat, lng, htmlContent, yOffset = -10) {
     if(!map) return;
+    // autoPan: false completely disables Leaflet's flawed bounding rect shift during rotation
     L.popup({ autoPan: false, closeButton: true, offset: [0, yOffset] })
       .setLatLng([lat, lng])
       .setContent(htmlContent)
@@ -256,6 +260,7 @@ function renderEntireNetwork() {
                 const color = isLT ? '#10b981' : '#fde047'; const r = isLT ? 10 : 12; const fs = isLT ? 9 : 10;
                 const strokeColor = (p.condition === 'Tilted' || p.condition === 'Damaged') ? '#ef4444' : '#0f172a';
                 
+                // SVG Generation based on Structure Type
                 let svg = '';
                 if (p.structure === 'Double') {
                     svg = `<svg width="${r*2}" height="${r*2}" viewBox="0 0 ${r*2} ${r*2}" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="${r-5}" width="${r*2-4}" height="10" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="${r}" y="${r+3}" font-size="${fs-2}" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`;
@@ -271,7 +276,8 @@ function renderEntireNetwork() {
                 const paneName = isLT ? 'ltPolePane' : 'htPolePane';
                 
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), pane: paneName }).addTo(targetGrp);
-                m.on('click', () => {
+                
+                m.on('click', (e) => {
                     const htmlPopup = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Structure: ${p.structure || 'Single'} | Cond: ${p.condition || 'OK'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
                     triggerPopupExact(p.lat, p.lng, htmlPopup, -r);
                 });
@@ -293,7 +299,7 @@ function renderEntireNetwork() {
                     }
 
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), pane: 'dtPane' }).addTo(featureGroups.dts);
-                    m.on('click', () => {
+                    m.on('click', (e) => {
                         const htmlPopup = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b> | Phase: <b>${d.phase || 'Three Phase'}</b><br>SrNo: ${d.srNo || 'N/A'} | TN: ${d.tn || 'N/A'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
                         triggerPopupExact(d.lat, d.lng, htmlPopup, -16);
                     });
@@ -308,7 +314,6 @@ function renderEntireNetwork() {
             
             const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
             
-            // Phase Offset Drawing Logic
             let linesToDraw = [];
             if(line.phaseType === 'Three Phase') {
                 linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, -1.5), color: '#ef4444' }); // Red
@@ -328,7 +333,6 @@ function renderEntireNetwork() {
                 });
             });
 
-            // Crossing Icon Render
             if(line.hasCrossing) {
                 const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2;
                 const crossSvg = `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="2" x2="14" y2="14" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/><line x1="14" y1="2" x2="2" y2="14" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/></svg>`;
@@ -340,23 +344,23 @@ function renderEntireNetwork() {
             net.consumers.forEach(c => {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
                 
-                // Color Logic
                 let bgColor = '#10b981'; // Regular
                 if(c.status === 'DC') bgColor = '#facc15';
                 else if(c.status === 'PDC') bgColor = '#ef4444';
                 else if(c.conType === 'NDS') bgColor = '#3b82f6';
                 
-                // FontAwesome Unicode Mapping
-                let faIcon = '&#xf015;'; // DS -> House
-                if(c.conType === 'NDS') faIcon = '&#xf1ad;'; // Building
-                else if(c.conType === 'AG') faIcon = '&#xf043;'; // Water Drop
-                else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; // Industry
-                else if(c.conType === 'PHED') faIcon = '&#xfe06;'; // Faucet
+                // Pure SVG Paths for Consumer Types
+                let svgPath = '';
+                if(c.conType === 'NDS') svgPath = 'M5 21 V5 H17 V21 M9 21 V15 H13 V21 M7 9 H9 V11 H7 Z'; // Building
+                else if(c.conType === 'AG') svgPath = 'M11 20 V10 M11 10 C5 10 5 4 11 4 C17 4 17 10 11 10 Z'; // Plant/Agri
+                else if(c.conType === 'SIP/MIP') svgPath = 'M4 20 V10 L9 15 V10 L14 15 V10 L19 15 V20 Z'; // Factory
+                else if(c.conType === 'PHED') svgPath = 'M6 10 H16 V12 H6 Z M14 12 V16 C14 17 12 17 12 16 V12 Z M8 8 V10 H14 V8 C14 6 8 6 8 8 Z'; // Faucet
+                else svgPath = 'M11 3 L3 9 V18 H8 V12 H14 V18 H19 V9 Z'; // House (Default DS)
 
-                const svg = `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><text x="11" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text></svg>`;
+                const svg = `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><path fill="white" d="${svgPath}"/></svg>`;
                 
                 const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [22,22], iconAnchor: [11,11] }), pane: 'consumerPane' }).addTo(featureGroups.consumers);
-                m.on('click', () => {
+                m.on('click', (e) => {
                     const htmlPopup = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | M-No: ${c.meterNo || 'N/A'}</p><p style="margin:4px 0;">Type: <b>${c.conType || 'DS'}</b> | Status: <b>${c.status || 'Regular'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
                     triggerPopupExact(c.lat, c.lng, htmlPopup, -11);
                 });
@@ -394,7 +398,7 @@ window.undoLastAction = function() {
     renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺");
 }
 
-/* ====== UI MENUS ====== */
+/* ====== UI MENUS & UTILITIES ====== */
 window.openFilterModal = function() {
     const f = appState.filters;
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-filter" style="color:#d97706;"></i> Object Filter</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -618,7 +622,6 @@ window.selectSearchResult = function(type, id) {
     if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { triggerPopupExact(target.lat, target.lng, popupHtml, -10); }, 1000); }
 }
 
-/* ====== CRITICAL UPDATE: EXPANDED FORMS ====== */
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
     if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'flex'; } 
