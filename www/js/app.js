@@ -143,17 +143,18 @@ let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTile
 function initMapSystem() {
     if(map) return; 
     
-    // CRITICAL FIX: preferCanvas re-enabled for performance. Animations enabled to allow Leaflet sync.
-    map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0 }).setView([26.9150, 75.7830], 16);
+    // CRITICAL FIX 1: preferCanvas: true + animations enabled. 
+    // This allows Leaflet to natively sync SVG rendering with DOM positions during rotation.
+    map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: true, markerZoomAnimation: true, fadeAnimation: true }).setView([26.9150, 75.7830], 16);
 
-    // CRITICAL FIX: Explicit Z-Index Hierarchy Panes (DT ALWAYS ON TOP)
+    // CRITICAL FIX 2: Strict Z-Index Hierarchy Panes (DT ALWAYS ON TOP)
     map.createPane('dtPane'); map.getPane('dtPane').style.zIndex = 650;
     map.createPane('htPolePane'); map.getPane('htPolePane').style.zIndex = 620;
     map.createPane('ltPolePane'); map.getPane('ltPolePane').style.zIndex = 610;
     map.createPane('consumerPane'); map.getPane('consumerPane').style.zIndex = 600;
     map.createPane('linePane'); map.getPane('linePane').style.zIndex = 400;
 
-    // EXACT ZOOM LEVEL LOGIC (18 to 13)
+    // EXACT ZOOM LEVEL LOGIC 
     function updateMapZoomClasses() {
         if(!map) return;
         const z = map.getZoom(); const mapEl = document.getElementById('map');
@@ -209,11 +210,11 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUPS (NO DRIFT) ====== */
-function triggerPopupExact(lat, lng, htmlContent) {
+/* ====== CRITICAL FIX 3: ABSOLUTE EVENT POPUP ANCHORING ====== */
+function triggerPopupExact(lat, lng, htmlContent, yOffset = -10) {
     if(!map) return;
     // autoPan: false completely disables Leaflet's flawed bounding rect shift during rotation
-    L.popup({ autoPan: false, closeButton: true })
+    L.popup({ autoPan: false, closeButton: true, offset: [0, yOffset] })
       .setLatLng([lat, lng])
       .setContent(htmlContent)
       .openOn(map);
@@ -225,7 +226,8 @@ function renderEntireNetwork() {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(), f = appState.filters;
 
         Object.values(appState.gssNodes).forEach(gss => {
-            if (gss.code !== net.feeder.parentGss) return;
+            // FIX: String cast guarantees no type-mismatch hiding
+            if (String(gss.code) !== String(net.feeder.parentGss)) return;
             if (typeof gss.lat === 'number') {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
@@ -234,8 +236,7 @@ function renderEntireNetwork() {
                 
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
-                    // Exact Lat/Lng trigger
-                    triggerPopupExact(gss.lat, gss.lng, htmlPopup);
+                    triggerPopupExact(gss.lat, gss.lng, htmlPopup, -18);
                 });
             }
         });
@@ -255,7 +256,7 @@ function renderEntireNetwork() {
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), pane: paneName }).addTo(targetGrp);
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(p.lat, p.lng, htmlPopup);
+                    triggerPopupExact(p.lat, p.lng, htmlPopup, -r);
                 });
             });
         }
@@ -274,11 +275,10 @@ function renderEntireNetwork() {
                         svg = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="24" rx="4" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="14" y="18" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
                     }
 
-                    // Strict dtPane ensures it sits above lines and poles forever
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), pane: 'dtPane' }).addTo(featureGroups.dts);
                     m.on('click', () => {
                         const htmlPopup = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        triggerPopupExact(d.lat, d.lng, htmlPopup);
+                        triggerPopupExact(d.lat, d.lng, htmlPopup, -16);
                     });
                 }
             });
@@ -294,10 +294,10 @@ function renderEntireNetwork() {
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25, pane: 'linePane' }).addTo(lineGrp);
             L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, pane: 'linePane' }).addTo(lineGrp);
             
-            hitPoly.on('click', () => {
-                const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2;
+            hitPoly.on('click', (e) => {
                 const htmlPopup = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
-                triggerPopupExact(midLat, midLng, htmlPopup);
+                // EXACT CLICK COORDINATE POPUP (E.LATLNG)
+                triggerPopupExact(e.latlng.lat, e.latlng.lng, htmlPopup, 0);
             });
         });
 
@@ -308,11 +308,11 @@ function renderEntireNetwork() {
                 const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [18,18], iconAnchor: [9,9] }), pane: 'consumerPane' }).addTo(featureGroups.consumers);
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(c.lat, c.lng, htmlPopup);
+                    triggerPopupExact(c.lat, c.lng, htmlPopup, -9);
                 });
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
-                if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false, pane: 'linePane', className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
+                if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false, pane: 'linePane' }).addTo(featureGroups.consumerLines);
             });
         }
 
@@ -795,7 +795,7 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
-/* ====== CRITICAL FIX: EXACT SLD AUTO-FIT WITH 20% BUFFER ====== */
+/* ====== CRITICAL FIX: EXACT SLD AUTO-FIT ROTATION & 25% BUFFER ====== */
 window.generateCadSLDPdf = async function() { 
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
@@ -814,14 +814,14 @@ window.generateCadSLDPdf = async function() {
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
-    // CRITICAL FIX: 20% Spatial Zoom-Out Buffer 
-    const latBuffer = (maxLat - minLat) * 0.20; const lngBuffer = (maxLng - minLng) * 0.20;
+    // CRITICAL FIX: 25% Spatial Zoom-Out Buffer prevents truncation
+    const latBuffer = (maxLat - minLat) * 0.25; const lngBuffer = (maxLng - minLng) * 0.25;
     minLat -= latBuffer; maxLat += latBuffer; minLng -= lngBuffer; maxLng += lngBuffer;
 
     const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
     const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
     
-    // Auto-Rotate Logic
+    // Auto-Rotate Logic Matrix
     const needsRotation = latDiff > lngDiff;
     let scale, offsetX, offsetY;
 
