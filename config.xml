@@ -14,7 +14,6 @@
     <allow-intent href="geo:*" />
     
     <preference name="AndroidXEnabled" value="true" />
-    
     <icon src="res/icon.png" />
     
     <platform name="android">
