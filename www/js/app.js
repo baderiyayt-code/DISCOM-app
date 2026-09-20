@@ -193,7 +193,7 @@ function initMapSystem() {
     
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
-    map.on('click', () => window.closeObjectSheet()); // Dismiss sheet on map tap
+    map.on('click', () => window.closeObjectSheet()); 
 
     function updateMapZoomClasses() {
         if(!map) return;
@@ -209,6 +209,8 @@ function initMapSystem() {
         if (z > 17) { map.addLayer(featureGroups.ltPoles); }
         if (z > 16) { map.addLayer(featureGroups.ltLines); }
         if (z > 15) { map.addLayer(featureGroups.htPoles); }
+        
+        // Add TOP layers last so they sit at the highest point in DOM stack
         if (z > 14) { map.addLayer(featureGroups.dts); map.addLayer(featureGroups.gss); }
         
         if (z <= 13) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
@@ -226,7 +228,6 @@ function initMapSystem() {
 
     featureGroups = { gss: L.layerGroup().addTo(map), htLines: L.layerGroup().addTo(map), ltLines: L.layerGroup().addTo(map), consumerLines: L.layerGroup().addTo(map), htPoles: L.layerGroup().addTo(map), ltPoles: L.layerGroup().addTo(map), dts: L.layerGroup().addTo(map), consumers: L.layerGroup().addTo(map) };
     
-    // Crosshair Live Distance Calculation
     map.on('move', () => { 
         const c = map.getCenter(); document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
         if (document.getElementById('center-placement-pin').style.display === 'block' && appState.feeders[appState.currentFeederCode]) {
@@ -275,89 +276,44 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX: BOTTOM ACTION SHEET ENGINE (REPLACES POPUPS) ====== */
+/* ====== NEW: BOTTOM SHEET UI LOGIC ====== */
 window.openObjectSheet = function(type, id) {
-    window.haptic(15);
-    const net = getActiveNetwork();
+    window.haptic(15); const net = getActiveNetwork();
     let obj = null, title = '', subtitle = '', details = '', photo = '', actions = '';
     
     if (type === 'POLE') {
         obj = net.poles.find(x => x.id === id); if(!obj) return;
         let displayNo = obj.poleNo; if (obj.lineType === 'LT' && String(obj.poleNo).includes('-')) displayNo = String(obj.poleNo).split('-')[1];
-        title = `Pole: ${displayNo}`;
-        subtitle = `${obj.lineType || 'HT'} Line Pole`;
-        photo = obj.photo;
-        details = `
-            <div class="info-grid">
-                <div class="info-item"><span>Parent Node</span><b>${obj.dtCode || 'Feeder'}</b></div>
-                <div class="info-item"><span>Structure</span><b>${obj.structure || 'Single'}</b></div>
-                <div class="info-item"><span>Condition</span><b style="color:${(obj.condition==='Tilted'||obj.condition==='Damaged')?'#ef4444':'var(--text-main)'}">${obj.condition || 'OK'}</b></div>
-            </div>`;
-        actions = `
-            <button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('pole','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button>
-            <button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('POLE','${obj.id}','${obj.poleNo}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button>
-            <button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('pole','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
+        title = `Pole: ${displayNo}`; subtitle = `${obj.lineType || 'HT'} Line Pole`; photo = obj.photo;
+        details = `<div class="info-grid"><div class="info-item"><span>Parent Node</span><b>${obj.dtCode || 'Feeder'}</b></div><div class="info-item"><span>Structure</span><b>${obj.structure || 'Single'}</b></div><div class="info-item"><span>Condition</span><b style="color:${(obj.condition==='Tilted'||obj.condition==='Damaged')?'#ef4444':'var(--text-main)'}">${obj.condition || 'OK'}</b></div></div>`;
+        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('pole','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('POLE','${obj.id}','${obj.poleNo}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('pole','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
     } 
     else if (type === 'DT') {
         obj = net.dts.find(x => x.id === id); if(!obj) return;
-        title = `DT: ${obj.code}`;
-        subtitle = `${obj.rating} kVA | ${obj.phase || 'Three Phase'}`;
-        photo = obj.photo;
+        title = `DT: ${obj.code}`; subtitle = `${obj.rating} kVA | ${obj.phase || 'Three Phase'}`; photo = obj.photo;
         let dtCons = net.consumers.filter(c => (c.parentType === 'DT' && String(c.parentRef) === String(obj.code)) || (c.parentType === 'POLE' && net.poles.find(p => String(p.poleNo) === String(c.parentRef) && String(p.dtCode) === String(obj.code))));
         let totCons = dtCons.length; let totLoad = dtCons.reduce((sum, c) => sum + (parseFloat(c.load) || 0), 0);
-        details = `
-            <div class="info-grid">
-                <div class="info-item"><span>Mounted On</span><b>${obj.mountedOn || 'Single Pole'}</b></div>
-                <div class="info-item"><span>Total Consumers</span><b>${totCons}</b></div>
-                <div class="info-item"><span>Total Load</span><b>${totLoad.toFixed(2)} kW</b></div>
-                <div class="info-item"><span>Sr No.</span><b>${obj.srNo || 'N/A'}</b></div>
-                <div class="info-item"><span>TN No.</span><b>${obj.tn || 'N/A'}</b></div>
-            </div>`;
-        actions = `
-            <button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('dt','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button>
-            <button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('dt','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
+        details = `<div class="info-grid"><div class="info-item"><span>Mounted On</span><b>${obj.mountedOn || 'Single Pole'}</b></div><div class="info-item"><span>Total Consumers</span><b>${totCons}</b></div><div class="info-item"><span>Total Load</span><b>${totLoad.toFixed(2)} kW</b></div><div class="info-item"><span>Sr No.</span><b>${obj.srNo || 'N/A'}</b></div><div class="info-item"><span>TN No.</span><b>${obj.tn || 'N/A'}</b></div></div>`;
+        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('dt','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('dt','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
     }
     else if (type === 'CONSUMER') {
         obj = net.consumers.find(x => x.id === id); if(!obj) return;
-        title = `${obj.name}`;
-        subtitle = `${obj.conType || 'DS'} | ${obj.status || 'Regular'}`;
-        photo = obj.photo;
-        details = `
-            <div class="info-grid">
-                <div class="info-item"><span>K-Number</span><b>${obj.kno}</b></div>
-                <div class="info-item"><span>A/C No.</span><b>${obj.acNo || 'N/A'}</b></div>
-                <div class="info-item"><span>Meter No.</span><b>${obj.meterNo || 'N/A'}</b></div>
-                <div class="info-item"><span>Load</span><b>${obj.load || '1 kW'}</b></div>
-                <div class="info-item"><span>Connected To</span><b>${obj.parentRef}</b></div>
-            </div>`;
-        actions = `
-            <button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('consumer','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button>
-            <button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('CONSUMER','${obj.id}','${obj.name}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button>
-            <button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('consumer','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
+        title = `${obj.name}`; subtitle = `${obj.conType || 'DS'} | ${obj.status || 'Regular'}`; photo = obj.photo;
+        details = `<div class="info-grid"><div class="info-item"><span>K-Number</span><b>${obj.kno}</b></div><div class="info-item"><span>A/C No.</span><b>${obj.acNo || 'N/A'}</b></div><div class="info-item"><span>Meter No.</span><b>${obj.meterNo || 'N/A'}</b></div><div class="info-item"><span>Load</span><b>${obj.load || '1 kW'}</b></div><div class="info-item"><span>Connected To</span><b>${obj.parentRef}</b></div></div>`;
+        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('consumer','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('CONSUMER','${obj.id}','${obj.name}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('consumer','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
     }
     else if (type === 'LINE') {
         obj = net.lines.find(x => x.id === id); if(!obj) return;
         let spec = getLineSpec(obj.type);
-        title = `${spec.name}`;
-        subtitle = `${obj.phaseType || 'Single Phase'} Route`;
-        details = `
-            <div class="info-grid">
-                <div class="info-item"><span>From ➔ To</span><b>${obj.fromNode} ➔ ${obj.toNode}</b></div>
-                <div class="info-item"><span>Distance</span><b>${window.formatDistance(obj.distanceMeters||0)}</b></div>
-                <div class="info-item"><span>Crossing</span><b style="color:${obj.hasCrossing?'#ef4444':'inherit'}">${obj.hasCrossing? (obj.crossingRemark||'Yes') : 'None'}</b></div>
-            </div>`;
-        actions = `
-            <button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('line','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button>
-            <button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('line','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
+        title = `${spec.name}`; subtitle = `${obj.phaseType || 'Single Phase'} Route`;
+        details = `<div class="info-grid"><div class="info-item"><span>From ➔ To</span><b>${obj.fromNode} ➔ ${obj.toNode}</b></div><div class="info-item"><span>Distance</span><b>${window.formatDistance(obj.distanceMeters||0)}</b></div><div class="info-item"><span>Crossing</span><b style="color:${obj.hasCrossing?'#ef4444':'inherit'}">${obj.hasCrossing? (obj.crossingRemark||'Yes') : 'None'}</b></div></div>`;
+        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('line','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('line','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
     }
     else if (type === 'GSS') {
         obj = appState.gssNodes[id]; if(!obj) return;
-        title = `${obj.name}`;
-        subtitle = `Source Substation`;
+        title = `${obj.name}`; subtitle = `Source Substation`;
         details = `<div class="info-grid"><div class="info-item"><span>Code</span><b>${obj.code}</b></div></div>`;
-        actions = `
-            <button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('gss','${obj.code}')"><i class="fa-solid fa-pen"></i> Edit</button>
-            <button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('GSS','${obj.code}','${obj.code}')"><i class="fa-solid fa-up-down-left-right"></i> Relocate</button>`;
+        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('gss','${obj.code}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('GSS','${obj.code}','${obj.code}')"><i class="fa-solid fa-up-down-left-right"></i> Relocate</button>`;
     }
     
     let photoHtml = photo ? `<img src="${photo}" class="sheet-photo">` : '';
@@ -370,8 +326,7 @@ window.openObjectSheet = function(type, id) {
     `;
     document.getElementById('bottom-info-sheet').classList.add('open');
 };
-
-window.closeObjectSheet = function() { document.getElementById('bottom-info-sheet').classList.remove('open'); };
+window.closeObjectSheet = function() { window.haptic(15); document.getElementById('bottom-info-sheet').classList.remove('open'); };
 
 function calculateParallelCoords(p1, p2, offsetMeters) {
     const R = 6378137;
@@ -405,23 +360,70 @@ function renderEntireNetwork() {
                 if (appState.activeMove && appState.activeMove.id === p.id) return;
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
-                const color = isLT ? '#10b981' : '#fde047'; const r = isLT ? 10 : 12; const fs = isLT ? 9 : 10;
+                const baseColor = isLT ? '#10b981' : '#fde047';
                 const strokeColor = (p.condition === 'Tilted' || p.condition === 'Damaged') ? '#ef4444' : '#0f172a';
                 const zOff = isLT ? 1000 : 2000;
                 
+                // CRITICAL UPDATE: Real Structural SVGs
                 let svg = '';
+                let iconW = 30, iconH = 40, anchorX = 15, anchorY = 40;
+                
                 if (p.structure === 'Double') {
-                    svg = `<svg width="${r*2}" height="${r*2}" viewBox="0 0 ${r*2} ${r*2}" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="${r-5}" width="${r*2-4}" height="10" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="${r}" y="${r+3}" font-size="${fs-2}" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`;
+                    iconW = 36; iconH = 40; anchorX = 18; anchorY = 40;
+                    svg = `<svg width="36" height="40" viewBox="0 0 36 40" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="10" y1="8" x2="10" y2="40" stroke="${strokeColor}" stroke-width="3" />
+                        <line x1="10" y1="8" x2="10" y2="40" stroke="${baseColor}" stroke-width="1.5" />
+                        <line x1="26" y1="8" x2="26" y2="40" stroke="${strokeColor}" stroke-width="3" />
+                        <line x1="26" y1="8" x2="26" y2="40" stroke="${baseColor}" stroke-width="1.5" />
+                        <line x1="4" y1="12" x2="32" y2="12" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
+                        <line x1="4" y1="12" x2="32" y2="12" stroke="${baseColor}" stroke-width="1.5" stroke-linecap="round"/>
+                        <line x1="4" y1="18" x2="32" y2="18" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
+                        <line x1="4" y1="18" x2="32" y2="18" stroke="${baseColor}" stroke-width="1.5" stroke-linecap="round"/>
+                        <line x1="10" y1="22" x2="26" y2="34" stroke="${strokeColor}" stroke-width="1.5" />
+                        <line x1="26" y1="22" x2="10" y2="34" stroke="${strokeColor}" stroke-width="1.5" />
+                        <rect x="8" y="24" width="20" height="12" rx="4" fill="rgba(255,255,255,0.85)" stroke="${strokeColor}" stroke-width="1"/>
+                        <text x="18" y="33" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    </svg>`;
                 } else if (p.structure === 'Lattice Tower') {
-                    svg = `<svg width="${r*2}" height="${r*2}" viewBox="0 0 ${r*2} ${r*2}" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="${r*2-4}" height="${r*2-4}" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><line x1="2" y1="2" x2="${r*2-2}" y2="${r*2-2}" stroke="${strokeColor}" stroke-width="1"/><line x1="${r*2-2}" y1="2" x2="2" y2="${r*2-2}" stroke="${strokeColor}" stroke-width="1"/><text x="${r}" y="${r+3}" font-size="${fs-1}" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`;
+                    iconW = 40; iconH = 50; anchorX = 20; anchorY = 50;
+                    svg = `<svg width="40" height="50" viewBox="0 0 40 50" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="20" y1="5" x2="8" y2="50" stroke="${strokeColor}" stroke-width="2.5" />
+                        <line x1="20" y1="5" x2="8" y2="50" stroke="${baseColor}" stroke-width="1" />
+                        <line x1="20" y1="5" x2="32" y2="50" stroke="${strokeColor}" stroke-width="2.5" />
+                        <line x1="20" y1="5" x2="32" y2="50" stroke="${baseColor}" stroke-width="1" />
+                        <line x1="10" y1="15" x2="30" y2="15" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
+                        <line x1="5" y1="25" x2="35" y2="25" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
+                        <path d="M17 15 L26 25 L12 37 L29 50" fill="none" stroke="${strokeColor}" stroke-width="1"/>
+                        <path d="M23 15 L14 25 L28 37 L11 50" fill="none" stroke="${strokeColor}" stroke-width="1"/>
+                        <rect x="10" y="34" width="20" height="12" rx="4" fill="rgba(255,255,255,0.85)" stroke="${strokeColor}" stroke-width="1"/>
+                        <text x="20" y="43" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    </svg>`;
                 } else if (p.structure === 'Rail Pole') {
-                    svg = `<svg width="${r*2}" height="${r*2}" viewBox="0 0 ${r*2} ${r*2}" xmlns="http://www.w3.org/2000/svg"><path d="M4,4 H20 M12,4 V20 M4,20 H20" stroke="${strokeColor}" stroke-width="2.5" fill="none"/><text x="${r}" y="${r+3}" font-size="${fs}" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`;
+                    iconW = 24; iconH = 40; anchorX = 12; anchorY = 40;
+                    svg = `<svg width="24" height="40" viewBox="0 0 24 40" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="8" y="5" width="8" height="35" fill="${baseColor}" stroke="${strokeColor}" stroke-width="2" />
+                        <line x1="4" y1="5" x2="20" y2="5" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
+                        <line x1="4" y1="38" x2="20" y2="38" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
+                        <rect x="2" y="16" width="20" height="12" rx="4" fill="rgba(255,255,255,0.85)" stroke="${strokeColor}" stroke-width="1"/>
+                        <text x="12" y="25" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    </svg>`;
                 } else {
-                    svg = `<svg width="${r*2}" height="${r*2}" viewBox="0 0 ${r*2} ${r*2}" xmlns="http://www.w3.org/2000/svg"><circle cx="${r}" cy="${r}" r="${r-1}" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="${r}" y="${r+3}" font-size="${fs}" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`;
+                    iconW = 30; iconH = 40; anchorX = 15; anchorY = 40;
+                    svg = `<svg width="30" height="40" viewBox="0 0 30 40" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="15" y1="8" x2="15" y2="40" stroke="${strokeColor}" stroke-width="3" />
+                        <line x1="15" y1="8" x2="15" y2="40" stroke="${baseColor}" stroke-width="1.5" />
+                        <line x1="5" y1="12" x2="25" y2="12" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round" />
+                        <line x1="5" y1="12" x2="25" y2="12" stroke="${baseColor}" stroke-width="1.5" stroke-linecap="round" />
+                        <circle cx="5" cy="9" r="2" fill="${strokeColor}" />
+                        <circle cx="15" cy="9" r="2" fill="${strokeColor}" />
+                        <circle cx="25" cy="9" r="2" fill="${strokeColor}" />
+                        <rect x="5" y="20" width="20" height="12" rx="4" fill="rgba(255,255,255,0.85)" stroke="${strokeColor}" stroke-width="1"/>
+                        <text x="15" y="29" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    </svg>`;
                 }
 
                 const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [r*2, r*2], iconAnchor: [r, r] }), zIndexOffset: zOff }).addTo(targetGrp);
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [iconW, iconH], iconAnchor: [anchorX, anchorY] }), zIndexOffset: zOff }).addTo(targetGrp);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('POLE', p.id); });
             });
         }
@@ -464,7 +466,6 @@ function renderEntireNetwork() {
             linesToDraw.forEach(ld => {
                 const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
                 L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
-                
                 hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
             });
 
@@ -484,12 +485,11 @@ function renderEntireNetwork() {
                 else if(c.status === 'PDC') bgColor = '#ef4444';
                 else if(c.conType === 'NDS') bgColor = '#3b82f6';
                 
-                // CRITICAL FIX: Consumer Icons Map perfectly
-                let faIcon = '&#xf015;'; // House
-                if(c.conType === 'NDS') faIcon = '&#xf1ad;'; // Building
-                else if(c.conType === 'AG') faIcon = '&#xf4d8;'; // Plant (Seedling)
-                else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; // Industry
-                else if(c.conType === 'PHED') faIcon = '&#xf043;'; // Droplet
+                let faIcon = '&#xf015;'; 
+                if(c.conType === 'NDS') faIcon = '&#xf1ad;'; 
+                else if(c.conType === 'AG') faIcon = '&#xf4d8;'; 
+                else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; 
+                else if(c.conType === 'PHED') faIcon = '&#xf043;'; 
 
                 const svg = `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><text x="11" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text></svg>`;
                 
@@ -739,42 +739,7 @@ window.executeSecureAppReset = function() {
     localforage.clear().then(() => { localStorage.clear(); location.reload(); });
 }
 
-function updateOrphanStatus() {
-    appState.orphanPoleIds.clear(); const net = getActiveNetwork(), adj = {}, gssCode = net.feeder.parentGss, gssId = 'GSS_' + gssCode; adj[gssId] = [];
-    net.poles.forEach(p => adj['POLE_' + p.poleNo] = []); net.dts.forEach(d => adj['DT_' + d.code] = []);
-    net.dts.forEach(d => { if(d.parentPole) { const pId = 'POLE_' + d.parentPole; if (!adj[pId]) adj[pId] = []; adj[pId].push('DT_' + d.code); adj['DT_' + d.code].push(pId); } });
-    net.lines.forEach(l => { const u = String(l.fromNode), v = String(l.toNode); if (!adj[u]) adj[u] = []; if (!adj[v]) adj[v] = []; adj[u].push(v); adj[v].push(u); });
-    const visited = new Set([gssId]), queue = [gssId];
-    while (queue.length > 0) { const curr = queue.shift(); (adj[curr] || []).forEach(neighbor => { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } }); }
-    net.poles.forEach(p => { if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id); });
-    net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
-}
-
-window.toggleSearchBox = function() {
-    window.haptic(15);
-    const box = document.getElementById('searchBoxOverlay');
-    if (box.style.display === 'none') { box.style.display = 'flex'; document.getElementById('appSearchBar').focus(); } else { box.style.display = 'none'; window.clearSearch(); }
-}
-window.handleSearch = function(e) {
-    const query = e.target.value.toLowerCase().trim(), suggPanel = document.getElementById('searchSuggestions');
-    if(query.length === 0) { suggPanel.classList.remove('active'); return; }
-    const net = getActiveNetwork(); let results = [];
-    net.consumers.forEach(c => { if (String(c.kno).toLowerCase().includes(query) || (c.name && c.name.toLowerCase().includes(query))) results.push({ type: 'CONSUMER', id: c.id, title: c.name, desc: `K-No: ${c.kno} | Connected to: ${c.parentRef}` }); });
-    net.dts.forEach(d => { if (String(d.code).toLowerCase().includes(query) || String(d.rating).includes(query) || (d.location && d.location.toLowerCase().includes(query))) results.push({ type: 'DT', id: d.id, title: `DT Code: ${d.code}`, desc: `Rating: ${d.rating} kVA | Loc: ${d.location || 'N/A'}` }); });
-    if (results.length > 0) {
-        suggPanel.innerHTML = results.slice(0, 15).map(r => `<div class="suggestion-item" onclick="window.selectSearchResult('${r.type}', '${r.id}')"><div class="sugg-title"><span>${r.type === 'CONSUMER' ? '<i class="fa-solid fa-house" style="color:#3b82f6;"></i>' : '<i class="fa-solid fa-bolt" style="color:#f59e0b;"></i>'} ${r.title}</span></div><div class="sugg-desc">${r.desc}</div></div>`).join('');
-        suggPanel.classList.add('active');
-    } else { suggPanel.innerHTML = `<div style="padding:10px 12px; font-size:0.8rem; color:#64748b;">No results found</div>`; suggPanel.classList.add('active'); }
-}
-window.clearSearch = function() { document.getElementById('appSearchBar').value = ''; document.getElementById('searchSuggestions').classList.remove('active'); }
-window.selectSearchResult = function(type, id) {
-    const net = getActiveNetwork(); window.clearSearch(); window.toggleSearchBox(); let target = null;
-    if(type === 'CONSUMER') target = net.consumers.find(c => c.id === id); 
-    else if(type === 'DT') target = net.dts.find(d => d.id === id);
-    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); window.openObjectSheet(type, id); }
-}
-
-/* ====== PROGRESSIVE FORMS ====== */
+/* PROGRESSIVE FORMS WITH SMART TEXT PILL & BOTTOM ANCHORED SVGS */
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
     if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'flex'; } 
@@ -788,8 +753,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
     const net = getActiveNetwork(); const center = map.getCenter(); 
     snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
     
-    let isEdit = editId !== null;
-    let existingObj = {};
+    let isEdit = editId !== null; let existingObj = {};
     if(isEdit) {
         if(type === 'POLE' || type === 'LTPOLE') existingObj = net.poles.find(x => x.id === editId) || {};
         else if(type === 'LINE') existingObj = net.lines.find(x => x.id === editId) || {};
@@ -927,18 +891,17 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         const photoB64 = existingObj.photo || '';
 
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit Consumer':'Add Consumer'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="form-row"><label>Select Parent DT*</label><select id="inpConsDT" class="form-select" onchange="window.filterConsumerPoles()" ${isEdit?'disabled':''}>${dtOpts}</select></div>
             <div class="form-row"><label>Connects To (LT Pole / DT)*</label><select id="inpConsParent" class="form-select" ${isEdit?'disabled':''}></select></div>
-            <div class="form-row"><label>Consumer Name*</label><input type="text" id="inpConsName" class="form-input" value="${existingObj.name||''}"></div>
             <div class="form-grid-2">
                 <div class="form-row"><label>K-Number (12 Digits)*</label><input type="text" id="inpConsKno" class="form-input" value="${existingObj.kno||''}" maxlength="12" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,12);"></div>
                 <div class="form-row"><label>A/C No. (8 Digits)*</label><input type="text" id="inpConsAcNo" class="form-input" value="${existingObj.acNo||''}" maxlength="8" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,8);"></div>
             </div>
-            
             <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
-                <div class="form-row" style="${isEdit?'display:none;':''}"><label>Select Parent DT*</label><select id="inpConsDT" class="form-select" onchange="window.filterConsumerPoles()">${dtOpts}</select></div>
                 <div class="form-grid-2"><div class="form-row"><label>Consumer Type</label><select id="inpConsType" class="form-select"><option value="DS" ${selType('DS')}>DS</option><option value="NDS" ${selType('NDS')}>NDS</option><option value="AG" ${selType('AG')}>AG</option><option value="SIP/MIP" ${selType('SIP/MIP')}>SIP/MIP</option><option value="PHED" ${selType('PHED')}>PHED</option><option value="Other" ${selType('Other')}>Other</option></select></div><div class="form-row"><label>Status</label><select id="inpConsStatus" class="form-select"><option value="Regular" ${selStat('Regular')}>Regular</option><option value="DC" ${selStat('DC')}>DC</option><option value="PDC" ${selStat('PDC')}>PDC</option></select></div></div>
-                <div class="form-grid-2"><div class="form-row"><label>Meter No.</label><input type="text" id="inpConsMeter" class="form-input" value="${existingObj.meterNo||''}"></div><div class="form-row"><label>Load (kW)</label><input type="number" id="inpConsLoad" class="form-input" value="${existingObj.load||'1'}"></div></div>
+                <div class="form-grid-2"><div class="form-row"><label>Consumer Name*</label><input type="text" id="inpConsName" class="form-input" value="${existingObj.name||''}"></div><div class="form-row"><label>Meter No.</label><input type="text" id="inpConsMeter" class="form-input" value="${existingObj.meterNo||''}"></div></div>
+                <div class="form-row"><label>Load (kW)</label><input type="number" id="inpConsLoad" class="form-input" value="${existingObj.load||'1'}"></div>
                 <div style="margin-bottom:12px;">
                     <button class="btn-camera" onclick="window.capturePhoto('inpConsPhoto')"><i class="fa-solid fa-camera"></i> Capture Premises</button>
                     <input type="hidden" id="inpConsPhoto" value="${photoB64}">
@@ -1028,8 +991,6 @@ window.saveConsumerData = function(editId) {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
 
-window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
-
 function deleteDTLogic(dtId, net) {
     const d = net.dts.find(x => x.id === dtId); if(!d) return;
     const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn);
@@ -1074,59 +1035,6 @@ window.confirmObjectMove = function() {
 }
 window.cancelObjectMove = function() { window.haptic(15); appState.activeMove = null; document.getElementById('live-move-icon').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
 
-/* ====== NEW: BOTTOM SHEET UI LOGIC ====== */
-window.openObjectSheet = function(type, id) {
-    window.haptic(15); const net = getActiveNetwork();
-    let obj = null, title = '', subtitle = '', details = '', photo = '', actions = '';
-    
-    if (type === 'POLE') {
-        obj = net.poles.find(x => x.id === id); if(!obj) return;
-        let displayNo = obj.poleNo; if (obj.lineType === 'LT' && String(obj.poleNo).includes('-')) displayNo = String(obj.poleNo).split('-')[1];
-        title = `Pole: ${displayNo}`; subtitle = `${obj.lineType || 'HT'} Line Pole`; photo = obj.photo;
-        details = `<div class="info-grid"><div class="info-item"><span>Parent Node</span><b>${obj.dtCode || 'Feeder'}</b></div><div class="info-item"><span>Structure</span><b>${obj.structure || 'Single'}</b></div><div class="info-item"><span>Condition</span><b style="color:${(obj.condition==='Tilted'||obj.condition==='Damaged')?'#ef4444':'var(--text-main)'}">${obj.condition || 'OK'}</b></div></div>`;
-        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('pole','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('POLE','${obj.id}','${obj.poleNo}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('pole','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
-    } 
-    else if (type === 'DT') {
-        obj = net.dts.find(x => x.id === id); if(!obj) return;
-        title = `DT: ${obj.code}`; subtitle = `${obj.rating} kVA | ${obj.phase || 'Three Phase'}`; photo = obj.photo;
-        let dtCons = net.consumers.filter(c => (c.parentType === 'DT' && String(c.parentRef) === String(obj.code)) || (c.parentType === 'POLE' && net.poles.find(p => String(p.poleNo) === String(c.parentRef) && String(p.dtCode) === String(obj.code))));
-        let totCons = dtCons.length; let totLoad = dtCons.reduce((sum, c) => sum + (parseFloat(c.load) || 0), 0);
-        details = `<div class="info-grid"><div class="info-item"><span>Mounted On</span><b>${obj.mountedOn || 'Single Pole'}</b></div><div class="info-item"><span>Total Consumers</span><b>${totCons}</b></div><div class="info-item"><span>Total Load</span><b>${totLoad.toFixed(2)} kW</b></div><div class="info-item"><span>Sr No.</span><b>${obj.srNo || 'N/A'}</b></div><div class="info-item"><span>TN No.</span><b>${obj.tn || 'N/A'}</b></div></div>`;
-        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('dt','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('dt','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
-    }
-    else if (type === 'CONSUMER') {
-        obj = net.consumers.find(x => x.id === id); if(!obj) return;
-        title = `${obj.name}`; subtitle = `${obj.conType || 'DS'} | ${obj.status || 'Regular'}`; photo = obj.photo;
-        details = `<div class="info-grid"><div class="info-item"><span>K-Number</span><b>${obj.kno}</b></div><div class="info-item"><span>A/C No.</span><b>${obj.acNo || 'N/A'}</b></div><div class="info-item"><span>Meter No.</span><b>${obj.meterNo || 'N/A'}</b></div><div class="info-item"><span>Load</span><b>${obj.load || '1 kW'}</b></div><div class="info-item"><span>Connected To</span><b>${obj.parentRef}</b></div></div>`;
-        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('consumer','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('CONSUMER','${obj.id}','${obj.name}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('consumer','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
-    }
-    else if (type === 'LINE') {
-        obj = net.lines.find(x => x.id === id); if(!obj) return;
-        let spec = getLineSpec(obj.type);
-        title = `${spec.name}`; subtitle = `${obj.phaseType || 'Single Phase'} Route`;
-        details = `<div class="info-grid"><div class="info-item"><span>From ➔ To</span><b>${obj.fromNode} ➔ ${obj.toNode}</b></div><div class="info-item"><span>Distance</span><b>${window.formatDistance(obj.distanceMeters||0)}</b></div><div class="info-item"><span>Crossing</span><b style="color:${obj.hasCrossing?'#ef4444':'inherit'}">${obj.hasCrossing? (obj.crossingRemark||'Yes') : 'None'}</b></div></div>`;
-        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('line','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('line','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
-    }
-    else if (type === 'GSS') {
-        obj = appState.gssNodes[id]; if(!obj) return;
-        title = `${obj.name}`; subtitle = `Source Substation`;
-        details = `<div class="info-grid"><div class="info-item"><span>Code</span><b>${obj.code}</b></div></div>`;
-        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('gss','${obj.code}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('GSS','${obj.code}','${obj.code}')"><i class="fa-solid fa-up-down-left-right"></i> Relocate</button>`;
-    }
-    
-    let photoHtml = photo ? `<img src="${photo}" class="sheet-photo">` : '';
-    document.getElementById('obj-sheet-content').innerHTML = `
-        ${photoHtml}
-        <h3 class="sheet-obj-title">${title}</h3>
-        <p class="sheet-obj-subtitle">${subtitle}</p>
-        ${details}
-        <div class="sheet-actions-row">${actions}</div>
-    `;
-    document.getElementById('bottom-info-sheet').classList.add('open');
-};
-window.closeObjectSheet = function() { window.haptic(15); document.getElementById('bottom-info-sheet').classList.remove('open'); };
-
-/* ====== FILE EXPORT LOGIC ====== */
 function getFormattedDateTime() {
     const d = new Date(); const pad = (n) => n.toString().padStart(2, '0');
     return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
@@ -1253,7 +1161,7 @@ window.generateCadSLDPdf = async function() {
                 doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
                 doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
             }
-
+            
             if (l.hasCrossing) {
                 const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2;
                 doc.setDrawColor(239, 68, 68); doc.setLineWidth(1);
