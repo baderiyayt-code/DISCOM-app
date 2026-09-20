@@ -54,9 +54,9 @@ const i18n = {
         export: "डेटा निर्यात (डाउनलोड)", exportPdf: "एसएलडी पीडीएफ (SLD PDF)", exportDxf: "DXF निर्यात", exportKml: "KML निर्यात", exportCsv: "CSV निर्यात", 
         importLabel: "बैकअप और रीस्टोर", exportJson: "बैकअप निर्यात (JSON)", importJson: "बैकअप आयात (JSON)", system: "सिस्टम", settings: "सेटिंग्स", about: "ऐप के बारे में",
         appLanguage: "ऐप की भाषा", distUnit: "दूरी इकाई", gpsInterval: "जीपीएस अंतराल", gpsAcc: "जीपीएस सटीकता", resetData: "ऐप डेटा रीसेट करें",
-        confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान set करें", target: "लक्ष्य",
+        confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान सेट करें", target: "लक्ष्य",
         toastSettings: "सेटिंग्स सहेजी गईं!", toastDel: "सफलतापूर्वक हटा दिया गया!", toastImport: "सफलतापूर्वक आयात किया गया!",
-        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT कोड)...",
+        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT कोड)...",
         htPole: "एचटी पोल", ltPole: "एलटी पोल", line: "लाइन", dt: "डीटी (ट्रांसफार्मर)", consumer: "उपभोक्ता", logout: "सुरक्षित लॉगआउट"
     }
 };
@@ -287,7 +287,8 @@ window.openObjectSheet = function(type, id) {
     } 
     else if (type === 'DT') {
         obj = net.dts.find(x => x.id === id); if(!obj) return;
-        title = `DT: ${obj.code}`; subtitle = `${obj.rating} kVA | ${obj.phase || 'Three Phase'}`; photo = obj.photo;
+        let dtNameStr = obj.name ? obj.name : `DT Code: ${obj.code}`;
+        title = `${dtNameStr}`; subtitle = `Code: ${obj.code} | ${obj.rating} kVA | ${obj.phase || 'Three Phase'}`; photo = obj.photo;
         let dtCons = net.consumers.filter(c => (c.parentType === 'DT' && String(c.parentRef) === String(obj.code)) || (c.parentType === 'POLE' && net.poles.find(p => String(p.poleNo) === String(c.parentRef) && String(p.dtCode) === String(obj.code))));
         let totCons = dtCons.length; let totLoad = dtCons.reduce((sum, c) => sum + (parseFloat(c.load) || 0), 0);
         details = `<div class="info-grid"><div class="info-item"><span>Mounted On</span><b>${obj.mountedOn || 'Single Pole'}</b></div><div class="info-item"><span>Total Consumers</span><b>${totCons}</b></div><div class="info-item"><span>Total Load</span><b>${totLoad.toFixed(2)} kW</b></div><div class="info-item"><span>Sr No.</span><b>${obj.srNo || 'N/A'}</b></div><div class="info-item"><span>TN No.</span><b>${obj.tn || 'N/A'}</b></div></div>`;
@@ -427,10 +428,9 @@ function renderEntireNetwork() {
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const numRating = String(d.rating).replace(/[^0-9]/g, '');
                     
-                    // CRITICAL UPDATE: Detailed 1-Phase & 3-Phase SVGs
                     let svg = '';
                     if(d.phase === 'Single Phase') {
-                        svg = `<svg width="28" height="46" viewBox="0 0 28 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                        svg = `<svg width="100%" height="100%" viewBox="0 0 28 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
                             <g stroke="#0f172a" stroke-width="1.5" stroke-linejoin="round">
                                 <line x1="14" y1="14" x2="14" y2="4"/>
                                 <polygon points="14,2 10,5 18,5" fill="#e2e8f0"/>
@@ -443,7 +443,7 @@ function renderEntireNetwork() {
                             <text x="14" y="35" font-size="11" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
                         </svg>`;
                     } else {
-                        svg = `<svg width="40" height="46" viewBox="0 0 40 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                        svg = `<svg width="100%" height="100%" viewBox="0 0 40 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
                             <g stroke="#0f172a" stroke-width="1.5" stroke-linejoin="round">
                                 <line x1="10" y1="14" x2="10" y2="4"/>
                                 <polygon points="10,2 7,5 13,5" fill="#e2e8f0"/>
@@ -465,7 +465,7 @@ function renderEntireNetwork() {
                         </svg>`;
                     }
 
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: d.phase === 'Single Phase' ? [28, 46] : [40, 46], iconAnchor: d.phase === 'Single Phase' ? [14, 23] : [20, 23] }), zIndexOffset: 90000 }).addTo(featureGroups.dts);
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: d.phase === 'Single Phase' ? [20, 33] : [28, 33], iconAnchor: d.phase === 'Single Phase' ? [10, 16.5] : [14, 16.5] }), zIndexOffset: 90000 }).addTo(featureGroups.dts);
                     m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('DT', d.id); });
                 }
             });
@@ -790,7 +790,7 @@ window.handleSearch = function(e) {
     if(query.length === 0) { suggPanel.classList.remove('active'); return; }
     const net = getActiveNetwork(); let results = [];
     net.consumers.forEach(c => { if (String(c.kno).toLowerCase().includes(query) || (c.name && c.name.toLowerCase().includes(query))) results.push({ type: 'CONSUMER', id: c.id, title: c.name, desc: `K-No: ${c.kno} | Connected to: ${c.parentRef}` }); });
-    net.dts.forEach(d => { if (String(d.code).toLowerCase().includes(query) || String(d.rating).includes(query) || (d.location && d.location.toLowerCase().includes(query))) results.push({ type: 'DT', id: d.id, title: `DT Code: ${d.code}`, desc: `Rating: ${d.rating} kVA | Loc: ${d.location || 'N/A'}` }); });
+    net.dts.forEach(d => { if (String(d.code).toLowerCase().includes(query) || String(d.rating).includes(query) || (d.location && d.location.toLowerCase().includes(query)) || (d.name && d.name.toLowerCase().includes(query))) results.push({ type: 'DT', id: d.id, title: d.name ? d.name : `DT Code: ${d.code}`, desc: `Rating: ${d.rating} kVA | Loc: ${d.location || 'N/A'}` }); });
     if (results.length > 0) {
         suggPanel.innerHTML = results.slice(0, 15).map(r => `<div class="suggestion-item" onclick="window.selectSearchResult('${r.type}', '${r.id}')"><div class="sugg-title"><span>${r.type === 'CONSUMER' ? '<i class="fa-solid fa-house" style="color:#3b82f6;"></i>' : '<i class="fa-solid fa-bolt" style="color:#f59e0b;"></i>'} ${r.title}</span></div><div class="sugg-desc">${r.desc}</div></div>`).join('');
         suggPanel.classList.add('active');
@@ -943,15 +943,20 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         
         const selMount = m => (existingObj.mountedOn === m) ? 'selected' : ''; const selPhase = p => (existingObj.phase === p) ? 'selected' : '';
         const photoB64 = existingObj.photo || '';
+        
+        // CRITICAL FIX: Smart Title for DT Update
+        const titleText = isEdit ? (existingObj.name || `DT: ${existingObj.code}`) : 'Add DT';
 
-        openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit DT':'Add DT'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+        openModal(`<div class="sheet-head"><div class="sheet-title">${titleText}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div class="form-row"><label>Connected To (HT Node)*</label><select id="inpDTParent" class="form-select" ${isEdit?'disabled':''}>${parentOpts}</select></div>
+            
+            <div class="form-row"><label>DT Name / Location</label><input type="text" id="inpDTName" class="form-input" value="${existingObj.name||''}" placeholder="e.g. Subhash Chowk Transformer"></div>
+            
             <div class="form-grid-2"><div class="form-row"><label>DT Code*</label><input type="number" id="inpDTCode" class="form-input" value="${existingObj.code || Math.floor(Math.random()*9000)}" ${isEdit?'disabled':''}></div><div class="form-row"><label>Rating (kVA)*</label><select id="inpDTRating" class="form-select"></select></div></div>
             <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
                 <div class="form-grid-2"><div class="form-row"><label>Phase*</label><select id="inpDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', '${existingObj.rating||''}')"><option value="Three Phase" ${selPhase('Three Phase')}>Three Phase</option><option value="Single Phase" ${selPhase('Single Phase')}>Single Phase</option></select></div><div class="form-row"><label>Mounted On</label><select id="inpDTMount" class="form-select"><option value="Double Pole Structure" ${selMount('Double Pole Structure')}>Double Pole Structure</option><option value="Single Pole" ${selMount('Single Pole')}>Single Pole</option></select></div></div>
                 <div class="form-grid-2"><div class="form-row"><label>Sr. No</label><input type="text" id="inpDTSrNo" class="form-input" value="${existingObj.srNo||''}"></div><div class="form-row"><label>TN Number</label><input type="text" id="inpDTTN" class="form-input" value="${existingObj.tn||''}"></div></div>
-                <div class="form-row"><label>Location / Landmark</label><input type="text" id="inpDTLocation" class="form-input" value="${existingObj.location||''}" placeholder="e.g. Near Main Market"></div>
                 <div style="margin-bottom:12px;">
                     <button class="btn-camera" onclick="window.capturePhoto('inpDTPhoto')"><i class="fa-solid fa-camera"></i> Capture DT Photo</button>
                     <input type="hidden" id="inpDTPhoto" value="${photoB64}">
@@ -1058,18 +1063,19 @@ window.saveLineData = function(editId) {
 }
 
 window.saveDTData = function(editId) {
-    window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value, location = document.getElementById('inpDTLocation').value.trim();
+    window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value;
+    const name = document.getElementById('inpDTName').value.trim();
     const srNo = document.getElementById('inpDTSrNo').value.trim(); const tn = document.getElementById('inpDTTN').value.trim(); const mountedOn = document.getElementById('inpDTMount').value; const photo = document.getElementById('inpDTPhoto').value;
     if (!code) return alert(t("errReq")); const net = getActiveNetwork();
     
     if(editId) {
         if (net.dts.some(d => d.id !== editId && String(d.code) === code)) return alert(t("alertExists"));
         let d = net.dts.find(x => x.id === editId); if(!d) return;
-        d.code = code; d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
+        d.code = code; d.name = name; d.rating = rating; d.phase = phase; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
     } else {
         if (net.dts.some(d => String(d.code) === code)) return alert(t("alertExists"));
         const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); let lat = net.feeder.lat, lng = net.feeder.lng; if (p) { lat = p.lat; lng = p.lng; }
-        net.dts.push({ id: 'DT_'+Date.now(), parentPole: parentRef, code, rating, phase, srNo, tn, mountedOn, location, photo, lat, lng });
+        net.dts.push({ id: 'DT_'+Date.now(), parentPole: parentRef, code, name, rating, phase, srNo, tn, mountedOn, photo, lat, lng });
     }
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
