@@ -95,7 +95,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .orphan-pulse svg circle, .orphan-pulse svg rect, .orphan-pulse svg polygon, .orphan-pulse svg path { fill: #ef4444 !important; animation: redGlow 1s infinite !important; }
 @keyframes redGlow { 0% { filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0.8)); } 70% { filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0)); } 100% { filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0)); } }
 
-/* CSS Classes for Layer Management */
+/* CSS Classes for Zoom Layer Management */
 .hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { display: none !important; pointer-events: none !important; }
 .hide-lt-poles .lt-pole-icon { display: none !important; pointer-events: none !important; }
 .hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
@@ -141,5 +141,5 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .menu-link-btn { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--radius-md); font-size: 0.9rem; font-weight: 600; cursor: pointer; background: transparent; color: var(--text-main);}
 .menu-link-btn i { font-size: 1.1rem; width: 20px; text-align: center; }
 
-#app-toast { fixed; top: 120px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #1e293b; color: #ffffff; padding: 12px 20px; border-radius: 12px; font-size: 0.9rem; font-weight: 600; box-shadow: var(--shadow-md); z-index: 5000; opacity: 0; transition: all 0.3s; display: flex; align-items: center; gap: 10px; width: max-content; max-width: 90%; pointer-events: none; }
+#app-toast { position: fixed; top: 120px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #1e293b; color: #ffffff; padding: 12px 20px; border-radius: 12px; font-size: 0.9rem; font-weight: 600; box-shadow: var(--shadow-md); z-index: 5000; opacity: 0; transition: all 0.3s; display: flex; align-items: center; gap: 10px; width: max-content; max-width: 90%; pointer-events: none; }
 #app-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
