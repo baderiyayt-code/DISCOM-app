@@ -55,7 +55,7 @@ const i18n = {
         appLanguage: "ऐप की भाषा", distUnit: "दूरी इकाई", gpsInterval: "जीपीएस अंतराल", gpsAcc: "जीपीएस सटीकता", resetData: "ऐप डेटा रीसेट करें",
         confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान सेट करें", target: "लक्ष्य",
         toastSettings: "सेटिंग्स सहेजी गईं!", toastDel: "सफलतापूर्वक हटा दिया गया!", toastImport: "सफलतापूर्वक आयात किया गया!",
-        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT Code)...",
+        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT कोड)...",
         htPole: "एचटी पोल", ltPole: "एलटी पोल", line: "लाइन", dt: "डीटी (ट्रांसफार्मर)", consumer: "उपभोक्ता", logout: "सुरक्षित लॉगआउट"
     }
 };
@@ -189,7 +189,6 @@ window.capturePhoto = function(targetId) {
 function initMapSystem() {
     if(map) return; 
     
-    // CRITICAL FIX 1: Using L.featureGroup guarantees safe canvas contexts for rendering
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
     map.on('click', () => window.closeObjectSheet()); 
@@ -278,8 +277,7 @@ window.openObjectSheet = function(type, id) {
     window.haptic(15); const net = getActiveNetwork();
     let obj = null, title = '', subtitle = '', details = '', photo = '', actions = '';
     
-    // CRITICAL FIX 2: Dynamic pass of LTPOLE identifier to ensure proper form loads
-    if (type === 'POLE' || type === 'LTPOLE') {
+    if (type === 'POLE') {
         obj = net.poles.find(x => x.id === id); if(!obj) return;
         let displayNo = obj.poleNo; if (obj.lineType === 'LT' && String(obj.poleNo).includes('-')) displayNo = String(obj.poleNo).split('-')[1];
         title = `Pole: ${displayNo}`; subtitle = `${obj.lineType || 'HT'} Line Pole`; photo = obj.photo;
@@ -632,7 +630,6 @@ window.calcDistance = function(lat1, lon1, lat2, lon2) {
 window.formatDistance = function(m) { return (appState.settings.unit === 'km') ? (m / 1000).toFixed(3) + ' KM' : m.toFixed(1) + ' M'; }
 window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a, b) => window.calcDistance(lat, lng, a.lat, a.lng) - window.calcDistance(lat, lng, b.lat, b.lng)); }
 
-// CRITICAL FIX 1: dash: undefined properly enables canvas drawing without crashing
 function getLineSpec(type) {
     const t = (type || '').toUpperCase();
     if (t.includes('UG CABLE')) return { name: '11 KV UG CABLE', color: '#000000', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'ug-cable-line' };
@@ -845,7 +842,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         const photoB64 = existingObj.photo || ''; const showPhoto = (existingObj.condition==='Tilted'||existingObj.condition==='Damaged') ? 'block' : 'none';
         
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit HT Pole':'Add HT Pole'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Pole Number*</label><input type="text" id="inpPoleNo" class="form-input" value="${nextNo}" ${isEdit?'readonly disabled style="background:var(--bg-base);"':''}></div>
+            <div class="form-row"><label>Pole Number*</label><input type="number" id="inpPoleNo" class="form-input" value="${nextNo}" ${isEdit?'readonly disabled style="background:var(--bg-base);"':''}></div>
             <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
                 <div class="form-row"><label>Pole Structure</label><select id="inpPoleStruct" class="form-select"><option value="Single" ${selStruct('Single')}>Single Pole</option><option value="Double" ${selStruct('Double')}>Double Pole</option><option value="Lattice Tower" ${selStruct('Lattice Tower')}>Lattice Tower</option><option value="Rail Pole" ${selStruct('Rail Pole')}>Rail Pole</option></select></div>
@@ -958,7 +955,6 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
                 <div class="form-grid-2"><div class="form-row"><label>Phase*</label><select id="inpDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', '${existingObj.rating||''}')"><option value="Three Phase" ${selPhase('Three Phase')}>Three Phase</option><option value="Single Phase" ${selPhase('Single Phase')}>Single Phase</option></select></div><div class="form-row"><label>Mounted On</label><select id="inpDTMount" class="form-select"><option value="Double Pole Structure" ${selMount('Double Pole Structure')}>Double Pole Structure</option><option value="Single Pole" ${selMount('Single Pole')}>Single Pole</option></select></div></div>
                 <div class="form-grid-2"><div class="form-row"><label>Sr. No</label><input type="text" id="inpDTSrNo" class="form-input" value="${existingObj.srNo||''}"></div><div class="form-row"><label>TN Number</label><input type="text" id="inpDTTN" class="form-input" value="${existingObj.tn||''}"></div></div>
-                <div class="form-row"><label>Location / Landmark</label><input type="text" id="inpDTLocation" class="form-input" value="${existingObj.location||''}" placeholder="e.g. Near Main Market"></div>
                 <div style="margin-bottom:12px;">
                     <button class="btn-camera" onclick="window.capturePhoto('inpDTPhoto')"><i class="fa-solid fa-camera"></i> Capture DT Photo</button>
                     <input type="hidden" id="inpDTPhoto" value="${photoB64}">
@@ -1029,7 +1025,7 @@ window.saveEditedGss = function(code) {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("GSS Updated"); 
 }
 
-// CRITICAL FIX 4: Safe pole data extraction that doesn't crash on newly spawned LT poles
+// CRITICAL FIX: Safe element checking for LT Pole save
 window.savePoleData = function(editId) { 
     window.haptic(30); saveSnapshot(); 
     const category = document.getElementById('inpPoleCategory').value;
@@ -1055,7 +1051,6 @@ window.savePoleData = function(editId) {
     } else {
         let dtCode = category === 'LT' ? document.getElementById('inpLTPoleDT').value : undefined;
         
-        // Auto-generate LT pole number if it's new and doesn't have an input element
         if (category === 'LT' && !no) {
             const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode));
             no = `${dtCode}-${existingLTPoles.length + 1}`;
@@ -1150,15 +1145,11 @@ window.deleteEntity = function(type, id) {
 window.startObjectMove = function(type, id, title) {
     window.haptic(15); window.closeObjectSheet(); appState.activeMove = { type, id }; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'flex'; document.getElementById('moveTargetTitle').innerText = `Move: ${title}`;
     let target = null; let htmlContent = '';
-    if(type === 'GSS') { target = appState.gssNodes[id]; htmlContent = `<svg width="44" height="48" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><text x="22" y="30" font-size="12" font-weight="900" fill="#fff" text-anchor="middle">GSS</text></svg>`; } 
+    if(type === 'GSS') { target = appState.gssNodes[id]; htmlContent = `<div class="gss-square-icon" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><span>GSS</span></div>`; } 
     else {
         const net = getActiveNetwork(); 
-        if (type === 'POLE') { 
-            target = net.poles.find(x => x.id === id); const isLT = target.lineType === 'LT'; let displayNo = target.poleNo; if (isLT && String(target.poleNo).includes('-')) displayNo = String(target.poleNo).split('-')[1]; 
-            const color = isLT ? '#10b981' : '#fde047';
-            htmlContent = `<svg width="30" height="44" viewBox="0 0 30 44" xmlns="http://www.w3.org/2000/svg"><path d="M 15 16 L 15 44" stroke="#0f172a" stroke-width="4"/><path d="M 15 16 L 15 44" stroke="${color}" stroke-width="2"/><rect x="0" y="0" width="30" height="14" rx="4" fill="${color}" stroke="#0f172a" stroke-width="1.5"/><text x="15" y="10" font-size="9" font-weight="900" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`; 
-        } 
-        else if (type === 'CONSUMER') { target = net.consumers.find(x => x.id === id); htmlContent = `<svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg"><circle cx="13" cy="11" r="10" fill="#10b981" stroke="white" stroke-width="1.5"/></svg>`; }
+        if (type === 'POLE') { target = net.poles.find(x => x.id === id); const isLT = target.lineType === 'LT'; let displayNo = target.poleNo; if (isLT && String(target.poleNo).includes('-')) displayNo = String(target.poleNo).split('-')[1]; htmlContent = `<div class="${isLT ? 'lt-pole-icon' : 'pole-marker-icon'}" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><span>${displayNo}</span></div>`; } 
+        else if (type === 'CONSUMER') { target = net.consumers.find(x => x.id === id); htmlContent = `<div class="consumer-marker-icon" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><i class="fa-solid fa-house"></i></div>`; }
     }
     if (target && target.lat && map) { map.panTo([target.lat, target.lng]); const liveIconContainer = document.getElementById('live-move-icon'); liveIconContainer.innerHTML = htmlContent; liveIconContainer.style.display = 'block'; renderEntireNetwork(); }
 }
@@ -1372,6 +1363,25 @@ let appInitialized = false;
 async function initializeApplication() {
     if(appInitialized) return;
     appInitialized = true;
+
+    // CRITICAL UPDATE: Cordova Permissions Request Logic
+    if (window.cordova && cordova.plugins && cordova.plugins.permissions) {
+        const permissions = cordova.plugins.permissions;
+        const reqList = [
+            permissions.ACCESS_FINE_LOCATION,
+            permissions.ACCESS_COARSE_LOCATION,
+            permissions.READ_EXTERNAL_STORAGE,
+            permissions.WRITE_EXTERNAL_STORAGE,
+            permissions.CAMERA
+        ];
+        permissions.hasPermission(reqList, function(status) {
+            if (!status.hasPermission) {
+                permissions.requestPermissions(reqList, function(status) {
+                    if(!status.hasPermission) showToast("Permissions required for full features!");
+                }, function(){});
+            }
+        });
+    }
     
     try {
         document.getElementById('app-container').style.display = 'none'; 
