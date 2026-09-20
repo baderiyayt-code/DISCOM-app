@@ -13,14 +13,16 @@
     "cordova-plugin-camera": "^7.0.0",
     "cordova-plugin-geolocation": "^5.0.0",
     "cordova-plugin-file": "^8.0.0",
-    "cordova-plugin-vibration": "^3.1.1"
+    "cordova-plugin-vibration": "^3.1.1",
+    "cordova-plugin-android-permissions": "^1.1.5"
   },
   "cordova": {
     "plugins": {
       "cordova-plugin-camera": {},
       "cordova-plugin-geolocation": {},
       "cordova-plugin-file": {},
-      "cordova-plugin-vibration": {}
+      "cordova-plugin-vibration": {},
+      "cordova-plugin-android-permissions": {}
     },
     "platforms": [
       "android"
