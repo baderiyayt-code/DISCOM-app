@@ -20,7 +20,6 @@ let appState = {
 let historyStack = [];
 let map = null;
 
-// HAPTIC WRAPPER
 window.haptic = function(pattern) {
     if (window.cordova && navigator.vibrate) { navigator.vibrate(pattern); }
 }
@@ -190,6 +189,7 @@ window.capturePhoto = function(targetId) {
 function initMapSystem() {
     if(map) return; 
     
+    // CRITICAL FIX: Reverting to FeatureGroups ensures safe canvas redraws without missing polylines.
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
     map.on('click', () => window.closeObjectSheet()); 
@@ -223,7 +223,8 @@ function initMapSystem() {
 
     window.toggleMapLayer = function() { window.haptic(15); map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name; }
 
-    featureGroups = { gss: L.layerGroup().addTo(map), htLines: L.layerGroup().addTo(map), ltLines: L.layerGroup().addTo(map), consumerLines: L.layerGroup().addTo(map), htPoles: L.layerGroup().addTo(map), ltPoles: L.layerGroup().addTo(map), dts: L.layerGroup().addTo(map), consumers: L.layerGroup().addTo(map) };
+    // Using FeatureGroup to prevent Leaflet Canvas drawing context drops.
+    featureGroups = { gss: L.featureGroup().addTo(map), htLines: L.featureGroup().addTo(map), ltLines: L.featureGroup().addTo(map), consumerLines: L.featureGroup().addTo(map), htPoles: L.featureGroup().addTo(map), ltPoles: L.featureGroup().addTo(map), dts: L.featureGroup().addTo(map), consumers: L.featureGroup().addTo(map) };
     
     map.on('move', () => { 
         const c = map.getCenter(); document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
@@ -283,7 +284,7 @@ window.openObjectSheet = function(type, id) {
         let displayNo = obj.poleNo; if (obj.lineType === 'LT' && String(obj.poleNo).includes('-')) displayNo = String(obj.poleNo).split('-')[1];
         title = `Pole: ${displayNo}`; subtitle = `${obj.lineType || 'HT'} Line Pole`; photo = obj.photo;
         details = `<div class="info-grid"><div class="info-item"><span>Parent Node</span><b>${obj.dtCode || 'Feeder'}</b></div><div class="info-item"><span>Structure</span><b>${obj.structure || 'Single'}</b></div><div class="info-item"><span>Condition</span><b style="color:${(obj.condition==='Tilted'||obj.condition==='Damaged')?'#ef4444':'var(--text-main)'}">${obj.condition || 'OK'}</b></div></div>`;
-        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('pole','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('POLE','${obj.id}','${obj.poleNo}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('pole','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
+        actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('${obj.lineType === 'LT' ? 'LTPOLE' : 'POLE'}','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('POLE','${obj.id}','${obj.poleNo}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('pole','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
     } 
     else if (type === 'DT') {
         obj = net.dts.find(x => x.id === id); if(!obj) return;
@@ -346,7 +347,7 @@ function renderEntireNetwork() {
             if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
                 const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
-                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 4000 }).addTo(featureGroups.gss);
+                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 95000 }).addTo(featureGroups.gss);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', activeGss.code); });
             }
         }
@@ -362,7 +363,6 @@ function renderEntireNetwork() {
                 const strokeColor = isAlert ? '#ef4444' : '#0f172a';
                 const zOff = isLT ? 1000 : 2000;
                 
-                // CRITICAL FIX: Real SVG Paths for structural poles with bottom-center anchoring
                 let svg = ''; let w = 30, h = 44, ax = 15, ay = 44;
                 const alertBadge = isAlert ? `<circle cx="${w-4}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-4}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
 
@@ -475,11 +475,12 @@ function renderEntireNetwork() {
                 else if(c.status === 'PDC') bgColor = '#ef4444';
                 else if(c.conType === 'NDS') bgColor = '#3b82f6';
                 
-                let faIcon = '&#xf015;'; 
-                if(c.conType === 'NDS') faIcon = '&#xf1ad;'; 
-                else if(c.conType === 'AG') faIcon = '&#xf4d8;'; 
-                else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; 
-                else if(c.conType === 'PHED') faIcon = '&#xf043;'; 
+                // CRITICAL FIX: Consumer Icons Map perfectly
+                let faIcon = '&#xf015;'; // House
+                if(c.conType === 'NDS') faIcon = '&#xf1ad;'; // Building
+                else if(c.conType === 'AG') faIcon = '&#xf4d8;'; // Plant (Seedling)
+                else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; // Industry
+                else if(c.conType === 'PHED') faIcon = '&#xf043;'; // Droplet
 
                 const svg = `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><text x="11" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text></svg>`;
                 
@@ -593,9 +594,10 @@ window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a
 
 function getLineSpec(type) {
     const t = (type || '').toUpperCase();
-    if (t.includes('UG CABLE')) return { name: '11 KV UG CABLE', color: '#000000', weight: 3.5, dash: null, filterKey: 'lines11', lineClass: 'ht-line-path' };
-    if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 2.2, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path' };
-    return { name: '11 KV LINE', color: '#2563eb', weight: 3.5, dash: null, filterKey: 'lines11', lineClass: 'ht-line-path' };
+    // CRITICAL FIX: dash: undefined prevents canvas context crash
+    if (t.includes('UG CABLE')) return { name: '11 KV UG CABLE', color: '#000000', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'ht-line-path' };
+    if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 2.2, dash: undefined, filterKey: 'linesLT', lineClass: 'lt-line-path' };
+    return { name: '11 KV LINE', color: '#2563eb', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'ht-line-path' };
 }
 
 function getNodeCoords(nodeId) { 
@@ -787,7 +789,17 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         else if(type === 'CONSUMER') existingObj = net.consumers.find(x => x.id === editId) || {};
     }
 
-    if (type === 'POLE') {
+    // CRITICAL FIX 3: Object Coordinates Lock. Prevents moving existing objects to map center during editing.
+    const formLat = isEdit ? (existingObj.lat || snapLat) : snapLat;
+    const formLng = isEdit ? (existingObj.lng || snapLng) : snapLng;
+
+    if (type === 'GSS') {
+        const g = appState.gssNodes[editId]; if (!g) return;
+        openModal(`<div class="sheet-head"><div class="sheet-title">Edit GSS</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="form-row"><label>GSS Name*</label><input type="text" id="editGssName" class="form-input" value="${g.name}"></div>
+        <button class="btn-action-primary" onclick="window.saveEditedGss('${g.code}')">Save Changes</button>`);
+    }
+    else if (type === 'POLE') {
         const nextNo = isEdit ? existingObj.poleNo : (net.poles.filter(p => p.lineType !== 'LT').length + 1);
         const selStruct = s => (existingObj.structure === s) ? 'selected' : '';
         const selCond = c => (existingObj.condition === c) ? 'selected' : '';
@@ -805,18 +817,20 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
                     <img id="inpPolePhoto_preview" class="photo-preview" src="${photoB64}" style="display:${photoB64?'block':'none'}">
                 </div>
             </div>
-            <input type="hidden" id="inpPoleCategory" value="HT"><input type="hidden" id="inpLat" value="${snapLat}"><input type="hidden" id="inpLng" value="${snapLng}">
+            <input type="hidden" id="inpPoleCategory" value="HT"><input type="hidden" id="inpLat" value="${formLat}"><input type="hidden" id="inpLng" value="${formLng}">
             <button class="btn-action-primary" onclick="window.savePoleData('${editId || ''}')">Save HT Pole</button>`);
     } 
     else if (type === 'LTPOLE') {
         if (!isEdit && net.dts.length === 0) return alert("You must add a DT first before adding an LT Pole!");
         let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); 
         const dtOpts = sortedDTs.map(d => `<option value="${d.id}" ${existingObj.dtCode===String(d.id)?'selected':''}>DT: ${d.id} (${window.formatDistance(window.calcDistance(snapLat, snapLng, d.lat, d.lng))})</option>`).join('');
-        const selStruct = s => (existingObj.structure === s) ? 'selected' : ''; const selCond = c => (existingObj.condition === c) ? 'selected' : '';
+        
+        const selStruct = s => (existingObj.structure === s) ? 'selected' : '';
+        const selCond = c => (existingObj.condition === c) ? 'selected' : '';
         const photoB64 = existingObj.photo || ''; const showPhoto = (existingObj.condition==='Tilted'||existingObj.condition==='Damaged') ? 'block' : 'none';
 
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit LT Pole':'Add LT Pole'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            ${isEdit ? `<div class="form-row"><label>Pole Number</label><input type="text" class="form-input" value="${existingObj.poleNo}" disabled></div>` : ''}
+            ${isEdit ? `<div class="form-row"><label>Pole Number</label><input type="text" class="form-input" value="${existingObj.poleNo}" disabled style="background:var(--bg-base);"></div>` : ''}
             <div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select" ${isEdit?'disabled style="background:var(--bg-base);"':''}>${dtOpts}</select></div>
             <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
@@ -828,13 +842,15 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
                     <img id="inpPolePhoto_preview" class="photo-preview" src="${photoB64}" style="display:${photoB64?'block':'none'}">
                 </div>
             </div>
-            <input type="hidden" id="inpPoleCategory" value="LT"><input type="hidden" id="inpLat" value="${snapLat}"><input type="hidden" id="inpLng" value="${snapLng}">
+            <input type="hidden" id="inpPoleCategory" value="LT"><input type="hidden" id="inpLat" value="${formLat}"><input type="hidden" id="inpLng" value="${formLng}">
             <button class="btn-action-primary" onclick="window.savePoleData('${editId || ''}')">Save LT Pole</button>`);
     } 
     else if (type === 'LINE') {
         if (!isEdit && net.poles.length === 0) return alert("Add at least one pole first!");
+        
         const selType = t => (existingObj.type && existingObj.type.includes(t)) ? 'selected' : '';
         const selPhase = p => (existingObj.phaseType === p) ? 'selected' : '';
+        
         window.filterLineNodes = function() {
             const type = document.getElementById('inpLineType').value, net = getActiveNetwork(), fromSel = document.getElementById('inpFromNode'), dtSelectorBox = document.getElementById('ltLineDTSelector');
             let defaultFrom = isEdit ? existingObj.fromNode : String(document.getElementById('inpDefaultFrom').value); const center = map.getCenter(); let nodes = [];
@@ -905,6 +921,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
                     <img id="inpDTPhoto_preview" class="photo-preview" src="${photoB64}" style="display:${photoB64?'block':'none'}">
                 </div>
             </div>
+            <input type="hidden" id="inpLat" value="${formLat}"><input type="hidden" id="inpLng" value="${formLng}">
             <button class="btn-action-primary" onclick="window.saveDTData('${editId || ''}')">Save DT</button>`);
         setTimeout(() => window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', existingObj.rating), 30);
     } 
@@ -919,6 +936,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit Consumer':'Add Consumer'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div class="form-row"><label>Select Parent DT*</label><select id="inpConsDT" class="form-select" onchange="window.filterConsumerPoles()" ${isEdit?'disabled':''}>${dtOpts}</select></div>
             <div class="form-row"><label>Connects To (LT Pole / DT)*</label><select id="inpConsParent" class="form-select" ${isEdit?'disabled':''}></select></div>
+            
             <div class="form-grid-2">
                 <div class="form-row"><label>K-Number (12 Digits)*</label><input type="text" id="inpConsKno" class="form-input" value="${existingObj.kno||''}" maxlength="12" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,12);"></div>
                 <div class="form-row"><label>A/C No. (8 Digits)*</label><input type="text" id="inpConsAcNo" class="form-input" value="${existingObj.acNo||''}" maxlength="8" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,8);"></div>
@@ -935,7 +953,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
                     <img id="inpConsPhoto_preview" class="photo-preview" src="${photoB64}" style="display:${photoB64?'block':'none'}">
                 </div>
             </div>
-            <input type="hidden" id="inpLat" value="${snapLat}"><input type="hidden" id="inpLng" value="${snapLng}">
+            <input type="hidden" id="inpLat" value="${formLat}"><input type="hidden" id="inpLng" value="${formLng}">
             <button class="btn-action-primary" onclick="window.saveConsumerData('${editId || ''}')">Save Consumer</button>`);
         setTimeout(() => {
             if(isEdit) {
@@ -962,12 +980,22 @@ window.filterConsumerPoles = function(existingParentRef) {
     document.getElementById('inpConsParent').innerHTML = nodes.map(n => `<option value="${n.id}" ${existingParentRef===String(n.id)?'selected':''}>${n.title} (${window.formatDistance(window.calcDistance(centerLat, centerLng, n.lat, n.lng))})</option>`).join('');
 }
 
+window.saveEditedGss = function(code) {
+    saveSnapshot(); const g = appState.gssNodes[code]; 
+    if (g) g.name = document.getElementById('editGssName').value.trim(); 
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("GSS Updated"); 
+}
+
 window.savePoleData = function(editId) { 
     window.haptic(30); saveSnapshot(); const no = document.getElementById('inpPoleNo').value.trim(), category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value); 
     const structure = document.getElementById('inpPoleStruct').value; const condition = document.getElementById('inpPoleCond').value; const photo = document.getElementById('inpPolePhoto').value;
     if (!no) return alert(t("errReq")); const net = getActiveNetwork(); 
-    if (editId) { let p = net.poles.find(x => x.id === editId); if(!p) return; p.structure = structure; p.condition = condition; p.photo = photo; } 
-    else {
+    
+    if (editId) {
+        if (net.poles.some(p => p.id !== editId && String(p.poleNo) === no)) return alert(t("alertExists"));
+        let p = net.poles.find(x => x.id === editId); if(!p) return;
+        p.structure = structure; p.condition = condition; p.photo = photo;
+    } else {
         if (net.poles.some(p => String(p.poleNo) === no)) return alert(t("alertExists"));
         let dtCode = category === 'LT' ? document.getElementById('inpLTPoleDT').value : undefined;
         net.poles.push({ id: 'P_'+Date.now(), poleNo: no, lineType: category, structure, condition, photo, dtCode, lat, lng }); 
@@ -980,9 +1008,14 @@ window.saveLineData = function(editId) {
     const phaseType = document.getElementById('inpLinePhase').value; const hasCrossing = document.getElementById('inpLineCrossing').checked; const crossingRemark = document.getElementById('inpLineCrossRemark').value.trim();
     if (from === to) return alert("Cannot connect node to itself!"); if (!to) return alert("Please select a target node!");
     const net = getActiveNetwork(), spec = getLineSpec(type);
-    if(editId) { let l = net.lines.find(x => x.id === editId); if(!l) return; l.type = spec.name; l.phaseType = phaseType; l.hasCrossing = hasCrossing; l.crossingRemark = crossingRemark; } 
-    else {
-        if(net.lines.find(l => (l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from))) return alert("A line already exists between these two nodes!");
+    
+    // CRITICAL FIX 4: Duplicate checker ignores current editId
+    if(net.lines.find(l => l.id !== editId && ((l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from)))) return alert("A line already exists between these two nodes!");
+    
+    if(editId) {
+        let l = net.lines.find(x => x.id === editId); if(!l) return;
+        l.type = spec.name; l.phaseType = phaseType; l.hasCrossing = hasCrossing; l.crossingRemark = crossingRemark;
+    } else {
         const c1 = getNodeCoords(from), c2 = getNodeCoords(to); if(!c1 || !c2) return alert("Invalid node coordinates!"); const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); 
         net.lines.push({ id: 'LN_'+Date.now(), type: spec.name, phaseType, hasCrossing, crossingRemark, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]] }); 
     }
@@ -993,8 +1026,13 @@ window.saveDTData = function(editId) {
     window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value, location = document.getElementById('inpDTLocation').value.trim();
     const srNo = document.getElementById('inpDTSrNo').value.trim(); const tn = document.getElementById('inpDTTN').value.trim(); const mountedOn = document.getElementById('inpDTMount').value; const photo = document.getElementById('inpDTPhoto').value;
     if (!code) return alert(t("errReq")); const net = getActiveNetwork();
-    if(editId) { let d = net.dts.find(x => x.id === editId); if(!d) return; d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo; } 
-    else {
+    
+    if(editId) {
+        if (net.dts.some(d => d.id !== editId && String(d.code) === code)) return alert(t("alertExists"));
+        let d = net.dts.find(x => x.id === editId); if(!d) return;
+        d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
+    } else {
+        if (net.dts.some(d => String(d.code) === code)) return alert(t("alertExists"));
         const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); let lat = net.feeder.lat, lng = net.feeder.lng; if (p) { lat = p.lat; lng = p.lng; }
         net.dts.push({ id: 'DT_'+Date.now(), parentPole: parentRef, code, rating, phase, srNo, tn, mountedOn, location, photo, lat, lng });
     }
@@ -1005,11 +1043,16 @@ window.saveConsumerData = function(editId) {
     window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpConsParent').value, kno = document.getElementById('inpConsKno').value.trim(), acNo = document.getElementById('inpConsAcNo').value.trim(), name = document.getElementById('inpConsName').value.trim();
     const meterNo = document.getElementById('inpConsMeter').value.trim(); const conType = document.getElementById('inpConsType').value; const status = document.getElementById('inpConsStatus').value; const load = document.getElementById('inpConsLoad').value.trim(); const photo = document.getElementById('inpConsPhoto').value;
     if (!name || !kno || !acNo) return alert(t("errReq")); 
+    
     if(kno.length !== 12) return alert("K-Number must be exactly 12 digits!");
     if(acNo.length !== 8) return alert("A/C No. must be exactly 8 digits!");
     const net = getActiveNetwork();
-    if(editId) { let c = net.consumers.find(x => x.id === editId); if(!c) return; c.kno = kno; c.acNo = acNo; c.name = name; c.meterNo = meterNo; c.conType = conType; c.status = status; c.load = load; c.photo = photo; } 
-    else {
+
+    if(editId) {
+        if(net.consumers.some(c => c.id !== editId && String(c.kno) === String(kno))) return alert("K-Number already exists!");
+        let c = net.consumers.find(x => x.id === editId); if(!c) return;
+        c.kno = kno; c.acNo = acNo; c.name = name; c.meterNo = meterNo; c.conType = conType; c.status = status; c.load = load; c.photo = photo;
+    } else {
         if(net.consumers.some(c => String(c.kno) === String(kno))) return alert("K-Number already exists in this feeder!");
         let parentType = 'POLE'; const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); if (!p) parentType = 'DT';
         const lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value);
@@ -1018,6 +1061,7 @@ window.saveConsumerData = function(editId) {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
 
+// CRITICAL FIX 2: Correctly maps LT Poles to the LT form 
 window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
 
 function deleteDTLogic(dtId, net) {
@@ -1145,7 +1189,7 @@ window.generateCadSLDPdf = async function() {
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
-    const latBuffer = (maxLat - minLat) * 0.25; const lngBuffer = (maxLng - minLng) * 0.25;
+    const latBuffer = (maxLat - minLat) * 0.20; const lngBuffer = (maxLng - minLng) * 0.20;
     minLat -= latBuffer; maxLat += latBuffer; minLng -= lngBuffer; maxLng += lngBuffer;
 
     const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
@@ -1155,10 +1199,10 @@ window.generateCadSLDPdf = async function() {
     let scale, offsetX, offsetY;
 
     if (needsRotation) {
-        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.75;
+        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.80;
         offsetX = margin + (pdfW - (latDiff * scale)) / 2; offsetY = margin + (pdfH - (lngDiff * scale)) / 2;
     } else {
-        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.75;
+        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.80;
         offsetX = margin + (pdfW - (lngDiff * scale)) / 2; offsetY = margin + (pdfH - (latDiff * scale)) / 2;
     }
     
