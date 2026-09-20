@@ -20,6 +20,7 @@ let appState = {
 let historyStack = [];
 let map = null;
 
+// HAPTIC WRAPPER
 window.haptic = function(pattern) {
     if (window.cordova && navigator.vibrate) { navigator.vibrate(pattern); }
 }
@@ -189,7 +190,6 @@ window.capturePhoto = function(targetId) {
 function initMapSystem() {
     if(map) return; 
     
-    // CRITICAL FIX: Reverting to FeatureGroups ensures safe canvas redraws without missing polylines.
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
     map.on('click', () => window.closeObjectSheet()); 
@@ -223,7 +223,6 @@ function initMapSystem() {
 
     window.toggleMapLayer = function() { window.haptic(15); map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name; }
 
-    // Using FeatureGroup to prevent Leaflet Canvas drawing context drops.
     featureGroups = { gss: L.featureGroup().addTo(map), htLines: L.featureGroup().addTo(map), ltLines: L.featureGroup().addTo(map), consumerLines: L.featureGroup().addTo(map), htPoles: L.featureGroup().addTo(map), ltPoles: L.featureGroup().addTo(map), dts: L.featureGroup().addTo(map), consumers: L.featureGroup().addTo(map) };
     
     map.on('move', () => { 
@@ -345,8 +344,13 @@ function renderEntireNetwork() {
         const activeGss = appState.gssNodes[net.feeder.parentGss];
         if (activeGss && typeof activeGss.lat === 'number') {
             if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
-                const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
-                const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
+                // CRITICAL 2.5D UPDATE: Pseudo-3D Isometric GSS Building
+                const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/>
+                    <rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/>
+                    <text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text>
+                </svg>`;
+                const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,48] });
                 const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 95000 }).addTo(featureGroups.gss);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', activeGss.code); });
             }
@@ -363,50 +367,52 @@ function renderEntireNetwork() {
                 const strokeColor = isAlert ? '#ef4444' : '#0f172a';
                 const zOff = isLT ? 1000 : 2000;
                 
-                let svg = ''; let w = 30, h = 44, ax = 15, ay = 44;
-                const alertBadge = isAlert ? `<circle cx="${w-4}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-4}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
+                // CRITICAL 2.5D UPDATE: 3D Cylindrical Poles with linear gradients and shadow class
+                let svg = ''; let w = 34, h = 48, ax = 17, ay = 48;
+                const alertBadge = isAlert ? `<circle cx="${w-5}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-5}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
+                const gradientDef = `<defs><linearGradient id="grad${p.id}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#fff" stop-opacity="0.8"/><stop offset="100%" stop-color="${color}"/></linearGradient></defs>`;
 
                 if (p.structure === 'Double') {
-                    w = 36; ax = 18;
-                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M 10 16 L 10 44 M 26 16 L 26 44" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/>
-                        <path d="M 10 16 L 10 44 M 26 16 L 26 44" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M 4 22 L 32 22 M 4 28 L 32 28" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
-                        <path d="M 10 28 L 26 40 M 26 28 L 10 40" stroke="${strokeColor}" stroke-width="2" opacity="0.7"/>
-                        <rect x="3" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
-                        <text x="18" y="10" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
-                        ${isAlert ? `<circle cx="${w-4}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-4}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : ''}
+                    w = 40; ax = 20;
+                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                        ${gradientDef}
+                        <rect x="10" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/>
+                        <rect x="24" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/>
+                        <rect x="6" y="24" width="28" height="4" fill="#cbd5e1" stroke="${strokeColor}" stroke-width="1" rx="1"/>
+                        <rect x="5" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
+                        <text x="20" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                        ${alertBadge}
                     </svg>`;
                 } else if (p.structure === 'Lattice Tower') {
                     w = 40; h = 48; ax = 20; ay = 48;
-                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M 14 16 L 4 48 M 26 16 L 36 48" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/>
-                        <path d="M 14 16 L 4 48 M 26 16 L 36 48" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M 2 24 L 38 24 M 6 32 L 34 32" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M 11 24 L 29 32 M 29 24 L 11 32 M 8 32 L 32 40 M 32 32 L 8 40" stroke="${strokeColor}" stroke-width="1.5" opacity="0.8"/>
+                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 16 16 L 8 48 M 24 16 L 32 48" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M 16 16 L 8 48 M 24 16 L 32 48" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M 14 26 L 26 26 M 11 36 L 29 36" stroke="${strokeColor}" stroke-width="1.5"/>
+                        <path d="M 16 16 L 26 26 M 24 16 L 14 26 M 14 26 L 29 36 M 26 26 L 11 36 M 11 36 L 32 48 M 29 36 L 8 48" stroke="${strokeColor}" stroke-width="1" opacity="0.6"/>
                         <rect x="5" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
-                        <text x="20" y="10" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
-                        ${isAlert ? `<circle cx="${w-5}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-5}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : ''}
+                        <text x="20" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                        ${alertBadge}
                     </svg>`;
                 } else if (p.structure === 'Rail Pole') {
-                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M 12 16 L 12 44 M 18 16 L 18 44" stroke="${strokeColor}" stroke-width="3"/>
-                        <path d="M 12 16 L 12 44 M 18 16 L 18 44" stroke="${color}" stroke-width="1"/>
-                        <path d="M 9 20 L 21 20 M 9 26 L 21 26 M 9 32 L 21 32 M 9 38 L 21 38" stroke="${strokeColor}" stroke-width="2"/>
-                        <rect x="0" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
-                        <text x="15" y="10" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 14 16 L 14 48 M 20 16 L 20 48" stroke="${strokeColor}" stroke-width="2.5"/>
+                        <path d="M 14 16 L 14 48 M 20 16 L 20 48" stroke="${color}" stroke-width="1"/>
+                        <path d="M 11 20 L 23 20 M 11 28 L 23 28 M 11 36 L 23 36 M 11 44 L 23 44" stroke="${strokeColor}" stroke-width="1.5"/>
+                        <rect x="2" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
+                        <text x="17" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>
                         ${alertBadge}
                     </svg>`;
                 } else {
-                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M 15 16 L 15 44" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/>
-                        <path d="M 15 16 L 15 44" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
-                        <path d="M 5 22 L 25 22" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
-                        <circle cx="5" cy="19" r="2" fill="#fff" stroke="${strokeColor}"/>
-                        <circle cx="15" cy="19" r="2" fill="#fff" stroke="${strokeColor}"/>
-                        <circle cx="25" cy="19" r="2" fill="#fff" stroke="${strokeColor}"/>
-                        <rect x="0" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
-                        <text x="15" y="10" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                        ${gradientDef}
+                        <rect x="14" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/>
+                        <rect x="6" y="22" width="22" height="3" fill="#cbd5e1" stroke="${strokeColor}" stroke-width="1" rx="1"/>
+                        <circle cx="8" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/>
+                        <circle cx="17" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/>
+                        <circle cx="26" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/>
+                        <rect x="2" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
+                        <text x="17" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>
                         ${alertBadge}
                     </svg>`;
                 }
@@ -423,14 +429,23 @@ function renderEntireNetwork() {
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const numRating = String(d.rating).replace(/[^0-9]/g, '');
                     
+                    // CRITICAL 2.5D UPDATE: Elevated 3D Box for DT
                     let svg = '';
                     if(d.phase === 'Single Phase') {
-                        svg = `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><polygon points="16,2 30,30 2,30" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="16" y="24" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
+                        svg = `<svg width="34" height="38" viewBox="0 0 34 38" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <polygon points="17,6 30,32 4,32" fill="#f59e0b" stroke="#fff" stroke-width="2"/>
+                            <polygon points="17,6 30,32 17,32" fill="#fbbf24" opacity="0.6"/>
+                            <text x="17" y="28" font-size="10" font-weight="900" font-family="Inter" fill="#334155" text-anchor="middle">${numRating}</text>
+                        </svg>`;
                     } else {
-                        svg = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="24" rx="4" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="14" y="18" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
+                        svg = `<svg width="36" height="40" viewBox="0 0 36 40" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="4" y="6" width="28" height="28" rx="4" fill="#f59e0b" stroke="#fff" stroke-width="2"/>
+                            <rect x="4" y="6" width="28" height="14" rx="4" fill="#fbbf24" opacity="0.5"/>
+                            <text x="18" y="24" font-size="11" font-weight="900" font-family="Inter" fill="#334155" text-anchor="middle">${numRating}</text>
+                        </svg>`;
                     }
 
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 90000 }).addTo(featureGroups.dts);
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [36, 40], iconAnchor: [18, 20] }), zIndexOffset: 90000 }).addTo(featureGroups.dts);
                     m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('DT', d.id); });
                 }
             });
@@ -454,6 +469,7 @@ function renderEntireNetwork() {
 
             linesToDraw.forEach(ld => {
                 const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
+                // Assigning dynamic CSS filter classes based on spec mapping
                 L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
                 
                 hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
@@ -461,7 +477,7 @@ function renderEntireNetwork() {
 
             if(line.hasCrossing) {
                 const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2;
-                const crossSvg = `<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="2" x2="14" y2="14" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/><line x1="14" y1="2" x2="2" y2="14" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+                const crossSvg = `<svg width="16" height="16" viewBox="0 0 16 16" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="2" x2="14" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/><line x1="14" y1="2" x2="2" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>`;
                 L.marker([midLat, midLng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: crossSvg, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 2500 }).addTo(lineGrp);
             }
         });
@@ -475,16 +491,21 @@ function renderEntireNetwork() {
                 else if(c.status === 'PDC') bgColor = '#ef4444';
                 else if(c.conType === 'NDS') bgColor = '#3b82f6';
                 
-                // CRITICAL FIX: Consumer Icons Map perfectly
-                let faIcon = '&#xf015;'; // House
-                if(c.conType === 'NDS') faIcon = '&#xf1ad;'; // Building
-                else if(c.conType === 'AG') faIcon = '&#xf4d8;'; // Plant (Seedling)
-                else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; // Industry
-                else if(c.conType === 'PHED') faIcon = '&#xf043;'; // Droplet
+                let faIcon = '&#xf015;'; 
+                if(c.conType === 'NDS') faIcon = '&#xf1ad;'; 
+                else if(c.conType === 'AG') faIcon = '&#xf4d8;'; 
+                else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; 
+                else if(c.conType === 'PHED') faIcon = '&#xf043;'; 
 
-                const svg = `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><text x="11" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text></svg>`;
+                // CRITICAL 2.5D UPDATE: Elevated floating badge with stand
+                const svg = `<svg width="26" height="34" viewBox="0 0 26 34" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                    <ellipse cx="13" cy="30" rx="6" ry="2" fill="rgba(0,0,0,0.3)"/>
+                    <path d="M13 22 L13 30" stroke="#0f172a" stroke-width="2"/>
+                    <circle cx="13" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/>
+                    <text x="13" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text>
+                </svg>`;
                 
-                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [22,22], iconAnchor: [11,11] }), zIndexOffset: 100 }).addTo(featureGroups.consumers);
+                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [26,34], iconAnchor: [13,34] }), zIndexOffset: 100 }).addTo(featureGroups.consumers);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('CONSUMER', c.id); });
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
@@ -594,10 +615,9 @@ window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a
 
 function getLineSpec(type) {
     const t = (type || '').toUpperCase();
-    // CRITICAL FIX: dash: undefined prevents canvas context crash
-    if (t.includes('UG CABLE')) return { name: '11 KV UG CABLE', color: '#000000', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'ht-line-path' };
-    if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 2.2, dash: undefined, filterKey: 'linesLT', lineClass: 'lt-line-path' };
-    return { name: '11 KV LINE', color: '#2563eb', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'ht-line-path' };
+    if (t.includes('UG CABLE')) return { name: '11 KV UG CABLE', color: '#000000', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'ug-cable-line' };
+    if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 2.2, dash: undefined, filterKey: 'linesLT', lineClass: 'isometric-line' };
+    return { name: '11 KV LINE', color: '#2563eb', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'isometric-line' };
 }
 
 function getNodeCoords(nodeId) { 
@@ -789,7 +809,6 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         else if(type === 'CONSUMER') existingObj = net.consumers.find(x => x.id === editId) || {};
     }
 
-    // CRITICAL FIX 3: Object Coordinates Lock. Prevents moving existing objects to map center during editing.
     const formLat = isEdit ? (existingObj.lat || snapLat) : snapLat;
     const formLng = isEdit ? (existingObj.lng || snapLng) : snapLng;
 
@@ -981,7 +1000,7 @@ window.filterConsumerPoles = function(existingParentRef) {
 }
 
 window.saveEditedGss = function(code) {
-    saveSnapshot(); const g = appState.gssNodes[code]; 
+    window.haptic(30); saveSnapshot(); const g = appState.gssNodes[code]; 
     if (g) g.name = document.getElementById('editGssName').value.trim(); 
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("GSS Updated"); 
 }
@@ -994,7 +1013,7 @@ window.savePoleData = function(editId) {
     if (editId) {
         if (net.poles.some(p => p.id !== editId && String(p.poleNo) === no)) return alert(t("alertExists"));
         let p = net.poles.find(x => x.id === editId); if(!p) return;
-        p.structure = structure; p.condition = condition; p.photo = photo;
+        p.poleNo = no; p.structure = structure; p.condition = condition; p.photo = photo;
     } else {
         if (net.poles.some(p => String(p.poleNo) === no)) return alert(t("alertExists"));
         let dtCode = category === 'LT' ? document.getElementById('inpLTPoleDT').value : undefined;
@@ -1009,7 +1028,6 @@ window.saveLineData = function(editId) {
     if (from === to) return alert("Cannot connect node to itself!"); if (!to) return alert("Please select a target node!");
     const net = getActiveNetwork(), spec = getLineSpec(type);
     
-    // CRITICAL FIX 4: Duplicate checker ignores current editId
     if(net.lines.find(l => l.id !== editId && ((l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from)))) return alert("A line already exists between these two nodes!");
     
     if(editId) {
@@ -1030,7 +1048,7 @@ window.saveDTData = function(editId) {
     if(editId) {
         if (net.dts.some(d => d.id !== editId && String(d.code) === code)) return alert(t("alertExists"));
         let d = net.dts.find(x => x.id === editId); if(!d) return;
-        d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
+        d.code = code; d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
     } else {
         if (net.dts.some(d => String(d.code) === code)) return alert(t("alertExists"));
         const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); let lat = net.feeder.lat, lng = net.feeder.lng; if (p) { lat = p.lat; lng = p.lng; }
@@ -1046,8 +1064,8 @@ window.saveConsumerData = function(editId) {
     
     if(kno.length !== 12) return alert("K-Number must be exactly 12 digits!");
     if(acNo.length !== 8) return alert("A/C No. must be exactly 8 digits!");
-    const net = getActiveNetwork();
 
+    const net = getActiveNetwork();
     if(editId) {
         if(net.consumers.some(c => c.id !== editId && String(c.kno) === String(kno))) return alert("K-Number already exists!");
         let c = net.consumers.find(x => x.id === editId); if(!c) return;
@@ -1061,7 +1079,6 @@ window.saveConsumerData = function(editId) {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
 
-// CRITICAL FIX 2: Correctly maps LT Poles to the LT form 
 window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
 
 function deleteDTLogic(dtId, net) {
