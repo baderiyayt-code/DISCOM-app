@@ -37,7 +37,7 @@ const i18n = {
         line11: "11 केवी लाइन", lineLT: "एलटी लाइन", dt3ph: "3-फेज डीटी", dt1ph: "1-फेज डीटी", totalCons: "उपभोक्ता",
         gssMgmt: "जीएसएस प्रबंधन", addNewGss: "नया जीएसएस जोड़ें", manageFdr: "फीडर प्रबंधन", 
         export: "डेटा निर्यात (डाउनलोड)", exportPdf: "एसएलडी पीडीएफ (SLD PDF)", exportDxf: "DXF निर्यात", exportKml: "KML निर्यात", exportCsv: "CSV निर्यात", 
-        importLabel: "बैकअप और रीस्टोर", exportJson: "बैकअप निर्यात (JSON)", importJson: "बैकअप आयात (JSON)", system: "सिस्टम", settings: "सेटिंग्स", about: "ऐप के بارے में",
+        importLabel: "बैकअप और रीस्टोर", exportJson: "बैकअप निर्यात (JSON)", importJson: "बैकअप आयात (JSON)", system: "सिस्टम", settings: "सेटिंग्स", about: "ऐप के बारे में",
         appLanguage: "ऐप की भाषा", distUnit: "दूरी इकाई", gpsInterval: "जीपीएस अंतराल", gpsAcc: "जीपीएस सटीकता", resetData: "ऐप डेटा रीसेट करें",
         confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान सेट करें", target: "लक्ष्य",
         toastSettings: "सेटिंग्स सहेजी गईं!", toastDel: "सफलतापूर्वक हटा दिया गया!", toastImport: "सफलतापूर्वक आयात किया गया!",
@@ -172,16 +172,26 @@ function initMapSystem() {
     
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
+    // CRITICAL FIX 2: Strict Reinsertion ordering to guarantee DTs never get covered by Poles during Zoom
     function updateMapZoomClasses() {
         if(!map) return;
         const z = map.getZoom(); const mapEl = document.getElementById('map');
         mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss-square');
         
-        if (z <= 18) { map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines); } else { map.addLayer(featureGroups.consumers); map.addLayer(featureGroups.consumerLines); }
-        if (z <= 17) map.removeLayer(featureGroups.ltPoles); else map.addLayer(featureGroups.ltPoles);
-        if (z <= 16) map.removeLayer(featureGroups.ltLines); else map.addLayer(featureGroups.ltLines);
-        if (z <= 15) map.removeLayer(featureGroups.htPoles); else map.addLayer(featureGroups.htPoles);
-        if (z <= 14) map.removeLayer(featureGroups.dts); else map.addLayer(featureGroups.dts);
+        // Remove everything first to ensure clean DOM reinsertion order
+        map.removeLayer(featureGroups.consumers); map.removeLayer(featureGroups.consumerLines);
+        map.removeLayer(featureGroups.ltPoles); map.removeLayer(featureGroups.ltLines);
+        map.removeLayer(featureGroups.htPoles); 
+        map.removeLayer(featureGroups.dts); map.removeLayer(featureGroups.gss);
+        
+        // Add Bottom layers first
+        if (z > 18) { map.addLayer(featureGroups.consumerLines); map.addLayer(featureGroups.consumers); }
+        if (z > 17) { map.addLayer(featureGroups.ltPoles); }
+        if (z > 16) { map.addLayer(featureGroups.ltLines); }
+        if (z > 15) { map.addLayer(featureGroups.htPoles); }
+        
+        // Add TOP layers last so they sit at the highest point in DOM stack
+        if (z > 14) { map.addLayer(featureGroups.dts); map.addLayer(featureGroups.gss); }
         
         if (z <= 13) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
     }
@@ -227,10 +237,11 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CRITICAL FIX: EXACT ABSOLUTE POPUPS ====== */
-function triggerPopupExact(lat, lng, htmlContent, yOffset = -10) {
+/* ====== CRITICAL FIX 1: EXACT ZERO-OFFSET POPUPS ====== */
+function triggerPopupExact(lat, lng, htmlContent) {
     if(!map) return;
-    L.popup({ autoPan: false, closeButton: true, offset: [0, yOffset] })
+    // autoPan: false and offset: [0,0] perfectly binds popup to the touch coordinate.
+    L.popup({ autoPan: false, closeButton: true, offset: [0, 0] })
       .setLatLng([lat, lng])
       .setContent(htmlContent)
       .openOn(map);
@@ -257,11 +268,11 @@ function renderEntireNetwork() {
             if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
                 const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
-                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 4000 }).addTo(featureGroups.gss);
+                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 95000 }).addTo(featureGroups.gss);
                 
                 m.on('click', () => {
                     const htmlPopup = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${activeGss.name}</b><br><small>Code: ${activeGss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${activeGss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${activeGss.code}')">Relocate</button></div></div>`;
-                    triggerPopupExact(activeGss.lat, activeGss.lng, htmlPopup, -18);
+                    triggerPopupExact(activeGss.lat, activeGss.lng, htmlPopup);
                 });
             }
         }
@@ -293,7 +304,7 @@ function renderEntireNetwork() {
                 m.on('click', () => {
                     let photoHtml = p.photo ? `<img src="${p.photo}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:6px;">` : '';
                     const htmlPopup = `<div style="padding:4px; max-width:200px;">${photoHtml}<b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'} | Cond: <b>${p.condition || 'OK'}</b><br>Struct: ${p.structure || 'Single'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(p.lat, p.lng, htmlPopup, -r);
+                    triggerPopupExact(p.lat, p.lng, htmlPopup);
                 });
             });
         }
@@ -312,7 +323,8 @@ function renderEntireNetwork() {
                         svg = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="24" height="24" rx="4" fill="#f59e0b" stroke="white" stroke-width="2"/><text x="14" y="18" font-size="10" font-weight="900" font-family="Inter, sans-serif" fill="#334155" text-anchor="middle">${numRating}</text></svg>`;
                     }
 
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 9000 }).addTo(featureGroups.dts);
+                    // CRITICAL FIX: DT Z-Index massively inflated to 90000 
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [32, 32], iconAnchor: [16, 16] }), zIndexOffset: 90000 }).addTo(featureGroups.dts);
                     m.on('click', () => {
                         let dtCons = net.consumers.filter(c => {
                             if (c.parentType === 'DT' && String(c.parentRef) === String(d.code)) return true;
@@ -326,7 +338,7 @@ function renderEntireNetwork() {
 
                         let photoHtml = d.photo ? `<img src="${d.photo}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:6px;">` : '';
                         const htmlPopup = `<div style="padding:6px; min-width:200px;">${photoHtml}<b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.85rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b> | Mount: <b>${d.mountedOn || 'Single Pole'}</b><br>Consumers: <b>${totCons}</b> | Total Load: <b>${totLoad.toFixed(2)} kW</b><br>SrNo: ${d.srNo || 'N/A'} | TN: ${d.tn || 'N/A'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        triggerPopupExact(d.lat, d.lng, htmlPopup, -16);
+                        triggerPopupExact(d.lat, d.lng, htmlPopup);
                     });
                 }
             });
@@ -356,7 +368,7 @@ function renderEntireNetwork() {
                     const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2;
                     let crossStr = line.hasCrossing ? `<br><b style="color:#ef4444;">Crossing:</b> ${line.crossingRemark || 'Yes'}` : '';
                     const htmlPopup = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name} (${line.phaseType || 'Single Phase'})</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b>${crossStr}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('line','${line.id}')">Edit</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(midLat, midLng, htmlPopup, 0);
+                    triggerPopupExact(midLat, midLng, htmlPopup);
                 });
             });
 
@@ -376,11 +388,12 @@ function renderEntireNetwork() {
                 else if(c.status === 'PDC') bgColor = '#ef4444';
                 else if(c.conType === 'NDS') bgColor = '#3b82f6';
                 
+                // CRITICAL FIX 3: Icon refinement
                 let faIcon = '&#xf015;'; // House
                 if(c.conType === 'NDS') faIcon = '&#xf1ad;'; // Building
-                else if(c.conType === 'AG') faIcon = '&#xf043;'; // Drop
+                else if(c.conType === 'AG') faIcon = '&#xf4d8;'; // Plant (Seedling)
                 else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; // Industry
-                else if(c.conType === 'PHED') faIcon = '&#xfe06;'; // Faucet
+                else if(c.conType === 'PHED') faIcon = '&#xf043;'; // Water Drop (Droplet)
 
                 const svg = `<svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><text x="11" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text></svg>`;
                 
@@ -388,7 +401,7 @@ function renderEntireNetwork() {
                 m.on('click', () => {
                     let photoHtml = c.photo ? `<img src="${c.photo}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:6px;">` : '';
                     const htmlPopup = `<div style="padding:4px; max-width:200px;">${photoHtml}<b>${c.name}</b><p style="color:#64748b; margin:4px 0; font-size:0.8rem;">K-No: ${c.kno} | A/C: ${c.acNo || 'N/A'}<br>M-No: ${c.meterNo || 'N/A'}</p><p style="margin:4px 0; font-size:0.8rem;">Type: <b>${c.conType || 'DS'}</b> | Status: <b>${c.status || 'Regular'}</b><br>Load: ${c.load || '1 kW'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    triggerPopupExact(c.lat, c.lng, htmlPopup, -11);
+                    triggerPopupExact(c.lat, c.lng, htmlPopup);
                 });
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
@@ -656,7 +669,7 @@ window.selectSearchResult = function(type, id) {
     const net = getActiveNetwork(); window.clearSearch(); window.toggleSearchBox(); let target = null, popupHtml = '';
     if(type === 'CONSUMER') { target = net.consumers.find(c => c.id === id); if(target) popupHtml = `<div style="padding:4px;"><b>${target.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${target.kno} | Connected to: ${target.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${target.id}')">Edit</button></div></div>`; } 
     else if(type === 'DT') { target = net.dts.find(d => d.id === id); if(target) popupHtml = `<div style="padding:4px;"><b style="color:#d97706;">DT: ${target.code}</b><p style="margin:4px 0;">Rating: ${target.rating} kVA<br>Loc: ${target.location || 'N/A'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${target.id}')">Edit</button></div></div>`; }
-    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { triggerPopupExact(target.lat, target.lng, popupHtml, -10); }, 1000); }
+    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { triggerPopupExact(target.lat, target.lng, popupHtml, 0); }, 1000); }
 }
 
 /* ====== EXPANDED FORMS ====== */
@@ -918,7 +931,6 @@ window.saveConsumerData = function(editId) {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
 
-// Full Form Editing Modal
 window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
 
 function deleteDTLogic(dtId, net) {
@@ -1028,12 +1040,12 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
-/* ====== CRITICAL FIX: SLD WITHOUT TEXT ====== */
+/* ====== CRITICAL FIX: EXACT SLD AUTO-FIT WITH 20% BUFFER & NO TEXT ====== */
 window.generateCadSLDPdf = async function() { 
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
     
-    showToast("Generating Buffered Auto-Fit SLD PDF...");
+    showToast("Generating Auto-Fit SLD PDF...");
     const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
     
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
@@ -1047,20 +1059,22 @@ window.generateCadSLDPdf = async function() {
         if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng;
     });
     
-    const latBuffer = (maxLat - minLat) * 0.25; const lngBuffer = (maxLng - minLng) * 0.25;
+    // 20% Spatial Zoom-Out Buffer 
+    const latBuffer = (maxLat - minLat) * 0.20; const lngBuffer = (maxLng - minLng) * 0.20;
     minLat -= latBuffer; maxLat += latBuffer; minLng -= lngBuffer; maxLng += lngBuffer;
 
     const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2);
     const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
     
+    // Auto-Rotate Logic Matrix
     const needsRotation = latDiff > lngDiff;
     let scale, offsetX, offsetY;
 
     if (needsRotation) {
-        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.75;
+        const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.80;
         offsetX = margin + (pdfW - (latDiff * scale)) / 2; offsetY = margin + (pdfH - (lngDiff * scale)) / 2;
     } else {
-        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.75;
+        const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.80;
         offsetX = margin + (pdfW - (lngDiff * scale)) / 2; offsetY = margin + (pdfH - (latDiff * scale)) / 2;
     }
     
@@ -1092,7 +1106,7 @@ window.generateCadSLDPdf = async function() {
                 doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
                 doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
             }
-            
+
             if (l.hasCrossing) {
                 const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2;
                 doc.setDrawColor(239, 68, 68); doc.setLineWidth(1);
@@ -1174,6 +1188,7 @@ async function initializeApplication() {
         
         if (data && data.feeders) appState = data; 
         
+        // Trigger Dark Mode on load if enabled
         if(appState.settings.darkMode) document.documentElement.setAttribute('data-theme', 'dark');
 
         translateApp(); 
