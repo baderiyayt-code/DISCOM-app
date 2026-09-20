@@ -20,7 +20,6 @@ let appState = {
 let historyStack = [];
 let map = null;
 
-// HAPTIC WRAPPER
 window.haptic = function(pattern) {
     if (window.cordova && navigator.vibrate) { navigator.vibrate(pattern); }
 }
@@ -56,7 +55,7 @@ const i18n = {
         appLanguage: "ऐप की भाषा", distUnit: "दूरी इकाई", gpsInterval: "जीपीएस अंतराल", gpsAcc: "जीपीएस सटीकता", resetData: "ऐप डेटा रीसेट करें",
         confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान सेट करें", target: "लक्ष्य",
         toastSettings: "सेटिंग्स सहेजी गईं!", toastDel: "सफलतापूर्वक हटा दिया गया!", toastImport: "सफलतापूर्वक आयात किया गया!",
-        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT कोड)...",
+        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT Code)...",
         htPole: "एचटी पोल", ltPole: "एलटी पोल", line: "लाइन", dt: "डीटी (ट्रांसफार्मर)", consumer: "उपभोक्ता", logout: "सुरक्षित लॉगआउट"
     }
 };
@@ -190,6 +189,7 @@ window.capturePhoto = function(targetId) {
 function initMapSystem() {
     if(map) return; 
     
+    // CRITICAL FIX 1: Using L.featureGroup guarantees safe canvas contexts for rendering
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
     map.on('click', () => window.closeObjectSheet()); 
@@ -278,7 +278,8 @@ window.openObjectSheet = function(type, id) {
     window.haptic(15); const net = getActiveNetwork();
     let obj = null, title = '', subtitle = '', details = '', photo = '', actions = '';
     
-    if (type === 'POLE') {
+    // CRITICAL FIX 2: Dynamic pass of LTPOLE identifier to ensure proper form loads
+    if (type === 'POLE' || type === 'LTPOLE') {
         obj = net.poles.find(x => x.id === id); if(!obj) return;
         let displayNo = obj.poleNo; if (obj.lineType === 'LT' && String(obj.poleNo).includes('-')) displayNo = String(obj.poleNo).split('-')[1];
         title = `Pole: ${displayNo}`; subtitle = `${obj.lineType || 'HT'} Line Pole`; photo = obj.photo;
@@ -631,6 +632,7 @@ window.calcDistance = function(lat1, lon1, lat2, lon2) {
 window.formatDistance = function(m) { return (appState.settings.unit === 'km') ? (m / 1000).toFixed(3) + ' KM' : m.toFixed(1) + ' M'; }
 window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a, b) => window.calcDistance(lat, lng, a.lat, a.lng) - window.calcDistance(lat, lng, b.lat, b.lng)); }
 
+// CRITICAL FIX 1: dash: undefined properly enables canvas drawing without crashing
 function getLineSpec(type) {
     const t = (type || '').toUpperCase();
     if (t.includes('UG CABLE')) return { name: '11 KV UG CABLE', color: '#000000', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'ug-cable-line' };
@@ -843,7 +845,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         const photoB64 = existingObj.photo || ''; const showPhoto = (existingObj.condition==='Tilted'||existingObj.condition==='Damaged') ? 'block' : 'none';
         
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit HT Pole':'Add HT Pole'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Pole Number*</label><input type="number" id="inpPoleNo" class="form-input" value="${nextNo}" ${isEdit?'readonly disabled style="background:var(--bg-base);"':''}></div>
+            <div class="form-row"><label>Pole Number*</label><input type="text" id="inpPoleNo" class="form-input" value="${nextNo}" ${isEdit?'readonly disabled style="background:var(--bg-base);"':''}></div>
             <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
                 <div class="form-row"><label>Pole Structure</label><select id="inpPoleStruct" class="form-select"><option value="Single" ${selStruct('Single')}>Single Pole</option><option value="Double" ${selStruct('Double')}>Double Pole</option><option value="Lattice Tower" ${selStruct('Lattice Tower')}>Lattice Tower</option><option value="Rail Pole" ${selStruct('Rail Pole')}>Rail Pole</option></select></div>
@@ -867,7 +869,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         const photoB64 = existingObj.photo || ''; const showPhoto = (existingObj.condition==='Tilted'||existingObj.condition==='Damaged') ? 'block' : 'none';
 
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit LT Pole':'Add LT Pole'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            ${isEdit ? `<div class="form-row"><label>Pole Number</label><input type="text" class="form-input" value="${existingObj.poleNo}" disabled style="background:var(--bg-base);"></div>` : ''}
+            ${isEdit ? `<div class="form-row"><label>Pole Number</label><input type="text" id="inpPoleNo" class="form-input" value="${existingObj.poleNo}" disabled style="background:var(--bg-base);"></div>` : ''}
             <div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select" ${isEdit?'disabled style="background:var(--bg-base);"':''}>${dtOpts}</select></div>
             <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
@@ -944,7 +946,6 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         const selMount = m => (existingObj.mountedOn === m) ? 'selected' : ''; const selPhase = p => (existingObj.phase === p) ? 'selected' : '';
         const photoB64 = existingObj.photo || '';
         
-        // CRITICAL FIX: Smart Title for DT Update
         const titleText = isEdit ? (existingObj.name || `DT: ${existingObj.code}`) : 'Add DT';
 
         openModal(`<div class="sheet-head"><div class="sheet-title">${titleText}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -957,6 +958,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
                 <div class="form-grid-2"><div class="form-row"><label>Phase*</label><select id="inpDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', '${existingObj.rating||''}')"><option value="Three Phase" ${selPhase('Three Phase')}>Three Phase</option><option value="Single Phase" ${selPhase('Single Phase')}>Single Phase</option></select></div><div class="form-row"><label>Mounted On</label><select id="inpDTMount" class="form-select"><option value="Double Pole Structure" ${selMount('Double Pole Structure')}>Double Pole Structure</option><option value="Single Pole" ${selMount('Single Pole')}>Single Pole</option></select></div></div>
                 <div class="form-grid-2"><div class="form-row"><label>Sr. No</label><input type="text" id="inpDTSrNo" class="form-input" value="${existingObj.srNo||''}"></div><div class="form-row"><label>TN Number</label><input type="text" id="inpDTTN" class="form-input" value="${existingObj.tn||''}"></div></div>
+                <div class="form-row"><label>Location / Landmark</label><input type="text" id="inpDTLocation" class="form-input" value="${existingObj.location||''}" placeholder="e.g. Near Main Market"></div>
                 <div style="margin-bottom:12px;">
                     <button class="btn-camera" onclick="window.capturePhoto('inpDTPhoto')"><i class="fa-solid fa-camera"></i> Capture DT Photo</button>
                     <input type="hidden" id="inpDTPhoto" value="${photoB64}">
@@ -1027,18 +1029,41 @@ window.saveEditedGss = function(code) {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("GSS Updated"); 
 }
 
+// CRITICAL FIX 4: Safe pole data extraction that doesn't crash on newly spawned LT poles
 window.savePoleData = function(editId) { 
-    window.haptic(30); saveSnapshot(); const no = document.getElementById('inpPoleNo').value.trim(), category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value); 
-    const structure = document.getElementById('inpPoleStruct').value; const condition = document.getElementById('inpPoleCond').value; const photo = document.getElementById('inpPolePhoto').value;
-    if (!no) return alert(t("errReq")); const net = getActiveNetwork(); 
+    window.haptic(30); saveSnapshot(); 
+    const category = document.getElementById('inpPoleCategory').value;
+    const lat = parseFloat(document.getElementById('inpLat').value);
+    const lng = parseFloat(document.getElementById('inpLng').value); 
+    const structure = document.getElementById('inpPoleStruct').value; 
+    const condition = document.getElementById('inpPoleCond').value; 
+    const photo = document.getElementById('inpPolePhoto').value;
+    
+    let no = '';
+    const noElem = document.getElementById('inpPoleNo');
+    if (noElem) {
+        no = noElem.value.trim();
+    }
+    
+    const net = getActiveNetwork(); 
     
     if (editId) {
+        if (!no) return alert(t("errReq"));
         if (net.poles.some(p => p.id !== editId && String(p.poleNo) === no)) return alert(t("alertExists"));
         let p = net.poles.find(x => x.id === editId); if(!p) return;
         p.poleNo = no; p.structure = structure; p.condition = condition; p.photo = photo;
     } else {
-        if (net.poles.some(p => String(p.poleNo) === no)) return alert(t("alertExists"));
         let dtCode = category === 'LT' ? document.getElementById('inpLTPoleDT').value : undefined;
+        
+        // Auto-generate LT pole number if it's new and doesn't have an input element
+        if (category === 'LT' && !no) {
+            const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode));
+            no = `${dtCode}-${existingLTPoles.length + 1}`;
+        }
+        
+        if (!no) return alert(t("errReq"));
+        if (net.poles.some(p => String(p.poleNo) === no)) return alert(t("alertExists"));
+        
         net.poles.push({ id: 'P_'+Date.now(), poleNo: no, lineType: category, structure, condition, photo, dtCode, lat, lng }); 
     }
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
@@ -1063,7 +1088,7 @@ window.saveLineData = function(editId) {
 }
 
 window.saveDTData = function(editId) {
-    window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value;
+    window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value, location = document.getElementById('inpDTLocation').value.trim();
     const name = document.getElementById('inpDTName').value.trim();
     const srNo = document.getElementById('inpDTSrNo').value.trim(); const tn = document.getElementById('inpDTTN').value.trim(); const mountedOn = document.getElementById('inpDTMount').value; const photo = document.getElementById('inpDTPhoto').value;
     if (!code) return alert(t("errReq")); const net = getActiveNetwork();
@@ -1071,11 +1096,11 @@ window.saveDTData = function(editId) {
     if(editId) {
         if (net.dts.some(d => d.id !== editId && String(d.code) === code)) return alert(t("alertExists"));
         let d = net.dts.find(x => x.id === editId); if(!d) return;
-        d.code = code; d.name = name; d.rating = rating; d.phase = phase; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
+        d.code = code; d.name = name; d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
     } else {
         if (net.dts.some(d => String(d.code) === code)) return alert(t("alertExists"));
         const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); let lat = net.feeder.lat, lng = net.feeder.lng; if (p) { lat = p.lat; lng = p.lng; }
-        net.dts.push({ id: 'DT_'+Date.now(), parentPole: parentRef, code, name, rating, phase, srNo, tn, mountedOn, photo, lat, lng });
+        net.dts.push({ id: 'DT_'+Date.now(), parentPole: parentRef, code, name, rating, phase, srNo, tn, mountedOn, location, photo, lat, lng });
     }
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
