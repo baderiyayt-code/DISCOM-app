@@ -113,7 +113,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .orphan-pulse svg circle, .orphan-pulse svg rect, .orphan-pulse svg polygon, .orphan-pulse svg path { fill: #ef4444 !important; animation: redGlow 1s infinite !important; }
 @keyframes redGlow { 0% { filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0.8)); } 70% { filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0)); } 100% { filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0)); } }
 
-/* CSS Classes for Zoom Layer Management */
+/* CSS Classes for Layer Management */
 .hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { display: none !important; pointer-events: none !important; }
 .hide-lt-poles .lt-pole-icon { display: none !important; pointer-events: none !important; }
 .hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
