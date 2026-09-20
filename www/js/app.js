@@ -159,7 +159,6 @@ window.handleSupabaseLogout = async function() { if(supabaseClient) await supaba
 
 let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTileIndex = 0;
 
-/* ====== CAMERA INTEGRATION ====== */
 window.capturePhoto = function(targetId) {
     if (window.cordova && navigator.camera) {
         navigator.camera.getPicture(
@@ -209,8 +208,6 @@ function initMapSystem() {
         if (z > 17) { map.addLayer(featureGroups.ltPoles); }
         if (z > 16) { map.addLayer(featureGroups.ltLines); }
         if (z > 15) { map.addLayer(featureGroups.htPoles); }
-        
-        // Add TOP layers last so they sit at the highest point in DOM stack
         if (z > 14) { map.addLayer(featureGroups.dts); map.addLayer(featureGroups.gss); }
         
         if (z <= 13) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
@@ -276,7 +273,7 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== NEW: BOTTOM SHEET UI LOGIC ====== */
+/* ====== BOTTOM SHEET UI LOGIC ====== */
 window.openObjectSheet = function(type, id) {
     window.haptic(15); const net = getActiveNetwork();
     let obj = null, title = '', subtitle = '', details = '', photo = '', actions = '';
@@ -349,7 +346,7 @@ function renderEntireNetwork() {
             if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
                 const htmlIcon = `<div class="gss-icon-container"><div class="gss-square-icon"><span>GSS</span></div><div class="gss-mini-dot"></div></div>`;
                 const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [36,36], iconAnchor: [18,18] });
-                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 95000 }).addTo(featureGroups.gss);
+                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 4000 }).addTo(featureGroups.gss);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', activeGss.code); });
             }
         }
@@ -360,70 +357,62 @@ function renderEntireNetwork() {
                 if (appState.activeMove && appState.activeMove.id === p.id) return;
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
-                const baseColor = isLT ? '#10b981' : '#fde047';
-                const strokeColor = (p.condition === 'Tilted' || p.condition === 'Damaged') ? '#ef4444' : '#0f172a';
+                const color = isLT ? '#10b981' : '#fde047';
+                const isAlert = (p.condition === 'Tilted' || p.condition === 'Damaged');
+                const strokeColor = isAlert ? '#ef4444' : '#0f172a';
                 const zOff = isLT ? 1000 : 2000;
                 
-                // CRITICAL UPDATE: Real Structural SVGs
-                let svg = '';
-                let iconW = 30, iconH = 40, anchorX = 15, anchorY = 40;
-                
+                // CRITICAL FIX: Real SVG Paths for structural poles with bottom-center anchoring
+                let svg = ''; let w = 30, h = 44, ax = 15, ay = 44;
+                const alertBadge = isAlert ? `<circle cx="${w-4}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-4}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
+
                 if (p.structure === 'Double') {
-                    iconW = 36; iconH = 40; anchorX = 18; anchorY = 40;
-                    svg = `<svg width="36" height="40" viewBox="0 0 36 40" xmlns="http://www.w3.org/2000/svg">
-                        <line x1="10" y1="8" x2="10" y2="40" stroke="${strokeColor}" stroke-width="3" />
-                        <line x1="10" y1="8" x2="10" y2="40" stroke="${baseColor}" stroke-width="1.5" />
-                        <line x1="26" y1="8" x2="26" y2="40" stroke="${strokeColor}" stroke-width="3" />
-                        <line x1="26" y1="8" x2="26" y2="40" stroke="${baseColor}" stroke-width="1.5" />
-                        <line x1="4" y1="12" x2="32" y2="12" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="4" y1="12" x2="32" y2="12" stroke="${baseColor}" stroke-width="1.5" stroke-linecap="round"/>
-                        <line x1="4" y1="18" x2="32" y2="18" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="4" y1="18" x2="32" y2="18" stroke="${baseColor}" stroke-width="1.5" stroke-linecap="round"/>
-                        <line x1="10" y1="22" x2="26" y2="34" stroke="${strokeColor}" stroke-width="1.5" />
-                        <line x1="26" y1="22" x2="10" y2="34" stroke="${strokeColor}" stroke-width="1.5" />
-                        <rect x="8" y="24" width="20" height="12" rx="4" fill="rgba(255,255,255,0.85)" stroke="${strokeColor}" stroke-width="1"/>
-                        <text x="18" y="33" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    w = 36; ax = 18;
+                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 10 16 L 10 44 M 26 16 L 26 44" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M 10 16 L 10 44 M 26 16 L 26 44" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M 4 22 L 32 22 M 4 28 L 32 28" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M 10 28 L 26 40 M 26 28 L 10 40" stroke="${strokeColor}" stroke-width="2" opacity="0.7"/>
+                        <rect x="3" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
+                        <text x="18" y="10" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                        ${isAlert ? `<circle cx="${w-4}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-4}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : ''}
                     </svg>`;
                 } else if (p.structure === 'Lattice Tower') {
-                    iconW = 40; iconH = 50; anchorX = 20; anchorY = 50;
-                    svg = `<svg width="40" height="50" viewBox="0 0 40 50" xmlns="http://www.w3.org/2000/svg">
-                        <line x1="20" y1="5" x2="8" y2="50" stroke="${strokeColor}" stroke-width="2.5" />
-                        <line x1="20" y1="5" x2="8" y2="50" stroke="${baseColor}" stroke-width="1" />
-                        <line x1="20" y1="5" x2="32" y2="50" stroke="${strokeColor}" stroke-width="2.5" />
-                        <line x1="20" y1="5" x2="32" y2="50" stroke="${baseColor}" stroke-width="1" />
-                        <line x1="10" y1="15" x2="30" y2="15" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
-                        <line x1="5" y1="25" x2="35" y2="25" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
-                        <path d="M17 15 L26 25 L12 37 L29 50" fill="none" stroke="${strokeColor}" stroke-width="1"/>
-                        <path d="M23 15 L14 25 L28 37 L11 50" fill="none" stroke="${strokeColor}" stroke-width="1"/>
-                        <rect x="10" y="34" width="20" height="12" rx="4" fill="rgba(255,255,255,0.85)" stroke="${strokeColor}" stroke-width="1"/>
-                        <text x="20" y="43" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    w = 40; h = 48; ax = 20; ay = 48;
+                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 14 16 L 4 48 M 26 16 L 36 48" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M 14 16 L 4 48 M 26 16 L 36 48" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M 2 24 L 38 24 M 6 32 L 34 32" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M 11 24 L 29 32 M 29 24 L 11 32 M 8 32 L 32 40 M 32 32 L 8 40" stroke="${strokeColor}" stroke-width="1.5" opacity="0.8"/>
+                        <rect x="5" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
+                        <text x="20" y="10" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                        ${isAlert ? `<circle cx="${w-5}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-5}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : ''}
                     </svg>`;
                 } else if (p.structure === 'Rail Pole') {
-                    iconW = 24; iconH = 40; anchorX = 12; anchorY = 40;
-                    svg = `<svg width="24" height="40" viewBox="0 0 24 40" xmlns="http://www.w3.org/2000/svg">
-                        <rect x="8" y="5" width="8" height="35" fill="${baseColor}" stroke="${strokeColor}" stroke-width="2" />
-                        <line x1="4" y1="5" x2="20" y2="5" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
-                        <line x1="4" y1="38" x2="20" y2="38" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
-                        <rect x="2" y="16" width="20" height="12" rx="4" fill="rgba(255,255,255,0.85)" stroke="${strokeColor}" stroke-width="1"/>
-                        <text x="12" y="25" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 12 16 L 12 44 M 18 16 L 18 44" stroke="${strokeColor}" stroke-width="3"/>
+                        <path d="M 12 16 L 12 44 M 18 16 L 18 44" stroke="${color}" stroke-width="1"/>
+                        <path d="M 9 20 L 21 20 M 9 26 L 21 26 M 9 32 L 21 32 M 9 38 L 21 38" stroke="${strokeColor}" stroke-width="2"/>
+                        <rect x="0" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
+                        <text x="15" y="10" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                        ${alertBadge}
                     </svg>`;
                 } else {
-                    iconW = 30; iconH = 40; anchorX = 15; anchorY = 40;
-                    svg = `<svg width="30" height="40" viewBox="0 0 30 40" xmlns="http://www.w3.org/2000/svg">
-                        <line x1="15" y1="8" x2="15" y2="40" stroke="${strokeColor}" stroke-width="3" />
-                        <line x1="15" y1="8" x2="15" y2="40" stroke="${baseColor}" stroke-width="1.5" />
-                        <line x1="5" y1="12" x2="25" y2="12" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round" />
-                        <line x1="5" y1="12" x2="25" y2="12" stroke="${baseColor}" stroke-width="1.5" stroke-linecap="round" />
-                        <circle cx="5" cy="9" r="2" fill="${strokeColor}" />
-                        <circle cx="15" cy="9" r="2" fill="${strokeColor}" />
-                        <circle cx="25" cy="9" r="2" fill="${strokeColor}" />
-                        <rect x="5" y="20" width="20" height="12" rx="4" fill="rgba(255,255,255,0.85)" stroke="${strokeColor}" stroke-width="1"/>
-                        <text x="15" y="29" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 15 16 L 15 44" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M 15 16 L 15 44" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M 5 22 L 25 22" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
+                        <circle cx="5" cy="19" r="2" fill="#fff" stroke="${strokeColor}"/>
+                        <circle cx="15" cy="19" r="2" fill="#fff" stroke="${strokeColor}"/>
+                        <circle cx="25" cy="19" r="2" fill="#fff" stroke="${strokeColor}"/>
+                        <rect x="0" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/>
+                        <text x="15" y="10" font-size="9" font-weight="900" font-family="Inter, sans-serif" fill="#0f172a" text-anchor="middle">${displayNo}</text>
+                        ${alertBadge}
                     </svg>`;
                 }
 
                 const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [iconW, iconH], iconAnchor: [anchorX, anchorY] }), zIndexOffset: zOff }).addTo(targetGrp);
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [w, h], iconAnchor: [ax, ay] }), zIndexOffset: zOff }).addTo(targetGrp);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('POLE', p.id); });
             });
         }
@@ -466,6 +455,7 @@ function renderEntireNetwork() {
             linesToDraw.forEach(ld => {
                 const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
                 L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
+                
                 hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
             });
 
@@ -696,7 +686,7 @@ window.saveNewGss = function() {
     const center = map.getCenter(); appState.gssNodes[code] = { code, name, lat: parseFloat(center.lat.toFixed(6)), lng: parseFloat(center.lng.toFixed(6)) };
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("New GSS added successfully!");
 };
-window.relocateGss = function(gssCode) { if(map) map.closePopup(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
+window.relocateGss = function(gssCode) { window.closeObjectSheet(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
 
 window.openAddNewFeederModal = function() {
     const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}">${g.code} - ${g.name}</option>`).join('');
@@ -739,7 +729,42 @@ window.executeSecureAppReset = function() {
     localforage.clear().then(() => { localStorage.clear(); location.reload(); });
 }
 
-/* PROGRESSIVE FORMS WITH SMART TEXT PILL & BOTTOM ANCHORED SVGS */
+function updateOrphanStatus() {
+    appState.orphanPoleIds.clear(); const net = getActiveNetwork(), adj = {}, gssCode = net.feeder.parentGss, gssId = 'GSS_' + gssCode; adj[gssId] = [];
+    net.poles.forEach(p => adj['POLE_' + p.poleNo] = []); net.dts.forEach(d => adj['DT_' + d.code] = []);
+    net.dts.forEach(d => { if(d.parentPole) { const pId = 'POLE_' + d.parentPole; if (!adj[pId]) adj[pId] = []; adj[pId].push('DT_' + d.code); adj['DT_' + d.code].push(pId); } });
+    net.lines.forEach(l => { const u = String(l.fromNode), v = String(l.toNode); if (!adj[u]) adj[u] = []; if (!adj[v]) adj[v] = []; adj[u].push(v); adj[v].push(u); });
+    const visited = new Set([gssId]), queue = [gssId];
+    while (queue.length > 0) { const curr = queue.shift(); (adj[curr] || []).forEach(neighbor => { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } }); }
+    net.poles.forEach(p => { if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id); });
+    net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
+}
+
+window.toggleSearchBox = function() {
+    window.haptic(15);
+    const box = document.getElementById('searchBoxOverlay');
+    if (box.style.display === 'none') { box.style.display = 'flex'; document.getElementById('appSearchBar').focus(); } else { box.style.display = 'none'; window.clearSearch(); }
+}
+window.handleSearch = function(e) {
+    const query = e.target.value.toLowerCase().trim(), suggPanel = document.getElementById('searchSuggestions');
+    if(query.length === 0) { suggPanel.classList.remove('active'); return; }
+    const net = getActiveNetwork(); let results = [];
+    net.consumers.forEach(c => { if (String(c.kno).toLowerCase().includes(query) || (c.name && c.name.toLowerCase().includes(query))) results.push({ type: 'CONSUMER', id: c.id, title: c.name, desc: `K-No: ${c.kno} | Connected to: ${c.parentRef}` }); });
+    net.dts.forEach(d => { if (String(d.code).toLowerCase().includes(query) || String(d.rating).includes(query) || (d.location && d.location.toLowerCase().includes(query))) results.push({ type: 'DT', id: d.id, title: `DT Code: ${d.code}`, desc: `Rating: ${d.rating} kVA | Loc: ${d.location || 'N/A'}` }); });
+    if (results.length > 0) {
+        suggPanel.innerHTML = results.slice(0, 15).map(r => `<div class="suggestion-item" onclick="window.selectSearchResult('${r.type}', '${r.id}')"><div class="sugg-title"><span>${r.type === 'CONSUMER' ? '<i class="fa-solid fa-house" style="color:#3b82f6;"></i>' : '<i class="fa-solid fa-bolt" style="color:#f59e0b;"></i>'} ${r.title}</span></div><div class="sugg-desc">${r.desc}</div></div>`).join('');
+        suggPanel.classList.add('active');
+    } else { suggPanel.innerHTML = `<div style="padding:10px 12px; font-size:0.8rem; color:#64748b;">No results found</div>`; suggPanel.classList.add('active'); }
+}
+window.clearSearch = function() { document.getElementById('appSearchBar').value = ''; document.getElementById('searchSuggestions').classList.remove('active'); }
+window.selectSearchResult = function(type, id) {
+    const net = getActiveNetwork(); window.clearSearch(); window.toggleSearchBox(); let target = null;
+    if(type === 'CONSUMER') target = net.consumers.find(c => c.id === id); 
+    else if(type === 'DT') target = net.dts.find(d => d.id === id);
+    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); window.openObjectSheet(type, id); }
+}
+
+/* ====== PROGRESSIVE FORMS ====== */
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
     if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'flex'; } 
@@ -753,7 +778,8 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
     const net = getActiveNetwork(); const center = map.getCenter(); 
     snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
     
-    let isEdit = editId !== null; let existingObj = {};
+    let isEdit = editId !== null;
+    let existingObj = {};
     if(isEdit) {
         if(type === 'POLE' || type === 'LTPOLE') existingObj = net.poles.find(x => x.id === editId) || {};
         else if(type === 'LINE') existingObj = net.lines.find(x => x.id === editId) || {};
@@ -897,6 +923,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
                 <div class="form-row"><label>K-Number (12 Digits)*</label><input type="text" id="inpConsKno" class="form-input" value="${existingObj.kno||''}" maxlength="12" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,12);"></div>
                 <div class="form-row"><label>A/C No. (8 Digits)*</label><input type="text" id="inpConsAcNo" class="form-input" value="${existingObj.acNo||''}" maxlength="8" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,8);"></div>
             </div>
+            
             <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
                 <div class="form-grid-2"><div class="form-row"><label>Consumer Type</label><select id="inpConsType" class="form-select"><option value="DS" ${selType('DS')}>DS</option><option value="NDS" ${selType('NDS')}>NDS</option><option value="AG" ${selType('AG')}>AG</option><option value="SIP/MIP" ${selType('SIP/MIP')}>SIP/MIP</option><option value="PHED" ${selType('PHED')}>PHED</option><option value="Other" ${selType('Other')}>Other</option></select></div><div class="form-row"><label>Status</label><select id="inpConsStatus" class="form-select"><option value="Regular" ${selStat('Regular')}>Regular</option><option value="DC" ${selStat('DC')}>DC</option><option value="PDC" ${selStat('PDC')}>PDC</option></select></div></div>
@@ -991,6 +1018,8 @@ window.saveConsumerData = function(editId) {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
 
+window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
+
 function deleteDTLogic(dtId, net) {
     const d = net.dts.find(x => x.id === dtId); if(!d) return;
     const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn);
@@ -1006,11 +1035,11 @@ window.deleteEntity = function(type, id) {
         const p = net.poles.find(x => x.id === id);
         if (p) { if (p.lineType === 'LT') deleteLTPoleLogic(p, net); else { const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); dtsOnPole.forEach(dt => deleteDTLogic(dt.id, net)); net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== id); } }
     } else if (type === 'gss') { if (appState.gssNodes[id]) delete appState.gssNodes[id]; }
-    if(map) map.closePopup(); renderEntireNetwork(); triggerPersistence(); showToast(t("toastDel"));
+    window.closeObjectSheet(); renderEntireNetwork(); triggerPersistence(); showToast(t("toastDel"));
 }
 
 window.startObjectMove = function(type, id, title) {
-    if(map) map.closePopup(); appState.activeMove = { type, id }; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'flex'; document.getElementById('moveTargetTitle').innerText = `Move: ${title}`;
+    window.haptic(15); window.closeObjectSheet(); appState.activeMove = { type, id }; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'flex'; document.getElementById('moveTargetTitle').innerText = `Move: ${title}`;
     let target = null; let htmlContent = '';
     if(type === 'GSS') { target = appState.gssNodes[id]; htmlContent = `<div class="gss-square-icon" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><span>GSS</span></div>`; } 
     else {
@@ -1102,7 +1131,7 @@ window.generateCadSLDPdf = async function() {
     window.toggleSidebar(false); const net = getActiveNetwork();
     if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
     
-    showToast("Generating Buffered Auto-Fit SLD PDF...");
+    showToast("Generating Auto-Fit SLD PDF...");
     const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
     
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
@@ -1161,7 +1190,7 @@ window.generateCadSLDPdf = async function() {
                 doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
                 doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
             }
-            
+
             if (l.hasCrossing) {
                 const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2;
                 doc.setDrawColor(239, 68, 68); doc.setLineWidth(1);
