@@ -53,7 +53,10 @@
             </div>
             <div class="header-actions">
                 <button class="action-btn-sm" onclick="window.toggleSearchBox()"><i class="fa-solid fa-magnifying-glass"></i></button>
-                <div id="sync-indicator" title="Sync Status"><i class="fa-solid fa-cloud"></i></div>
+                <div id="sync-indicator" title="Sync Status" onclick="syncToSupabase(true)">
+                    <i class="fa-solid fa-cloud"></i>
+                    <span class="sync-badge" id="sync-badge" style="display:none;">0</span>
+                </div>
                 <button class="action-btn-sm bg" onclick="window.runOrphanNodeChecker()"><i class="fa-solid fa-network-wired" style="color:#d97706;"></i></button>
             </div>
         </div>
@@ -77,7 +80,13 @@
     <div id="layer-indicator">Google Hybrid</div>
     <div id="map" class="map-container"></div>
     <div id="reticle-coordinates">0.000000, 0.000000</div>
-    <div id="center-placement-pin">📍</div>
+    
+    <!-- CRITICAL UI FIX: Upgraded GIS Crosshair & Live Distance Meter -->
+    <div id="center-placement-pin">
+        <i class="fa-solid fa-crosshairs crosshair-icon"></i>
+        <div id="live-distance-meter" class="live-distance-badge" style="display:none;">0 m</div>
+    </div>
+    
     <div id="live-move-icon"></div>
 
     <div class="right-tools-stack">
@@ -116,6 +125,12 @@
             <button class="btn-danger-outline" style="margin:0;" onclick="window.cancelObjectMove()" data-i18n="cancel">Cancel</button>
         </div>
     </div>
+</div>
+
+<!-- NEW UI: Bottom Object Details Sheet -->
+<div id="bottom-info-sheet" class="bottom-info-sheet">
+    <div class="sheet-drag-handle" onclick="window.closeObjectSheet()"></div>
+    <div id="obj-sheet-content"></div>
 </div>
 
 <div id="settings-page">
