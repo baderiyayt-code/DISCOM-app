@@ -54,9 +54,9 @@ const i18n = {
         export: "डेटा निर्यात (डाउनलोड)", exportPdf: "एसएलडी पीडीएफ (SLD PDF)", exportDxf: "DXF निर्यात", exportKml: "KML निर्यात", exportCsv: "CSV निर्यात", 
         importLabel: "बैकअप और रीस्टोर", exportJson: "बैकअप निर्यात (JSON)", importJson: "बैकअप आयात (JSON)", system: "सिस्टम", settings: "सेटिंग्स", about: "ऐप के बारे में",
         appLanguage: "ऐप की भाषा", distUnit: "दूरी इकाई", gpsInterval: "जीपीएस अंतराल", gpsAcc: "जीपीएस सटीकता", resetData: "ऐप डेटा रीसेट करें",
-        confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान सेट करें", target: "लक्ष्य",
+        confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान set करें", target: "लक्ष्य",
         toastSettings: "सेटिंग्स सहेजी गईं!", toastDel: "सफलतापूर्वक हटा दिया गया!", toastImport: "सफलतापूर्वक आयात किया गया!",
-        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT कोड)...",
+        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT कोड)...",
         htPole: "एचटी पोल", ltPole: "एलटी पोल", line: "लाइन", dt: "डीटी (ट्रांसफार्मर)", consumer: "उपभोक्ता", logout: "सुरक्षित लॉगआउट"
     }
 };
@@ -344,7 +344,6 @@ function renderEntireNetwork() {
         const activeGss = appState.gssNodes[net.feeder.parentGss];
         if (activeGss && typeof activeGss.lat === 'number') {
             if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
-                // CRITICAL 2.5D UPDATE: Pseudo-3D Isometric GSS Building
                 const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
                     <rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/>
                     <rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/>
@@ -367,7 +366,6 @@ function renderEntireNetwork() {
                 const strokeColor = isAlert ? '#ef4444' : '#0f172a';
                 const zOff = isLT ? 1000 : 2000;
                 
-                // CRITICAL 2.5D UPDATE: 3D Cylindrical Poles with linear gradients and shadow class
                 let svg = ''; let w = 34, h = 48, ax = 17, ay = 48;
                 const alertBadge = isAlert ? `<circle cx="${w-5}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-5}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
                 const gradientDef = `<defs><linearGradient id="grad${p.id}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#fff" stop-opacity="0.8"/><stop offset="100%" stop-color="${color}"/></linearGradient></defs>`;
@@ -429,23 +427,45 @@ function renderEntireNetwork() {
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const numRating = String(d.rating).replace(/[^0-9]/g, '');
                     
-                    // CRITICAL 2.5D UPDATE: Elevated 3D Box for DT
+                    // CRITICAL UPDATE: Detailed 1-Phase & 3-Phase SVGs
                     let svg = '';
                     if(d.phase === 'Single Phase') {
-                        svg = `<svg width="34" height="38" viewBox="0 0 34 38" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
-                            <polygon points="17,6 30,32 4,32" fill="#f59e0b" stroke="#fff" stroke-width="2"/>
-                            <polygon points="17,6 30,32 17,32" fill="#fbbf24" opacity="0.6"/>
-                            <text x="17" y="28" font-size="10" font-weight="900" font-family="Inter" fill="#334155" text-anchor="middle">${numRating}</text>
+                        svg = `<svg width="28" height="46" viewBox="0 0 28 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <g stroke="#0f172a" stroke-width="1.5" stroke-linejoin="round">
+                                <line x1="14" y1="14" x2="14" y2="4"/>
+                                <polygon points="14,2 10,5 18,5" fill="#e2e8f0"/>
+                                <polygon points="14,5 8,9 20,9" fill="#e2e8f0"/>
+                                <polygon points="14,9 6,13 22,13" fill="#e2e8f0"/>
+                            </g>
+                            <rect x="2" y="14" width="24" height="4" rx="1" fill="#475569" stroke="#0f172a" stroke-width="1.5"/>
+                            <rect x="4" y="18" width="20" height="24" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
+                            <rect x="2" y="42" width="24" height="4" rx="1" fill="#475569" stroke="#0f172a" stroke-width="1.5"/>
+                            <text x="14" y="35" font-size="11" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
                         </svg>`;
                     } else {
-                        svg = `<svg width="36" height="40" viewBox="0 0 36 40" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="4" y="6" width="28" height="28" rx="4" fill="#f59e0b" stroke="#fff" stroke-width="2"/>
-                            <rect x="4" y="6" width="28" height="14" rx="4" fill="#fbbf24" opacity="0.5"/>
-                            <text x="18" y="24" font-size="11" font-weight="900" font-family="Inter" fill="#334155" text-anchor="middle">${numRating}</text>
+                        svg = `<svg width="40" height="46" viewBox="0 0 40 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <g stroke="#0f172a" stroke-width="1.5" stroke-linejoin="round">
+                                <line x1="10" y1="14" x2="10" y2="4"/>
+                                <polygon points="10,2 7,5 13,5" fill="#e2e8f0"/>
+                                <polygon points="10,5 6,9 14,9" fill="#e2e8f0"/>
+                                <polygon points="10,9 4,13 16,13" fill="#e2e8f0"/>
+                                <line x1="20" y1="14" x2="20" y2="4"/>
+                                <polygon points="20,2 17,5 23,5" fill="#e2e8f0"/>
+                                <polygon points="20,5 16,9 24,9" fill="#e2e8f0"/>
+                                <polygon points="20,9 14,13 26,13" fill="#e2e8f0"/>
+                                <line x1="30" y1="14" x2="30" y2="4"/>
+                                <polygon points="30,2 27,5 33,5" fill="#e2e8f0"/>
+                                <polygon points="30,5 26,9 34,9" fill="#e2e8f0"/>
+                                <polygon points="30,9 24,13 36,13" fill="#e2e8f0"/>
+                            </g>
+                            <rect x="2" y="14" width="36" height="4" rx="1" fill="#475569" stroke="#0f172a" stroke-width="1.5"/>
+                            <rect x="4" y="18" width="32" height="24" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
+                            <rect x="2" y="42" width="36" height="4" rx="1" fill="#475569" stroke="#0f172a" stroke-width="1.5"/>
+                            <text x="20" y="35" font-size="12" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
                         </svg>`;
                     }
 
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [36, 40], iconAnchor: [18, 20] }), zIndexOffset: 90000 }).addTo(featureGroups.dts);
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: d.phase === 'Single Phase' ? [28, 46] : [40, 46], iconAnchor: d.phase === 'Single Phase' ? [14, 23] : [20, 23] }), zIndexOffset: 90000 }).addTo(featureGroups.dts);
                     m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('DT', d.id); });
                 }
             });
@@ -469,7 +489,6 @@ function renderEntireNetwork() {
 
             linesToDraw.forEach(ld => {
                 const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
-                // Assigning dynamic CSS filter classes based on spec mapping
                 L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
                 
                 hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
@@ -497,7 +516,6 @@ function renderEntireNetwork() {
                 else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; 
                 else if(c.conType === 'PHED') faIcon = '&#xf043;'; 
 
-                // CRITICAL 2.5D UPDATE: Elevated floating badge with stand
                 const svg = `<svg width="26" height="34" viewBox="0 0 26 34" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
                     <ellipse cx="13" cy="30" rx="6" ry="2" fill="rgba(0,0,0,0.3)"/>
                     <path d="M13 22 L13 30" stroke="#0f172a" stroke-width="2"/>
@@ -955,7 +973,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit Consumer':'Add Consumer'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div class="form-row"><label>Select Parent DT*</label><select id="inpConsDT" class="form-select" onchange="window.filterConsumerPoles()" ${isEdit?'disabled':''}>${dtOpts}</select></div>
             <div class="form-row"><label>Connects To (LT Pole / DT)*</label><select id="inpConsParent" class="form-select" ${isEdit?'disabled':''}></select></div>
-            
+            <div class="form-row"><label>Consumer Name*</label><input type="text" id="inpConsName" class="form-input" value="${existingObj.name||''}"></div>
             <div class="form-grid-2">
                 <div class="form-row"><label>K-Number (12 Digits)*</label><input type="text" id="inpConsKno" class="form-input" value="${existingObj.kno||''}" maxlength="12" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,12);"></div>
                 <div class="form-row"><label>A/C No. (8 Digits)*</label><input type="text" id="inpConsAcNo" class="form-input" value="${existingObj.acNo||''}" maxlength="8" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,8);"></div>
@@ -964,8 +982,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
             <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
                 <div class="form-grid-2"><div class="form-row"><label>Consumer Type</label><select id="inpConsType" class="form-select"><option value="DS" ${selType('DS')}>DS</option><option value="NDS" ${selType('NDS')}>NDS</option><option value="AG" ${selType('AG')}>AG</option><option value="SIP/MIP" ${selType('SIP/MIP')}>SIP/MIP</option><option value="PHED" ${selType('PHED')}>PHED</option><option value="Other" ${selType('Other')}>Other</option></select></div><div class="form-row"><label>Status</label><select id="inpConsStatus" class="form-select"><option value="Regular" ${selStat('Regular')}>Regular</option><option value="DC" ${selStat('DC')}>DC</option><option value="PDC" ${selStat('PDC')}>PDC</option></select></div></div>
-                <div class="form-grid-2"><div class="form-row"><label>Consumer Name*</label><input type="text" id="inpConsName" class="form-input" value="${existingObj.name||''}"></div><div class="form-row"><label>Meter No.</label><input type="text" id="inpConsMeter" class="form-input" value="${existingObj.meterNo||''}"></div></div>
-                <div class="form-row"><label>Load (kW)</label><input type="number" id="inpConsLoad" class="form-input" value="${existingObj.load||'1'}"></div>
+                <div class="form-grid-2"><div class="form-row"><label>Meter No.</label><input type="text" id="inpConsMeter" class="form-input" value="${existingObj.meterNo||''}"></div><div class="form-row"><label>Load (kW)</label><input type="number" id="inpConsLoad" class="form-input" value="${existingObj.load||'1'}"></div></div>
                 <div style="margin-bottom:12px;">
                     <button class="btn-camera" onclick="window.capturePhoto('inpConsPhoto')"><i class="fa-solid fa-camera"></i> Capture Premises</button>
                     <input type="hidden" id="inpConsPhoto" value="${photoB64}">
@@ -1064,8 +1081,8 @@ window.saveConsumerData = function(editId) {
     
     if(kno.length !== 12) return alert("K-Number must be exactly 12 digits!");
     if(acNo.length !== 8) return alert("A/C No. must be exactly 8 digits!");
-
     const net = getActiveNetwork();
+
     if(editId) {
         if(net.consumers.some(c => c.id !== editId && String(c.kno) === String(kno))) return alert("K-Number already exists!");
         let c = net.consumers.find(x => x.id === editId); if(!c) return;
@@ -1102,11 +1119,15 @@ window.deleteEntity = function(type, id) {
 window.startObjectMove = function(type, id, title) {
     window.haptic(15); window.closeObjectSheet(); appState.activeMove = { type, id }; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'flex'; document.getElementById('moveTargetTitle').innerText = `Move: ${title}`;
     let target = null; let htmlContent = '';
-    if(type === 'GSS') { target = appState.gssNodes[id]; htmlContent = `<div class="gss-square-icon" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><span>GSS</span></div>`; } 
+    if(type === 'GSS') { target = appState.gssNodes[id]; htmlContent = `<svg width="44" height="48" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><text x="22" y="30" font-size="12" font-weight="900" fill="#fff" text-anchor="middle">GSS</text></svg>`; } 
     else {
         const net = getActiveNetwork(); 
-        if (type === 'POLE') { target = net.poles.find(x => x.id === id); const isLT = target.lineType === 'LT'; let displayNo = target.poleNo; if (isLT && String(target.poleNo).includes('-')) displayNo = String(target.poleNo).split('-')[1]; htmlContent = `<div class="${isLT ? 'lt-pole-icon' : 'pole-marker-icon'}" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><span>${displayNo}</span></div>`; } 
-        else if (type === 'CONSUMER') { target = net.consumers.find(x => x.id === id); htmlContent = `<div class="consumer-marker-icon" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><i class="fa-solid fa-house"></i></div>`; }
+        if (type === 'POLE') { 
+            target = net.poles.find(x => x.id === id); const isLT = target.lineType === 'LT'; let displayNo = target.poleNo; if (isLT && String(target.poleNo).includes('-')) displayNo = String(target.poleNo).split('-')[1]; 
+            const color = isLT ? '#10b981' : '#fde047';
+            htmlContent = `<svg width="30" height="44" viewBox="0 0 30 44" xmlns="http://www.w3.org/2000/svg"><path d="M 15 16 L 15 44" stroke="#0f172a" stroke-width="4"/><path d="M 15 16 L 15 44" stroke="${color}" stroke-width="2"/><rect x="0" y="0" width="30" height="14" rx="4" fill="${color}" stroke="#0f172a" stroke-width="1.5"/><text x="15" y="10" font-size="9" font-weight="900" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`; 
+        } 
+        else if (type === 'CONSUMER') { target = net.consumers.find(x => x.id === id); htmlContent = `<svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg"><circle cx="13" cy="11" r="10" fill="#10b981" stroke="white" stroke-width="1.5"/></svg>`; }
     }
     if (target && target.lat && map) { map.panTo([target.lat, target.lng]); const liveIconContainer = document.getElementById('live-move-icon'); liveIconContainer.innerHTML = htmlContent; liveIconContainer.style.display = 'block'; renderEntireNetwork(); }
 }
