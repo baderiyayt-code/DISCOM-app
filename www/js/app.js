@@ -88,12 +88,53 @@ function setSyncStatus(status) {
     else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
 }
 
-window.syncToSupabase = function(manual = false) {
+// ==== ADVANCED RELATIONAL SYNC LOGIC ====
+window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
-    if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; setSyncStatus('syncing');
-    const dataToSync = JSON.parse(JSON.stringify(appState)); delete dataToSync.user; delete dataToSync.orphanPoleIds;
-    supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: dataToSync, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
-    .then(({error}) => { if(error) setSyncStatus('offline'); else setSyncStatus('synced'); }).catch(() => setSyncStatus('offline'));
+    if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
+    setSyncStatus('syncing');
+
+    try {
+        const uid = appState.user.id;
+        
+        // 1. Prepare Arrays
+        const gssArr = Object.values(appState.gssNodes).map(g => ({ ...g, user_id: uid }));
+        const feedersArr = Object.keys(appState.feeders).map(k => ({ ...appState.feeders[k].feeder, user_id: uid }));
+        
+        let polesArr = [], dtsArr = [], linesArr = [], consArr = [];
+        
+        Object.keys(appState.feeders).forEach(fCode => {
+            const net = appState.feeders[fCode];
+            net.poles.forEach(p => polesArr.push({ ...p, feeder_code: fCode, user_id: uid }));
+            net.dts.forEach(d => dtsArr.push({ ...d, feeder_code: fCode, user_id: uid }));
+            net.lines.forEach(l => linesArr.push({ ...l, feeder_code: fCode, user_id: uid }));
+            net.consumers.forEach(c => consArr.push({ ...c, feeder_code: fCode, user_id: uid }));
+        });
+
+        // 2. Sequential Upsert to respect Foreign Key Constraints
+        if(gssArr.length > 0) await supabaseClient.from('gss_nodes').upsert(gssArr);
+        if(feedersArr.length > 0) await supabaseClient.from('feeders').upsert(feedersArr);
+        if(polesArr.length > 0) await supabaseClient.from('poles').upsert(polesArr);
+        if(dtsArr.length > 0) await supabaseClient.from('dts').upsert(dtsArr);
+        if(linesArr.length > 0) await supabaseClient.from('lines').upsert(linesArr);
+        if(consArr.length > 0) await supabaseClient.from('consumers').upsert(consArr);
+
+        // 3. Clean up deleted records from Cloud
+        const activePoleIds = polesArr.map(p => p.id);
+        const activeDtIds = dtsArr.map(d => d.id);
+        const activeLineIds = linesArr.map(l => l.id);
+        const activeConsIds = consArr.map(c => c.id);
+
+        if(activePoleIds.length > 0) await supabaseClient.from('poles').delete().eq('user_id', uid).not('id', 'in', `(${activePoleIds.join(',')})`);
+        if(activeDtIds.length > 0) await supabaseClient.from('dts').delete().eq('user_id', uid).not('id', 'in', `(${activeDtIds.join(',')})`);
+        if(activeLineIds.length > 0) await supabaseClient.from('lines').delete().eq('user_id', uid).not('id', 'in', `(${activeLineIds.join(',')})`);
+        if(activeConsIds.length > 0) await supabaseClient.from('consumers').delete().eq('user_id', uid).not('id', 'in', `(${activeConsIds.join(',')})`);
+
+        setSyncStatus('synced');
+    } catch (err) {
+        console.error("Relational Sync Error:", err);
+        setSyncStatus('offline');
+    }
 }
 
 async function pullFromSupabase() {
@@ -101,28 +142,50 @@ async function pullFromSupabase() {
     setSyncStatus('syncing');
     
     try {
-        const { data, error } = await supabaseClient.from('survey_data').select('data').eq('user_id', appState.user.id); 
-        if (error) throw error;
+        const uid = appState.user.id;
         
-        if (data && data.length > 0) {
-            const cloudData = data[0].data; 
-            appState.feeders = cloudData.feeders || appState.feeders; 
-            appState.gssNodes = cloudData.gssNodes || appState.gssNodes; 
-            appState.currentFeederCode = cloudData.currentFeederCode || appState.currentFeederCode;
-            appState.unsyncedCount = cloudData.unsyncedCount || 0;
+        // Fetch Relational Data
+        const [gssRes, fdrRes, poleRes, dtRes, lineRes, consRes] = await Promise.all([
+            supabaseClient.from('gss_nodes').select('*').eq('user_id', uid),
+            supabaseClient.from('feeders').select('*').eq('user_id', uid),
+            supabaseClient.from('poles').select('*').eq('user_id', uid),
+            supabaseClient.from('dts').select('*').eq('user_id', uid),
+            supabaseClient.from('lines').select('*').eq('user_id', uid),
+            supabaseClient.from('consumers').select('*').eq('user_id', uid)
+        ]);
+
+        let newGss = {}, newFeeders = {};
+
+        if (gssRes.data && gssRes.data.length > 0) {
+            gssRes.data.forEach(g => { delete g.user_id; newGss[g.code] = g; });
+        }
+        
+        if (fdrRes.data && fdrRes.data.length > 0) {
+            fdrRes.data.forEach(f => {
+                delete f.user_id;
+                newFeeders[f.code] = { feeder: f, poles: [], dts: [], lines: [], consumers: [] };
+            });
+            
+            if (poleRes.data) poleRes.data.forEach(p => { const fc = p.feeder_code; delete p.user_id; delete p.feeder_code; if(newFeeders[fc]) newFeeders[fc].poles.push(p); });
+            if (dtRes.data) dtRes.data.forEach(d => { const fc = d.feeder_code; delete d.user_id; delete d.feeder_code; if(newFeeders[fc]) newFeeders[fc].dts.push(d); });
+            if (lineRes.data) lineRes.data.forEach(l => { const fc = l.feeder_code; delete l.user_id; delete l.feeder_code; if(newFeeders[fc]) newFeeders[fc].lines.push(l); });
+            if (consRes.data) consRes.data.forEach(c => { const fc = c.feeder_code; delete c.user_id; delete c.feeder_code; if(newFeeders[fc]) newFeeders[fc].consumers.push(c); });
+            
+            appState.gssNodes = newGss;
+            appState.feeders = newFeeders;
+            appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
+            appState.unsyncedCount = 0;
             
             if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
             
             renderEntireNetwork(); 
             if(map) { setTimeout(() => { map.invalidateSize(); }, 300); }
             centerMapOnGSS(); 
-            setSyncStatus('synced'); 
-            updateSyncUI();
-        } else {
-            setSyncStatus('synced');
         }
+        setSyncStatus('synced'); 
+        updateSyncUI();
     } catch (err) { 
-        console.error("Sync error:", err); 
+        console.error("Pull Sync error:", err); 
         setSyncStatus('offline'); 
     }
 }
@@ -489,7 +552,6 @@ function renderEntireNetwork() {
                     let key = `${d.lat}_${d.lng}`;
                     let dtIndex = dtGroups[key].indexOf(d.id);
                     
-                    // SMART STACKING
                     let dx = 0, dy = 0;
                     if (dtIndex === 1) { dx = -22; dy = 14; } 
                     else if (dtIndex === 2) { dx = 22; dy = 14; } 
@@ -537,7 +599,6 @@ function renderEntireNetwork() {
             const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
             
             let linesToDraw = [];
-            // RULE 1 APPLIED: !line.type.includes('LT') enforces LT lines to always draw as a single line
             if(line.phaseType === 'Three Phase' && !line.type.includes('UG CABLE') && !line.type.includes('LT')) {
                 linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, -1.5), color: '#ef4444' }); 
                 linesToDraw.push({ coords: line.coords, color: '#eab308' }); 
@@ -756,7 +817,6 @@ window.deleteGssAndFeederStrict = function(code) {
     const conf2 = prompt(`To strictly confirm deletion, please type the GSS code "${code}" below:`);
     if (conf2 !== code) return alert("Deletion cancelled: GSS code did not match.");
 
-    saveSnapshot();
     if (appState.gssNodes[code]) delete appState.gssNodes[code];
     
     const feedersToDelete = [];
@@ -1018,6 +1078,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         
         const titleText = isEdit ? (existingObj.name || `DT: ${existingObj.code}`) : 'Add DT';
 
+        // Auto mount call attached to HT Node selection
         openModal(`<div class="sheet-head"><div class="sheet-title">${titleText}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div class="form-row"><label>Connected To (HT Node)*</label><select id="inpDTParent" class="form-select" onchange="window.autoUpdateDTMount()" ${isEdit?'disabled':''}>${parentOpts}</select></div>
             
@@ -1038,7 +1099,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         
         setTimeout(() => { 
             window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', existingObj.rating);
-            if(!isEdit) window.autoUpdateDTMount();
+            if(!isEdit) window.autoUpdateDTMount(); // Auto update logic
         }, 30);
     } 
     else if (type === 'CONSUMER') {
@@ -1144,7 +1205,7 @@ window.saveLineData = function(editId) {
     if (from === to) return alert("Cannot connect node to itself!"); if (!to) return alert("Please select a target node!");
     const net = getActiveNetwork(), spec = getLineSpec(type);
     
-    // --- RULE 3 APPLIED: Line Continuation Validation (Prevent 3-Phase starting from purely 1-Phase Node) ---
+    // --- RULE 3 APPLIED: Line Continuation Validation ---
     if (phaseType === 'Three Phase' && !String(from).startsWith('GSS')) {
         const connectedLines = net.lines.filter(l => (l.fromNode === from || l.toNode === from) && l.id !== editId);
         if (connectedLines.length > 0) {
