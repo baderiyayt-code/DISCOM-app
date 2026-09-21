@@ -388,7 +388,7 @@ function renderEntireNetwork() {
                     <rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/>
                     <text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text>
                 </svg>`;
-                const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); // Anchor at Top
+                const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); 
                 const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 950000 + dynZGss }).addTo(featureGroups.gss);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', activeGss.code); });
             }
@@ -408,7 +408,7 @@ function renderEntireNetwork() {
                 const dynZ = Math.floor(-p.lat * 10000);
                 const zOff = (isLT ? 100000 : 200000) + dynZ;
                 
-                let svg = ''; let w = 34, h = 48, ax = 17, ay = 12; // ay 12 is top insulator anchor
+                let svg = ''; let w = 34, h = 48, ax = 17, ay = 12; // Anchor at Top Insulator
                 const alertBadge = isAlert ? `<circle cx="${w-5}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-5}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
                 const gradientDef = `<defs><linearGradient id="grad${p.id}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#fff" stop-opacity="0.8"/><stop offset="100%" stop-color="${color}"/></linearGradient></defs>`;
                 const groundShadow = `<ellipse cx="${ax}" cy="${h-3}" rx="${(w/2)-2}" ry="3" fill="rgba(0,0,0,0.4)"/>`;
@@ -474,51 +474,35 @@ function renderEntireNetwork() {
             net.dts.forEach(d => {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => x.poleNo == d.parentPole); if (p) { d.lat = p.lat; d.lng = p.lng; } }
                 if (d.lat && d.lng) {
-                    const isOrphan = appState.orphanPoleIds.has(d.id); const numRating = String(d.rating).replace(/[^0-9]/g, '');
+                    const isOrphan = appState.orphanPoleIds.has(d.id); 
+                    const numRating = String(d.rating).replace(/[^0-9]/g, '');
                     const dynZ = Math.floor(-d.lat * 10000);
                     
                     let svg = '';
+                    let iconAnc = [0, 0];
+                    let iconSz = [0, 0];
+
+                    // Smart Stacked DT Visuals (Small box that perfectly mounts onto the Pole's body)
                     if(d.phase === 'Single Phase') {
-                        svg = `<svg width="100%" height="100%" viewBox="0 0 28 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
-                            <ellipse cx="14" cy="44" rx="12" ry="3.5" fill="rgba(0,0,0,0.4)"/>
-                            <g stroke="#0f172a" stroke-width="1.5" stroke-linejoin="round">
-                                <line x1="14" y1="14" x2="14" y2="4"/>
-                                <polygon points="14,2 10,5 18,5" fill="#e2e8f0"/>
-                                <polygon points="14,5 8,9 20,9" fill="#e2e8f0"/>
-                                <polygon points="14,9 6,13 22,13" fill="#e2e8f0"/>
-                            </g>
-                            <rect x="2" y="14" width="24" height="4" rx="1" fill="#475569" stroke="#0f172a" stroke-width="1.5"/>
-                            <rect x="4" y="18" width="20" height="24" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
-                            <rect x="2" y="42" width="24" height="4" rx="1" fill="#475569" stroke="#0f172a" stroke-width="1.5"/>
-                            <text x="14" y="35" font-size="11" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
+                        svg = `<svg width="24" height="24" viewBox="0 0 24 24" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="2" y="2" width="20" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
+                            <path d="M 2 7 L 22 7 M 2 17 L 22 17" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="2,2"/>
+                            <text x="12" y="15.5" font-size="10" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
                         </svg>`;
+                        iconAnc = [12, -8]; // Shifts the box downwards over the pole's shaft
+                        iconSz = [24, 24];
                     } else {
-                        svg = `<svg width="100%" height="100%" viewBox="0 0 40 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
-                            <ellipse cx="20" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/>
-                            <g stroke="#0f172a" stroke-width="1.5" stroke-linejoin="round">
-                                <line x1="10" y1="14" x2="10" y2="4"/>
-                                <polygon points="10,2 7,5 13,5" fill="#e2e8f0"/>
-                                <polygon points="10,5 6,9 14,9" fill="#e2e8f0"/>
-                                <polygon points="10,9 4,13 16,13" fill="#e2e8f0"/>
-                                <line x1="20" y1="14" x2="20" y2="4"/>
-                                <polygon points="20,2 17,5 23,5" fill="#e2e8f0"/>
-                                <polygon points="20,5 16,9 24,9" fill="#e2e8f0"/>
-                                <polygon points="20,9 14,13 26,13" fill="#e2e8f0"/>
-                                <line x1="30" y1="14" x2="30" y2="4"/>
-                                <polygon points="30,2 27,5 33,5" fill="#e2e8f0"/>
-                                <polygon points="30,5 26,9 34,9" fill="#e2e8f0"/>
-                                <polygon points="30,9 24,13 36,13" fill="#e2e8f0"/>
-                            </g>
-                            <rect x="2" y="14" width="36" height="4" rx="1" fill="#475569" stroke="#0f172a" stroke-width="1.5"/>
-                            <rect x="4" y="18" width="32" height="24" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
-                            <rect x="2" y="42" width="36" height="4" rx="1" fill="#475569" stroke="#0f172a" stroke-width="1.5"/>
-                            <text x="20" y="35" font-size="12" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
+                        svg = `<svg width="30" height="26" viewBox="0 0 30 26" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="2" y="2" width="26" height="22" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
+                            <path d="M 2 8 L 28 8 M 2 18 L 28 18" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="2,2"/>
+                            <text x="15" y="16.5" font-size="11" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
                         </svg>`;
+                        iconAnc = [15, -6]; // Shifts the box downwards over the pole's shaft
+                        iconSz = [30, 26];
                     }
 
-                    // Anchor shifted to TOP Insulators (16.5)
-                    const iconAnc = d.phase === 'Single Phase' ? [14, 16.5] : [20, 16.5];
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: d.phase === 'Single Phase' ? [28, 46] : [40, 46], iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ }).addTo(featureGroups.dts);
+                    // DT receives a massive Z-Index boost to ALWAYS sit perfectly on top of its parent pole
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: iconSz, iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ }).addTo(featureGroups.dts);
                     m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('DT', d.id); });
                 }
             });
@@ -543,13 +527,7 @@ function renderEntireNetwork() {
             linesToDraw.forEach(ld => {
                 const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
                 
-                // --- 3D WIRE SHADOW (Line ki Parchai) ---
-                if (!line.type.includes('UG CABLE')) {
-                    const shadowCoords = ld.coords.map(pt => [pt[0] - 0.00008, pt[1] + 0.00004]);
-                    L.polyline(shadowCoords, { color: 'rgba(0,0,0,0.15)', weight: Math.max(1.5, spec.weight - 1), dashArray: '4, 6', interactive: false }).addTo(lineGrp);
-                }
-                
-                // Actual Wire
+                // Lines drawn purely air-to-air without drop-shadow
                 L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
                 
                 hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
