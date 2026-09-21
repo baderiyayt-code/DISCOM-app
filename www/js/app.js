@@ -205,7 +205,6 @@ window.capturePhoto = function(targetId) {
     }
 }
 
-// CRITICAL FIX: Global variable to handle flexible map tracking
 window.followLiveLocation = false;
 
 function initMapSystem() {
@@ -214,8 +213,6 @@ function initMapSystem() {
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
     map.on('click', () => window.closeObjectSheet()); 
-    
-    // Stop forcing location center if user manually drags the map
     map.on('dragstart', () => { window.followLiveLocation = false; });
 
     function updateMapZoomClasses() {
@@ -278,19 +275,16 @@ function centerMapOnGSS() {
 
 window.liveTrackingId = null; window.liveUserMarker = null;
 
-// CRITICAL FIX: Smart toggle logic for Google Maps style tracking behavior
 window.toggleLiveTracking = function() {
     window.haptic(15);
     if (!map) return; if (!navigator.geolocation) return alert("Geolocation API not found.");
     
     if (window.liveTrackingId) {
         if (!window.followLiveLocation) {
-            // User dragged away previously, snap back to center now
             window.followLiveLocation = true;
             if (window.liveUserMarker) map.setView(window.liveUserMarker.getLatLng(), 19);
             showToast("Map re-centered to location");
         } else {
-            // Currently following, so turn it completely off
             navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
             if (window.liveUserMarker) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
             document.getElementById('liveTrackBtn').style.color = '#ef4444';
@@ -298,7 +292,6 @@ window.toggleLiveTracking = function() {
             showToast("Live tracking disabled.");
         }
     } else {
-        // Turn it on for the first time
         showToast("Fetching location...");
         window.followLiveLocation = true;
         window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
@@ -308,7 +301,6 @@ window.toggleLiveTracking = function() {
                 window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 5000}).addTo(map);
             } else window.liveUserMarker.setLatLng([lat, lng]);
             
-            // Only force map to center if the user hasn't dragged it away
             if (window.followLiveLocation) {
                 map.setView([lat, lng], 19);
             }
@@ -389,13 +381,15 @@ function renderEntireNetwork() {
         const activeGss = appState.gssNodes[net.feeder.parentGss];
         if (activeGss && typeof activeGss.lat === 'number') {
             if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
+                const dynZGss = Math.floor(-activeGss.lat * 10000);
                 const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                    <ellipse cx="22" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/>
                     <rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/>
                     <rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/>
                     <text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text>
                 </svg>`;
-                const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,48] });
-                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 95000 }).addTo(featureGroups.gss);
+                const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); // Anchor at Top
+                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 950000 + dynZGss }).addTo(featureGroups.gss);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', activeGss.code); });
             }
         }
@@ -409,16 +403,21 @@ function renderEntireNetwork() {
                 const color = isLT ? '#10b981' : '#fde047';
                 const isAlert = (p.condition === 'Tilted' || p.condition === 'Damaged');
                 const strokeColor = isAlert ? '#ef4444' : '#0f172a';
-                const zOff = isLT ? 1000 : 2000;
                 
-                let svg = ''; let w = 34, h = 48, ax = 17, ay = 48;
+                // 3D Depth Logic (Y-Sorting)
+                const dynZ = Math.floor(-p.lat * 10000);
+                const zOff = (isLT ? 100000 : 200000) + dynZ;
+                
+                let svg = ''; let w = 34, h = 48, ax = 17, ay = 12; // ay 12 is top insulator anchor
                 const alertBadge = isAlert ? `<circle cx="${w-5}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-5}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
                 const gradientDef = `<defs><linearGradient id="grad${p.id}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#fff" stop-opacity="0.8"/><stop offset="100%" stop-color="${color}"/></linearGradient></defs>`;
+                const groundShadow = `<ellipse cx="${ax}" cy="${h-3}" rx="${(w/2)-2}" ry="3" fill="rgba(0,0,0,0.4)"/>`;
 
                 if (p.structure === 'Double') {
-                    w = 40; ax = 20;
+                    w = 40; ax = 20; ay = 12;
                     svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
                         ${gradientDef}
+                        <ellipse cx="${ax}" cy="${h-3}" rx="14" ry="3.5" fill="rgba(0,0,0,0.4)"/>
                         <rect x="10" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/>
                         <rect x="24" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/>
                         <rect x="6" y="24" width="28" height="4" fill="#cbd5e1" stroke="${strokeColor}" stroke-width="1" rx="1"/>
@@ -427,8 +426,9 @@ function renderEntireNetwork() {
                         ${alertBadge}
                     </svg>`;
                 } else if (p.structure === 'Lattice Tower') {
-                    w = 40; h = 48; ax = 20; ay = 48;
+                    w = 40; h = 48; ax = 20; ay = 12;
                     svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                        <ellipse cx="${ax}" cy="${h-3}" rx="15" ry="4" fill="rgba(0,0,0,0.4)"/>
                         <path d="M 16 16 L 8 48 M 24 16 L 32 48" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>
                         <path d="M 16 16 L 8 48 M 24 16 L 32 48" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>
                         <path d="M 14 26 L 26 26 M 11 36 L 29 36" stroke="${strokeColor}" stroke-width="1.5"/>
@@ -438,7 +438,9 @@ function renderEntireNetwork() {
                         ${alertBadge}
                     </svg>`;
                 } else if (p.structure === 'Rail Pole') {
+                    w = 34; h = 48; ax = 17; ay = 12;
                     svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                        <ellipse cx="${ax}" cy="${h-3}" rx="12" ry="3.5" fill="rgba(0,0,0,0.4)"/>
                         <path d="M 14 16 L 14 48 M 20 16 L 20 48" stroke="${strokeColor}" stroke-width="2.5"/>
                         <path d="M 14 16 L 14 48 M 20 16 L 20 48" stroke="${color}" stroke-width="1"/>
                         <path d="M 11 20 L 23 20 M 11 28 L 23 28 M 11 36 L 23 36 M 11 44 L 23 44" stroke="${strokeColor}" stroke-width="1.5"/>
@@ -447,8 +449,10 @@ function renderEntireNetwork() {
                         ${alertBadge}
                     </svg>`;
                 } else {
+                    w = 34; h = 48; ax = 17; ay = 12;
                     svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
                         ${gradientDef}
+                        ${groundShadow}
                         <rect x="14" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/>
                         <rect x="6" y="22" width="22" height="3" fill="#cbd5e1" stroke="${strokeColor}" stroke-width="1" rx="1"/>
                         <circle cx="8" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/>
@@ -471,10 +475,12 @@ function renderEntireNetwork() {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => x.poleNo == d.parentPole); if (p) { d.lat = p.lat; d.lng = p.lng; } }
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const numRating = String(d.rating).replace(/[^0-9]/g, '');
+                    const dynZ = Math.floor(-d.lat * 10000);
                     
                     let svg = '';
                     if(d.phase === 'Single Phase') {
                         svg = `<svg width="100%" height="100%" viewBox="0 0 28 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <ellipse cx="14" cy="44" rx="12" ry="3.5" fill="rgba(0,0,0,0.4)"/>
                             <g stroke="#0f172a" stroke-width="1.5" stroke-linejoin="round">
                                 <line x1="14" y1="14" x2="14" y2="4"/>
                                 <polygon points="14,2 10,5 18,5" fill="#e2e8f0"/>
@@ -488,6 +494,7 @@ function renderEntireNetwork() {
                         </svg>`;
                     } else {
                         svg = `<svg width="100%" height="100%" viewBox="0 0 40 46" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <ellipse cx="20" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/>
                             <g stroke="#0f172a" stroke-width="1.5" stroke-linejoin="round">
                                 <line x1="10" y1="14" x2="10" y2="4"/>
                                 <polygon points="10,2 7,5 13,5" fill="#e2e8f0"/>
@@ -509,7 +516,9 @@ function renderEntireNetwork() {
                         </svg>`;
                     }
 
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: d.phase === 'Single Phase' ? [20, 33] : [28, 33], iconAnchor: d.phase === 'Single Phase' ? [10, 16.5] : [14, 16.5] }), zIndexOffset: 90000 }).addTo(featureGroups.dts);
+                    // Anchor shifted to TOP Insulators (16.5)
+                    const iconAnc = d.phase === 'Single Phase' ? [14, 16.5] : [20, 16.5];
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: d.phase === 'Single Phase' ? [28, 46] : [40, 46], iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ }).addTo(featureGroups.dts);
                     m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('DT', d.id); });
                 }
             });
@@ -533,6 +542,14 @@ function renderEntireNetwork() {
 
             linesToDraw.forEach(ld => {
                 const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
+                
+                // --- 3D WIRE SHADOW (Line ki Parchai) ---
+                if (!line.type.includes('UG CABLE')) {
+                    const shadowCoords = ld.coords.map(pt => [pt[0] - 0.00008, pt[1] + 0.00004]);
+                    L.polyline(shadowCoords, { color: 'rgba(0,0,0,0.15)', weight: Math.max(1.5, spec.weight - 1), dashArray: '4, 6', interactive: false }).addTo(lineGrp);
+                }
+                
+                // Actual Wire
                 L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
                 
                 hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
@@ -549,6 +566,8 @@ function renderEntireNetwork() {
             net.consumers.forEach(c => {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
                 
+                const dynZ = Math.floor(-c.lat * 10000);
+                
                 let bgColor = '#10b981'; 
                 if(c.status === 'DC') bgColor = '#facc15';
                 else if(c.status === 'PDC') bgColor = '#ef4444';
@@ -561,13 +580,14 @@ function renderEntireNetwork() {
                 else if(c.conType === 'PHED') faIcon = '&#xf043;'; 
 
                 const svg = `<svg width="26" height="34" viewBox="0 0 26 34" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
-                    <ellipse cx="13" cy="30" rx="6" ry="2" fill="rgba(0,0,0,0.3)"/>
+                    <ellipse cx="13" cy="30" rx="9" ry="3.5" fill="rgba(0,0,0,0.4)"/>
                     <path d="M13 22 L13 30" stroke="#0f172a" stroke-width="2"/>
                     <circle cx="13" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/>
                     <text x="13" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text>
                 </svg>`;
                 
-                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [26,34], iconAnchor: [13,34] }), zIndexOffset: 100 }).addTo(featureGroups.consumers);
+                // Consumer Anchor at Top
+                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [26,34], iconAnchor: [13,11] }), zIndexOffset: 300000 + dynZ }).addTo(featureGroups.consumers);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('CONSUMER', c.id); });
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
@@ -1132,7 +1152,7 @@ window.saveDTData = function(editId) {
     const phase = document.getElementById('inpDTPhase').value;
     
     const name = document.getElementById('inpDTName').value.trim();
-    const location = name; // Mapped location to the name field to prevent null crash
+    const location = name; 
     
     const srNo = document.getElementById('inpDTSrNo').value.trim(); 
     const tn = document.getElementById('inpDTTN').value.trim(); 
@@ -1420,7 +1440,6 @@ async function initializeApplication() {
     if(appInitialized) return;
     appInitialized = true;
 
-    // CRITICAL FIX: Sequential Android Permissions (Location -> Camera -> Storage)
     if (window.cordova && cordova.plugins && cordova.plugins.permissions) {
         const p = cordova.plugins.permissions;
         p.requestPermission(p.ACCESS_FINE_LOCATION, function() {
