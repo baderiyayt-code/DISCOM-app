@@ -96,7 +96,6 @@ window.syncToSupabase = function(manual = false) {
     .then(({error}) => { if(error) setSyncStatus('offline'); else setSyncStatus('synced'); }).catch(() => setSyncStatus('offline'));
 }
 
-// CRITICAL FIX: Robust Data Pulling & Map Invalidation to solve the 2-3 restart bug
 async function pullFromSupabase() {
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
     setSyncStatus('syncing');
@@ -114,14 +113,13 @@ async function pullFromSupabase() {
             
             if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
             
-            // Re-render and force Leaflet to recalculate container size
             renderEntireNetwork(); 
             if(map) { setTimeout(() => { map.invalidateSize(); }, 300); }
             centerMapOnGSS(); 
             setSyncStatus('synced'); 
             updateSyncUI();
         } else {
-            setSyncStatus('synced'); // No data yet
+            setSyncStatus('synced');
         }
     } catch (err) { 
         console.error("Sync error:", err); 
@@ -152,7 +150,6 @@ function applyAuthUIVisuals() {
     const adminCard = document.getElementById('adminPasswordCard'); 
     if (adminCard) adminCard.style.display = (appState.user.email === ADMIN_EMAIL) ? 'block' : 'none';
     
-    // Fix map gray screen bug on fast load
     if(map) {
         setTimeout(() => { map.invalidateSize(); }, 300);
     }
@@ -208,12 +205,18 @@ window.capturePhoto = function(targetId) {
     }
 }
 
+// CRITICAL FIX: Global variable to handle flexible map tracking
+window.followLiveLocation = false;
+
 function initMapSystem() {
     if(map) return; 
     
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
 
     map.on('click', () => window.closeObjectSheet()); 
+    
+    // Stop forcing location center if user manually drags the map
+    map.on('dragstart', () => { window.followLiveLocation = false; });
 
     function updateMapZoomClasses() {
         if(!map) return;
@@ -274,22 +277,42 @@ function centerMapOnGSS() {
 }
 
 window.liveTrackingId = null; window.liveUserMarker = null;
+
+// CRITICAL FIX: Smart toggle logic for Google Maps style tracking behavior
 window.toggleLiveTracking = function() {
     window.haptic(15);
     if (!map) return; if (!navigator.geolocation) return alert("Geolocation API not found.");
+    
     if (window.liveTrackingId) {
-        navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
-        if (window.liveUserMarker) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
-        document.getElementById('liveTrackBtn').style.color = '#ef4444'; showToast("Live tracking disabled.");
+        if (!window.followLiveLocation) {
+            // User dragged away previously, snap back to center now
+            window.followLiveLocation = true;
+            if (window.liveUserMarker) map.setView(window.liveUserMarker.getLatLng(), 19);
+            showToast("Map re-centered to location");
+        } else {
+            // Currently following, so turn it completely off
+            navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
+            if (window.liveUserMarker) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
+            document.getElementById('liveTrackBtn').style.color = '#ef4444';
+            window.followLiveLocation = false;
+            showToast("Live tracking disabled.");
+        }
     } else {
+        // Turn it on for the first time
         showToast("Fetching location...");
+        window.followLiveLocation = true;
         window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
             if (!window.liveUserMarker) {
                 const humanIcon = L.divIcon({ className: 'live-human-icon', html: '', iconSize: [24,24], iconAnchor: [12,12] });
                 window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 5000}).addTo(map);
             } else window.liveUserMarker.setLatLng([lat, lng]);
-            map.setView([lat, lng]); document.getElementById('liveTrackBtn').style.color = '#10b981';
+            
+            // Only force map to center if the user hasn't dragged it away
+            if (window.followLiveLocation) {
+                map.setView([lat, lng], 19);
+            }
+            document.getElementById('liveTrackBtn').style.color = '#10b981';
         }, (err) => alert("GPS Error. Ensure location permissions are granted."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     }
 }
@@ -888,7 +911,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         const photoB64 = existingObj.photo || ''; const showPhoto = (existingObj.condition==='Tilted'||existingObj.condition==='Damaged') ? 'block' : 'none';
 
         openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit LT Pole':'Add LT Pole'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            ${isEdit ? `<div class="form-row"><label>Pole Number</label><input type="text" class="form-input" value="${existingObj.poleNo}" disabled style="background:var(--bg-base);"></div>` : ''}
+            ${isEdit ? `<div class="form-row"><label>Pole Number</label><input type="text" id="inpPoleNo" class="form-input" value="${existingObj.poleNo}" disabled style="background:var(--bg-base);"></div>` : ''}
             <div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select" ${isEdit?'disabled style="background:var(--bg-base);"':''}>${dtOpts}</select></div>
             <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
@@ -977,7 +1000,6 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
             <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
                 <div class="form-grid-2"><div class="form-row"><label>Phase*</label><select id="inpDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', '${existingObj.rating||''}')"><option value="Three Phase" ${selPhase('Three Phase')}>Three Phase</option><option value="Single Phase" ${selPhase('Single Phase')}>Single Phase</option></select></div><div class="form-row"><label>Mounted On</label><select id="inpDTMount" class="form-select"><option value="Double Pole Structure" ${selMount('Double Pole Structure')}>Double Pole Structure</option><option value="Single Pole" ${selMount('Single Pole')}>Single Pole</option></select></div></div>
                 <div class="form-grid-2"><div class="form-row"><label>Sr. No</label><input type="text" id="inpDTSrNo" class="form-input" value="${existingObj.srNo||''}"></div><div class="form-row"><label>TN Number</label><input type="text" id="inpDTTN" class="form-input" value="${existingObj.tn||''}"></div></div>
-                <div class="form-row"><label>Location / Landmark</label><input type="text" id="inpDTLocation" class="form-input" value="${existingObj.location||''}" placeholder="e.g. Near Main Market"></div>
                 <div style="margin-bottom:12px;">
                     <button class="btn-camera" onclick="window.capturePhoto('inpDTPhoto')"><i class="fa-solid fa-camera"></i> Capture DT Photo</button>
                     <input type="hidden" id="inpDTPhoto" value="${photoB64}"><img id="inpDTPhoto_preview" class="photo-preview" src="${photoB64}" style="display:${photoB64?'block':'none'}">
@@ -1387,23 +1409,18 @@ async function initializeApplication() {
     if(appInitialized) return;
     appInitialized = true;
 
-    // First Time Permission Setup
+    // CRITICAL FIX: Sequential Android Permissions (Location -> Camera -> Storage)
     if (window.cordova && cordova.plugins && cordova.plugins.permissions) {
-        const permissions = cordova.plugins.permissions;
-        const reqList = [
-            permissions.ACCESS_FINE_LOCATION,
-            permissions.ACCESS_COARSE_LOCATION,
-            permissions.READ_EXTERNAL_STORAGE,
-            permissions.WRITE_EXTERNAL_STORAGE,
-            permissions.CAMERA
-        ];
-        permissions.hasPermission(reqList, function(status) {
-            if (!status.hasPermission) {
-                permissions.requestPermissions(reqList, function(status) {
-                    if(!status.hasPermission) showToast("Permissions required for full features!");
-                }, function(){});
-            }
-        });
+        const p = cordova.plugins.permissions;
+        p.requestPermission(p.ACCESS_FINE_LOCATION, function() {
+            p.requestPermission(p.CAMERA, function() {
+                p.requestPermissions([
+                    p.READ_EXTERNAL_STORAGE, 
+                    p.WRITE_EXTERNAL_STORAGE, 
+                    'android.permission.READ_MEDIA_IMAGES'
+                ], function(){}, function(){});
+            }, function(){});
+        }, function(){});
     }
     
     try {
