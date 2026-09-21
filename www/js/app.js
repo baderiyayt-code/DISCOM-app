@@ -1125,9 +1125,20 @@ window.saveLineData = function(editId) {
 }
 
 window.saveDTData = function(editId) {
-    window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value, location = document.getElementById('inpDTLocation').value.trim();
+    window.haptic(30); saveSnapshot(); 
+    const parentRef = document.getElementById('inpDTParent').value;
+    const code = document.getElementById('inpDTCode').value.trim();
+    const rating = parseFloat(document.getElementById('inpDTRating').value);
+    const phase = document.getElementById('inpDTPhase').value;
+    
     const name = document.getElementById('inpDTName').value.trim();
-    const srNo = document.getElementById('inpDTSrNo').value.trim(); const tn = document.getElementById('inpDTTN').value.trim(); const mountedOn = document.getElementById('inpDTMount').value; const photo = document.getElementById('inpDTPhoto').value;
+    const location = name; // Mapped location to the name field to prevent null crash
+    
+    const srNo = document.getElementById('inpDTSrNo').value.trim(); 
+    const tn = document.getElementById('inpDTTN').value.trim(); 
+    const mountedOn = document.getElementById('inpDTMount').value; 
+    const photo = document.getElementById('inpDTPhoto').value;
+    
     if (!code) return alert(t("errReq")); const net = getActiveNetwork();
     
     if(editId) {
