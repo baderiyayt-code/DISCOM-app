@@ -54,7 +54,7 @@ const i18n = {
         export: "डेटा निर्यात (डाउनलोड)", exportPdf: "एसएलडी पीडीएफ (SLD PDF)", exportDxf: "DXF निर्यात", exportKml: "KML निर्यात", exportCsv: "CSV निर्यात", 
         importLabel: "बैकअप और रीस्टोर", exportJson: "बैकअप निर्यात (JSON)", importJson: "बैकअप आयात (JSON)", system: "सिस्टम", settings: "सेटिंग्स", about: "ऐप के बारे में",
         appLanguage: "ऐप की भाषा", distUnit: "दूरी इकाई", gpsInterval: "जीपीएस अंतराल", gpsAcc: "जीपीएस सटीकता", resetData: "ऐप डेटा रीसेट करें",
-        confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान सेट करें", target: "लक्ष्य",
+        confirmLoc: "मैप सेंटर स्थान की पुष्टि करें", confirmHere: "यहाँ पुष्टि करें", cancel: "रद्द करें", setNewLoc: "नया स्थान set करें", target: "लक्ष्य",
         toastSettings: "सेटिंग्स सहेजी गईं!", toastDel: "सफलतापूर्वक हटा दिया गया!", toastImport: "सफलतापूर्वक आयात किया गया!",
         addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सहेजें", searchObj: "खोजें (K-No, नाम, DT कोड)...",
         htPole: "एचटी पोल", ltPole: "एलटी पोल", line: "लाइन", dt: "डीटी (ट्रांसफार्मर)", consumer: "उपभोक्ता", logout: "सुरक्षित लॉगआउट"
@@ -404,7 +404,6 @@ function renderEntireNetwork() {
                 const isAlert = (p.condition === 'Tilted' || p.condition === 'Damaged');
                 const strokeColor = isAlert ? '#ef4444' : '#0f172a';
                 
-                // 3D Depth Logic (Y-Sorting)
                 const dynZ = Math.floor(-p.lat * 10000);
                 const zOff = (isLT ? 100000 : 200000) + dynZ;
                 
@@ -490,11 +489,11 @@ function renderEntireNetwork() {
                     let key = `${d.lat}_${d.lng}`;
                     let dtIndex = dtGroups[key].indexOf(d.id);
                     
-                    // SMART STACKING (Auto Offsets for multiple DTs on same pole)
+                    // SMART STACKING
                     let dx = 0, dy = 0;
                     if (dtIndex === 1) { dx = -22; dy = 14; } 
                     else if (dtIndex === 2) { dx = 22; dy = 14; } 
-                    else if (dtIndex >= 3) { dx = 0; dy = 28 + ((dtIndex-3)*14); } // Scales up nicely
+                    else if (dtIndex >= 3) { dx = 0; dy = 28 + ((dtIndex-3)*14); }
                     
                     let svg = '';
                     let iconAnc = [0, 0];
@@ -519,12 +518,11 @@ function renderEntireNetwork() {
                             <line x1="27" y1="8" x2="27" y2="3" stroke="#0f172a" stroke-width="1.5"/>
                             <circle cx="27" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/>
                             <text x="17" y="22" font-size="10" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
-        </svg>`;
+                        </svg>`;
                         iconAnc = [17 + dx, -6 + dy];
                         iconSz = [34, 30];
                     }
 
-                    // DT receives a massive Z-Index boost to ALWAYS sit perfectly on top of its parent pole
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: iconSz, iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ + (dtIndex * 10) }).addTo(featureGroups.dts);
                     m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('DT', d.id); });
                 }
@@ -539,7 +537,8 @@ function renderEntireNetwork() {
             const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
             
             let linesToDraw = [];
-            if(line.phaseType === 'Three Phase' && !line.type.includes('UG CABLE')) {
+            // RULE 1 APPLIED: !line.type.includes('LT') enforces LT lines to always draw as a single line
+            if(line.phaseType === 'Three Phase' && !line.type.includes('UG CABLE') && !line.type.includes('LT')) {
                 linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, -1.5), color: '#ef4444' }); 
                 linesToDraw.push({ coords: line.coords, color: '#eab308' }); 
                 linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, 1.5), color: '#3b82f6' }); 
@@ -549,10 +548,7 @@ function renderEntireNetwork() {
 
             linesToDraw.forEach(ld => {
                 const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
-                
-                // Lines drawn purely air-to-air without drop-shadow
                 L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
-                
                 hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
             });
 
@@ -587,7 +583,6 @@ function renderEntireNetwork() {
                     <text x="13" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text>
                 </svg>`;
                 
-                // Consumer Anchor at Top
                 const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [26,34], iconAnchor: [13,11] }), zIndexOffset: 300000 + dynZ }).addTo(featureGroups.consumers);
                 m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('CONSUMER', c.id); });
 
@@ -1023,7 +1018,6 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         
         const titleText = isEdit ? (existingObj.name || `DT: ${existingObj.code}`) : 'Add DT';
 
-        // Auto mount call attached to HT Node selection
         openModal(`<div class="sheet-head"><div class="sheet-title">${titleText}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div class="form-row"><label>Connected To (HT Node)*</label><select id="inpDTParent" class="form-select" onchange="window.autoUpdateDTMount()" ${isEdit?'disabled':''}>${parentOpts}</select></div>
             
@@ -1044,7 +1038,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         
         setTimeout(() => { 
             window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', existingObj.rating);
-            if(!isEdit) window.autoUpdateDTMount(); // Auto update logic
+            if(!isEdit) window.autoUpdateDTMount();
         }, 30);
     } 
     else if (type === 'CONSUMER') {
@@ -1150,6 +1144,18 @@ window.saveLineData = function(editId) {
     if (from === to) return alert("Cannot connect node to itself!"); if (!to) return alert("Please select a target node!");
     const net = getActiveNetwork(), spec = getLineSpec(type);
     
+    // --- RULE 3 APPLIED: Line Continuation Validation (Prevent 3-Phase starting from purely 1-Phase Node) ---
+    if (phaseType === 'Three Phase' && !String(from).startsWith('GSS')) {
+        const connectedLines = net.lines.filter(l => (l.fromNode === from || l.toNode === from) && l.id !== editId);
+        if (connectedLines.length > 0) {
+            const hasThreePhase = connectedLines.some(l => l.phaseType === 'Three Phase');
+            if (!hasThreePhase) {
+                return alert("Error: Is Pole par peeche se aane wali koi Three Phase line nahi hai. Aap yahan se aage Three Phase line nahi jod sakte!");
+            }
+        }
+    }
+    // ------------------------------------------------------------------------------------------------------
+
     if(net.lines.find(l => l.id !== editId && ((l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from)))) return alert("A line already exists between these two nodes!");
     
     if(editId) {
@@ -1178,6 +1184,17 @@ window.saveDTData = function(editId) {
     const photo = document.getElementById('inpDTPhoto').value;
     
     if (!code) return alert(t("errReq")); const net = getActiveNetwork();
+
+    // --- RULE 2 APPLIED: DT Installation Phase Logic ---
+    const poleNodeId = 'POLE_' + parentRef;
+    const htLinesOnPole = net.lines.filter(l => (l.fromNode === poleNodeId || l.toNode === poleNodeId) && l.type.includes('11 KV'));
+    if (htLinesOnPole.length > 0) {
+        const hasThreePhaseLine = htLinesOnPole.some(l => l.phaseType === 'Three Phase');
+        if (!hasThreePhaseLine && phase === 'Three Phase') {
+            return alert("Error: Is Pole par sirf Single Phase 11kV line judi hai. Aap yahan par Three Phase DT install nahi kar sakte!");
+        }
+    }
+    // -----------------------------------------------------
     
     if(editId) {
         if (net.dts.some(d => d.id !== editId && String(d.code) === code)) return alert(t("alertExists"));
