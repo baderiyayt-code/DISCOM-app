@@ -13,7 +13,11 @@
     <allow-intent href="mailto:*" />
     <allow-intent href="geo:*" />
     
+    <!-- HARDWARE ACCELERATION ENABLED -->
     <preference name="AndroidXEnabled" value="true" />
+    <preference name="android-hwaccel" value="true" />
+    <preference name="CrosswalkAnimatable" value="true" />
+    
     <icon src="res/icon.png" />
     
     <platform name="android">
