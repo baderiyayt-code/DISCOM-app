@@ -471,38 +471,61 @@ function renderEntireNetwork() {
         }
 
         if (f.dts) {
+            let dtGroups = {};
             net.dts.forEach(d => {
-                if (!d.lat || !d.lng) { const p = net.poles.find(x => x.poleNo == d.parentPole); if (p) { d.lat = p.lat; d.lng = p.lng; } }
+                if (!d.lat || !d.lng) { const p = net.poles.find(x => String(x.poleNo) === String(d.parentPole)); if (p) { d.lat = p.lat; d.lng = p.lng; } }
+                if (d.lat && d.lng) {
+                    let key = `${d.lat}_${d.lng}`;
+                    if (!dtGroups[key]) dtGroups[key] = [];
+                    dtGroups[key].push(d.id);
+                }
+            });
+
+            net.dts.forEach(d => {
                 if (d.lat && d.lng) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); 
                     const numRating = String(d.rating).replace(/[^0-9]/g, '');
                     const dynZ = Math.floor(-d.lat * 10000);
                     
+                    let key = `${d.lat}_${d.lng}`;
+                    let dtIndex = dtGroups[key].indexOf(d.id);
+                    
+                    // SMART STACKING (Auto Offsets for multiple DTs on same pole)
+                    let dx = 0, dy = 0;
+                    if (dtIndex === 1) { dx = -22; dy = 14; } 
+                    else if (dtIndex === 2) { dx = 22; dy = 14; } 
+                    else if (dtIndex >= 3) { dx = 0; dy = 28 + ((dtIndex-3)*14); } // Scales up nicely
+                    
                     let svg = '';
                     let iconAnc = [0, 0];
                     let iconSz = [0, 0];
 
-                    // Smart Stacked DT Visuals (Small box that perfectly mounts onto the Pole's body)
                     if(d.phase === 'Single Phase') {
-                        svg = `<svg width="24" height="24" viewBox="0 0 24 24" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="2" y="2" width="20" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
-                            <path d="M 2 7 L 22 7 M 2 17 L 22 17" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="2,2"/>
-                            <text x="12" y="15.5" font-size="10" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
+                        svg = `<svg width="22" height="30" viewBox="0 0 22 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="4" y="8" width="14" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
+                            <line x1="11" y1="8" x2="11" y2="3" stroke="#0f172a" stroke-width="1.5"/>
+                            <circle cx="11" cy="3" r="2" fill="#ef4444" stroke="#0f172a" stroke-width="1"/>
+                            <text x="11" y="22" font-size="9" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
                         </svg>`;
-                        iconAnc = [12, -8]; // Shifts the box downwards over the pole's shaft
-                        iconSz = [24, 24];
+                        iconAnc = [11 + dx, -6 + dy];
+                        iconSz = [22, 30];
                     } else {
-                        svg = `<svg width="30" height="26" viewBox="0 0 30 26" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
-                            <rect x="2" y="2" width="26" height="22" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
-                            <path d="M 2 8 L 28 8 M 2 18 L 28 18" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="2,2"/>
-                            <text x="15" y="16.5" font-size="11" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
-                        </svg>`;
-                        iconAnc = [15, -6]; // Shifts the box downwards over the pole's shaft
-                        iconSz = [30, 26];
+                        svg = `<svg width="34" height="30" viewBox="0 0 34 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="2" y="8" width="30" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/>
+                            <line x1="7" y1="8" x2="7" y2="3" stroke="#0f172a" stroke-width="1.5"/>
+                            <circle cx="7" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/>
+                            <line x1="17" y1="8" x2="17" y2="3" stroke="#0f172a" stroke-width="1.5"/>
+                            <circle cx="17" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/>
+                            <line x1="27" y1="8" x2="27" y2="3" stroke="#0f172a" stroke-width="1.5"/>
+                            <circle cx="27" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/>
+                            <text x="17" y="22" font-size="10" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text>
+        </svg>`;
+                        iconAnc = [17 + dx, -6 + dy];
+                        iconSz = [34, 30];
                     }
 
                     // DT receives a massive Z-Index boost to ALWAYS sit perfectly on top of its parent pole
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: iconSz, iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ }).addTo(featureGroups.dts);
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: iconSz, iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ + (dtIndex * 10) }).addTo(featureGroups.dts);
                     m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('DT', d.id); });
                 }
             });
@@ -846,6 +869,18 @@ window.selectSearchResult = function(type, id) {
     if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); window.openObjectSheet(type, id); }
 }
 
+/* ====== AUTO "MOUNTED ON" LOGIC FOR DT FORM ====== */
+window.autoUpdateDTMount = function() {
+    const parentRef = document.getElementById('inpDTParent').value;
+    const net = getActiveNetwork();
+    const p = net.poles.find(x => String(x.poleNo) === String(parentRef));
+    if(p) {
+        const mountSel = document.getElementById('inpDTMount');
+        if(p.structure === 'Double' || p.structure === 'Lattice Tower') mountSel.value = 'Double Pole Structure';
+        else mountSel.value = 'Single Pole';
+    }
+};
+
 /* ====== PROGRESSIVE FORMS ====== */
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
@@ -988,8 +1023,9 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         
         const titleText = isEdit ? (existingObj.name || `DT: ${existingObj.code}`) : 'Add DT';
 
+        // Auto mount call attached to HT Node selection
         openModal(`<div class="sheet-head"><div class="sheet-title">${titleText}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Connected To (HT Node)*</label><select id="inpDTParent" class="form-select" ${isEdit?'disabled':''}>${parentOpts}</select></div>
+            <div class="form-row"><label>Connected To (HT Node)*</label><select id="inpDTParent" class="form-select" onchange="window.autoUpdateDTMount()" ${isEdit?'disabled':''}>${parentOpts}</select></div>
             
             <div class="form-row"><label>DT Name / Location</label><input type="text" id="inpDTName" class="form-input" value="${existingObj.name||''}" placeholder="e.g. Subhash Chowk Transformer"></div>
             
@@ -1005,7 +1041,11 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
             </div>
             <input type="hidden" id="inpLat" value="${formLat}"><input type="hidden" id="inpLng" value="${formLng}">
             <button class="btn-action-primary" onclick="window.saveDTData('${editId || ''}')">Save DT</button>`);
-        setTimeout(() => window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', existingObj.rating), 30);
+        
+        setTimeout(() => { 
+            window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', existingObj.rating);
+            if(!isEdit) window.autoUpdateDTMount(); // Auto update logic
+        }, 30);
     } 
     else if (type === 'CONSUMER') {
         if (!isEdit && net.dts.length === 0) return alert("Must have at least one DT to connect Consumer!"); 
