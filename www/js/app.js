@@ -69,24 +69,22 @@ function setSyncStatus(status) {
     else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
 }
 
-// ==== DELETION QUEUE TRACKER (Saves data from accidental mass wipes) ====
+// ==== DELETION QUEUE TRACKER ====
 window.markDeleted = function(type, id) {
     if (!appState.deletedItems) appState.deletedItems = { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] };
-    if (appState.deletedItems[type] && !appState.deletedItems[type].includes(id)) {
-        appState.deletedItems[type].push(id);
-    }
+    if (appState.deletedItems[type] && !appState.deletedItems[type].includes(id)) { appState.deletedItems[type].push(id); }
 };
 
-// ==== 🚀 SMART LIVE SYNC (BROADCAST API) ====
+// ==== 🚀 SMART LIVE SYNC (CONFLICT-FREE) ====
 let realtimeChannel = null;
 window.setupRealtimeSync = function() {
     if (!supabaseClient || !appState.user.isLoggedIn) return;
     if (realtimeChannel) return;
     realtimeChannel = supabaseClient.channel('discom-live-sync', { config: { broadcast: { ack: false } } });
     realtimeChannel.on('broadcast', { event: 'db-updated' }, (payload) => {
-        if(window.isSyncingLocal) return; 
+        if(window.isSyncingLocal || appState.unsyncedCount > 0) return; // Agar local save ho raha hai to rok lein
         clearTimeout(window.rtDebounce);
-        window.rtDebounce = setTimeout(() => { showToast("Live Update Received! 🔄 Refreshing Map..."); pullFromSupabase(true); }, 800);
+        window.rtDebounce = setTimeout(() => { showToast("Live Update Received! 🔄"); pullFromSupabase(true); }, 800);
     }).subscribe();
 };
 
@@ -118,7 +116,7 @@ window.syncToSupabase = async function(manual = false) {
             net.consumers.forEach(c => consArr.push({ ...c, feeder_code: fCode, user_id: uid }));
         });
 
-        // 1. Merge all NEW or EDITED items to Cloud
+        // 1. Merge ALL new & edited items directly into DB (No Mass Deletions)
         if(gssArr.length > 0) await supabaseClient.from('gss_nodes').upsert(cleanData(gssArr));
         if(feedersArr.length > 0) await supabaseClient.from('feeders').upsert(cleanData(feedersArr));
         if(polesArr.length > 0) await supabaseClient.from('poles').upsert(cleanData(polesArr));
@@ -126,22 +124,20 @@ window.syncToSupabase = async function(manual = false) {
         if(linesArr.length > 0) await supabaseClient.from('lines').upsert(cleanData(linesArr));
         if(consArr.length > 0) await supabaseClient.from('consumers').upsert(cleanData(consArr));
 
-        // 2. Targeted Deletes ONLY for explicitly removed items
+        // 2. Targeted Delete (Sirf delete button daba kar udaye gaye items)
         if (!appState.deletedItems) appState.deletedItems = { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] };
-        
         const processDeletes = async (table, ids, idCol = 'id') => {
             if(ids && ids.length > 0) {
-                const { error } = await supabaseClient.from(table).delete().eq('user_id', uid).in(idCol, ids);
-                if (!error) appState.deletedItems[table] = []; // Clear local queue upon success
+                await supabaseClient.from(table).delete().eq('user_id', uid).in(idCol, ids);
             }
         };
-
         await processDeletes('gss_nodes', appState.deletedItems.gss_nodes, 'code');
         await processDeletes('feeders', appState.deletedItems.feeders, 'code');
         await processDeletes('poles', appState.deletedItems.poles);
         await processDeletes('dts', appState.deletedItems.dts);
         await processDeletes('lines', appState.deletedItems.lines);
         await processDeletes('consumers', appState.deletedItems.consumers);
+        appState.deletedItems = { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] }; // Reset array
 
         // Send Live Update Broadcast
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
@@ -175,10 +171,9 @@ async function pullFromSupabase(isBackground = false) {
             if (consRes.data) consRes.data.forEach(c => { const fc = c.feeder_code; delete c.user_id; delete c.feeder_code; if(newFeeders[fc]) newFeeders[fc].consumers.push(c); });
         }
 
-        if(Object.keys(newFeeders).length === 0) {
-            newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
-            newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
-        }
+        // Guaranteed GSS & Feeder Fallback
+        if(Object.keys(newGss).length === 0) newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+        if(Object.keys(newFeeders).length === 0) newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
 
         appState.gssNodes = newGss; appState.feeders = newFeeders;
         if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
