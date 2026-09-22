@@ -13,7 +13,6 @@ let appState = {
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
     gssNodes: {}, feeders: {},
-    dirtyItems: { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }, 
     deletedItems: [], 
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
 };
@@ -21,16 +20,10 @@ let appState = {
 let historyStack = []; let map = null;
 window.haptic = function(pattern) { if (window.cordova && navigator.vibrate) navigator.vibrate(pattern); };
 
-// FIX: Safe check added to prevent "Cannot read properties of null" error
 function updateSyncUI() {
     const badge = document.getElementById('sync-badge');
-    if (!badge) return; // Fail-safe
-    if(appState.unsyncedCount > 0) { 
-        badge.innerText = appState.unsyncedCount; 
-        badge.style.display = 'block'; 
-    } else { 
-        badge.style.display = 'none'; 
-    }
+    if(appState.unsyncedCount > 0) { badge.innerText = appState.unsyncedCount; badge.style.display = 'block'; } 
+    else { badge.style.display = 'none'; }
 }
 
 const i18n = {
@@ -68,36 +61,21 @@ function showToast(msg) {
     if (!toast || !msgElem) return; msgElem.innerText = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
 }
 
-// FIX: Retains the badge element so it doesn't get destroyed on sync success
 function setSyncStatus(status) {
     const ind = document.getElementById('sync-indicator');
-    if (!ind) return;
     if(!navigator.onLine) status = 'offline';
-    
-    let iconHtml = '';
-    if(status === 'syncing') iconHtml = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
-    else if(status === 'synced') iconHtml = '<i class="fa-solid fa-cloud-check sync-success"></i>';
-    else iconHtml = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
-    
-    ind.innerHTML = iconHtml + `<span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount > 0 ? 'block' : 'none'};">${appState.unsyncedCount}</span>`;
-    
-    if (status === 'synced') { 
-        appState.unsyncedCount = 0; 
-        updateSyncUI(); 
-    }
+    if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
+    else if(status === 'synced') { ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>'; appState.unsyncedCount = 0; updateSyncUI(); }
+    else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
 }
 
-window.markDirty = function(type, id) {
-    if (!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
-    if (!appState.dirtyItems[type]) appState.dirtyItems[type] = [];
-    if (!appState.dirtyItems[type].includes(id)) { appState.dirtyItems[type].push(id); }
-};
-
+// ==== UNIVERSAL DELETION TRACKER ====
 window.markDeleted = function(id) {
     if (!appState.deletedItems) appState.deletedItems = [];
     if (!appState.deletedItems.includes(id)) appState.deletedItems.push(id);
 };
 
+// ==== 🚀 SMART LIVE SYNC (BROADCAST API) ====
 let realtimeChannel = null;
 window.setupRealtimeSync = function() {
     if (!supabaseClient || !appState.user.isLoggedIn) return;
@@ -110,6 +88,7 @@ window.setupRealtimeSync = function() {
     }).subscribe();
 };
 
+// Data Cleaning Utility
 function cleanData(arr) {
     return arr.map(obj => {
         let cleaned = {};
@@ -118,64 +97,49 @@ function cleanData(arr) {
     });
 }
 
+// ==== CLOUD SYNC ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
-    
-    if(!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
-    if(!appState.deletedItems) appState.deletedItems = [];
-    
-    const isDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
-    const isDeleted = appState.deletedItems.length > 0;
-    
-    if(!isDirty && !isDeleted) { setSyncStatus('synced'); return; }
-
     window.isSyncingLocal = true; setSyncStatus('syncing');
 
     try {
         const uid = appState.user.id;
         let payload = [];
-        let dirty = appState.dirtyItems;
 
         Object.values(appState.gssNodes).forEach(g => {
-            if(g && g.code && dirty['GSS'].includes(g.code)) payload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
+            if(g && g.code) payload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
         });
 
         Object.keys(appState.feeders).forEach(fCode => {
             const net = appState.feeders[fCode];
-            if(net && net.feeder && net.feeder.code && dirty['FEEDER'].includes(fCode)) payload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
-            
-            net.poles.forEach(p => { if(dirty['POLE'].includes(p.id)) payload.push({ id: p.id, type: 'POLE', data: { ...p, feederCode: fCode }, user_id: uid }); });
-            net.dts.forEach(d => { if(dirty['DT'].includes(d.id)) payload.push({ id: d.id, type: 'DT', data: { ...d, feederCode: fCode }, user_id: uid }); });
-            net.lines.forEach(l => { if(dirty['LINE'].includes(l.id)) payload.push({ id: l.id, type: 'LINE', data: { ...l, feederCode: fCode }, user_id: uid }); });
-            net.consumers.forEach(c => { if(dirty['CONSUMER'].includes(c.id)) payload.push({ id: c.id, type: 'CONSUMER', data: { ...c, feederCode: fCode }, user_id: uid }); });
+            if(net && net.feeder && net.feeder.code) payload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
+            net.poles.forEach(p => payload.push({ id: p.id, type: 'POLE', data: { ...p, feederCode: fCode }, user_id: uid }));
+            net.dts.forEach(d => payload.push({ id: d.id, type: 'DT', data: { ...d, feederCode: fCode }, user_id: uid }));
+            net.lines.forEach(l => payload.push({ id: l.id, type: 'LINE', data: { ...l, feederCode: fCode }, user_id: uid }));
+            net.consumers.forEach(c => payload.push({ id: c.id, type: 'CONSUMER', data: { ...c, feederCode: fCode }, user_id: uid }));
         });
 
         let safePayload = JSON.parse(JSON.stringify(cleanData(payload)));
 
         if (safePayload.length > 0) {
             const { error } = await supabaseClient.from('network_elements').upsert(safePayload);
-            if (error) throw error;
+            if (error) {
+                console.error("Upsert Error:", error);
+                alert("Cloud Save Error (RLS Policy Issue?): " + error.message);
+                throw error;
+            }
         }
 
-        if (appState.deletedItems.length > 0) {
+        if (appState.deletedItems && appState.deletedItems.length > 0) {
             const { error } = await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
-            if (error) throw error;
+            if (!error) appState.deletedItems = []; 
         }
-
-        appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
-        appState.deletedItems = [];
 
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
-        
         setSyncStatus('synced');
-    } catch (err) { 
-        console.error("Sync Error:", err); 
-        alert("Sync Failed: " + err.message);
-        setSyncStatus('offline'); 
-    } finally { 
-        setTimeout(() => { window.isSyncingLocal = false; }, 1500); 
-    }
+    } catch (err) { console.error("Sync Error:", err); setSyncStatus('offline'); } 
+    finally { setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
 }
 
 async function pullFromSupabase(isBackground = false) {
@@ -186,11 +150,14 @@ async function pullFromSupabase(isBackground = false) {
         const uid = appState.user.id;
         const { data, error } = await supabaseClient.from('network_elements').select('*').eq('user_id', uid);
         
-        if (error) throw error;
-
-        let newGss = {}, newFeeders = {};
+        if (error) {
+            alert("Fetch Error: " + error.message);
+            throw error;
+        }
 
         if (data && data.length > 0) {
+            let newGss = {}, newFeeders = {};
+
             data.forEach(item => {
                 if (item.type === 'GSS' && item.data && item.data.code) newGss[item.data.code] = item.data;
                 if (item.type === 'FEEDER' && item.data && item.data.code) newFeeders[item.data.code] = { feeder: item.data, poles: [], dts: [], lines: [], consumers: [] };
@@ -207,22 +174,38 @@ async function pullFromSupabase(isBackground = false) {
                 if (item.type === 'LINE') newFeeders[fc].lines.push(d);
                 if (item.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
             });
+
+            // Failsafe if DB corrupt
+            if(Object.keys(newFeeders).length === 0) newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+            if(Object.keys(newGss).length === 0) newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+
+            appState.gssNodes = newGss; appState.feeders = newFeeders;
+            if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
+            appState.unsyncedCount = 0;
+            
+            getActiveNetwork(); 
+            
+            if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
+            renderEntireNetwork(); 
+            if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
+            if(!isBackground) centerMapOnGSS(); 
+            setSyncStatus('synced'); 
+        } else {
+            // === LOCAL DATA PROTECTION SHIELD ===
+            // Agar Cloud Database Khali hai, par Mobile me purana data pada hai
+            // To App usey delete nahi karegi balki Cloud par wapas upload kar degi.
+            let hasLocalData = false;
+            Object.keys(appState.feeders).forEach(fCode => {
+                if (appState.feeders[fCode].poles.length > 0 || appState.feeders[fCode].dts.length > 0) hasLocalData = true;
+            });
+
+            if(hasLocalData) {
+                console.log("Cloud is Empty, but Mobile has data. Force Syncing UP...");
+                window.syncToSupabase();
+            } else {
+                setSyncStatus('synced');
+            }
         }
-
-        if(Object.keys(newFeeders).length === 0) newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
-        if(Object.keys(newGss).length === 0) newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
-
-        appState.gssNodes = newGss; appState.feeders = newFeeders;
-        if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
-        appState.unsyncedCount = 0;
-        
-        getActiveNetwork(); 
-        
-        if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
-        renderEntireNetwork(); 
-        if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
-        if(!isBackground) centerMapOnGSS(); 
-        setSyncStatus('synced'); 
     } catch (err) { console.error("Pull error:", err); setSyncStatus('offline'); }
 }
 
