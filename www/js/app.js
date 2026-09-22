@@ -13,6 +13,7 @@ let appState = {
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
     gssNodes: {}, feeders: {},
+    deletedItems: { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] },
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
 };
 
@@ -68,7 +69,15 @@ function setSyncStatus(status) {
     else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
 }
 
-// ==== LIVE BROADCAST API (NO SQL SETTING NEEDED) ====
+// ==== DELETION QUEUE TRACKER (Saves data from accidental mass wipes) ====
+window.markDeleted = function(type, id) {
+    if (!appState.deletedItems) appState.deletedItems = { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] };
+    if (appState.deletedItems[type] && !appState.deletedItems[type].includes(id)) {
+        appState.deletedItems[type].push(id);
+    }
+};
+
+// ==== 🚀 SMART LIVE SYNC (BROADCAST API) ====
 let realtimeChannel = null;
 window.setupRealtimeSync = function() {
     if (!supabaseClient || !appState.user.isLoggedIn) return;
@@ -81,7 +90,6 @@ window.setupRealtimeSync = function() {
     }).subscribe();
 };
 
-// Data Cleaning Utility (Avoids Supabase 'undefined' crashes)
 function cleanData(arr) {
     return arr.map(obj => {
         let cleaned = {};
@@ -90,7 +98,7 @@ function cleanData(arr) {
     });
 }
 
-// ==== RELATIONAL CLOUD SYNC ====
+// ==== TARGETED CLOUD SYNC ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -110,7 +118,7 @@ window.syncToSupabase = async function(manual = false) {
             net.consumers.forEach(c => consArr.push({ ...c, feeder_code: fCode, user_id: uid }));
         });
 
-        // 1. Data Saving (Clean Data before Upsert)
+        // 1. Merge all NEW or EDITED items to Cloud
         if(gssArr.length > 0) await supabaseClient.from('gss_nodes').upsert(cleanData(gssArr));
         if(feedersArr.length > 0) await supabaseClient.from('feeders').upsert(cleanData(feedersArr));
         if(polesArr.length > 0) await supabaseClient.from('poles').upsert(cleanData(polesArr));
@@ -118,28 +126,27 @@ window.syncToSupabase = async function(manual = false) {
         if(linesArr.length > 0) await supabaseClient.from('lines').upsert(cleanData(linesArr));
         if(consArr.length > 0) await supabaseClient.from('consumers').upsert(cleanData(consArr));
 
-        // 2. Safe Array-Based Cleanup
-        const safeDelete = async (table, activeIds, idCol = 'id') => {
-            if (activeIds.length > 0) {
-                // FIXED: Passing raw array directly to '.in' (No String Template)
-                const { error } = await supabaseClient.from(table).delete().eq('user_id', uid).not(idCol, 'in', activeIds);
-                if(error) console.error(`Delete Error on ${table}:`, error);
-            } else {
-                await supabaseClient.from(table).delete().eq('user_id', uid);
+        // 2. Targeted Deletes ONLY for explicitly removed items
+        if (!appState.deletedItems) appState.deletedItems = { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] };
+        
+        const processDeletes = async (table, ids, idCol = 'id') => {
+            if(ids && ids.length > 0) {
+                const { error } = await supabaseClient.from(table).delete().eq('user_id', uid).in(idCol, ids);
+                if (!error) appState.deletedItems[table] = []; // Clear local queue upon success
             }
         };
 
-        await safeDelete('gss_nodes', gssArr.map(g => g.code), 'code');
-        await safeDelete('feeders', feedersArr.map(f => f.code), 'code');
-        await safeDelete('poles', polesArr.map(p => p.id));
-        await safeDelete('dts', dtsArr.map(d => d.id));
-        await safeDelete('lines', linesArr.map(l => l.id));
-        await safeDelete('consumers', consArr.map(c => c.id));
+        await processDeletes('gss_nodes', appState.deletedItems.gss_nodes, 'code');
+        await processDeletes('feeders', appState.deletedItems.feeders, 'code');
+        await processDeletes('poles', appState.deletedItems.poles);
+        await processDeletes('dts', appState.deletedItems.dts);
+        await processDeletes('lines', appState.deletedItems.lines);
+        await processDeletes('consumers', appState.deletedItems.consumers);
 
-        // Send Live Update Push
+        // Send Live Update Broadcast
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
         setSyncStatus('synced');
-    } catch (err) { console.error("Sync Logic Error:", err); setSyncStatus('offline'); } 
+    } catch (err) { console.error("Sync Error:", err); setSyncStatus('offline'); } 
     finally { setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
 }
 
@@ -391,11 +398,8 @@ function renderEntireNetwork() {
                 if (appState.activeMove && appState.activeMove.id === p.id) return;
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
-                const color = isLT ? '#10b981' : '#fde047';
-                const isAlert = (p.condition === 'Tilted' || p.condition === 'Damaged');
-                const strokeColor = isAlert ? '#ef4444' : '#0f172a';
+                const color = isLT ? '#10b981' : '#fde047'; const isAlert = (p.condition === 'Tilted' || p.condition === 'Damaged'); const strokeColor = isAlert ? '#ef4444' : '#0f172a';
                 const dynZ = Math.floor(-p.lat * 10000); const zOff = (isLT ? 100000 : 200000) + dynZ;
-                
                 let svg = ''; let w = 34, h = 48, ax = 17, ay = 12; 
                 const alertBadge = isAlert ? `<circle cx="${w-5}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-5}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
                 const gradientDef = `<defs><linearGradient id="grad${p.id}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#fff" stop-opacity="0.8"/><stop offset="100%" stop-color="${color}"/></linearGradient></defs>`;
@@ -435,7 +439,7 @@ function renderEntireNetwork() {
                     let dx = 0, dy = 0;
                     if (dtIndex === 1) { dx = -22; dy = 14; } else if (dtIndex === 2) { dx = 22; dy = 14; } else if (dtIndex >= 3) { dx = 0; dy = 28 + ((dtIndex-3)*14); }
                     
-                    let svg = '', iconAnc = [0, 0], iconSz = [0, 0];
+                    let svg = ''; let iconAnc = [0, 0]; let iconSz = [0, 0];
                     if(d.phase === 'Single Phase') {
                         svg = `<svg width="22" height="30" viewBox="0 0 22 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="8" width="14" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/><line x1="11" y1="8" x2="11" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="11" cy="3" r="2" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><text x="11" y="22" font-size="9" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text></svg>`;
                         iconAnc = [11 + dx, -6 + dy]; iconSz = [22, 30];
@@ -524,7 +528,8 @@ window.openFilterModal = function() {
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-filter" style="color:#d97706;"></i> Object Filter</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div style="display:flex; flex-direction:column; gap:12px;"><div style="display:flex; justify-content:space-between; align-items:center;"><b>11 KV Line</b><label><input type="checkbox" id="flt11" ${f.lines11?'checked':''}></label></div><div style="display:flex; justify-content:space-between; align-items:center;"><b>LT Line</b><label><input type="checkbox" id="fltLT" ${f.linesLT?'checked':''}></label></div><div style="display:flex; justify-content:space-between; align-items:center;"><b>Poles</b><label><input type="checkbox" id="fltPoles" ${f.poles?'checked':''}></label></div><div style="display:flex; justify-content:space-between; align-items:center;"><b>DT</b><label><input type="checkbox" id="fltDTs" ${f.dts?'checked':''}></label></div><div style="display:flex; justify-content:space-between; align-items:center;"><b>Consumers</b><label><input type="checkbox" id="fltCons" ${f.consumers?'checked':''}></label></div></div><button class="btn-action-primary" onclick="window.saveFilters()">Apply</button>`);
 }
 window.saveFilters = function() {
-    appState.filters.lines11 = document.getElementById('flt11').checked; appState.filters.linesLT = document.getElementById('fltLT').checked; appState.filters.poles = document.getElementById('fltPoles').checked; appState.filters.dts = document.getElementById('fltDTs').checked; appState.filters.consumers = document.getElementById('fltCons').checked;
+    appState.filters.lines11 = document.getElementById('flt11').checked; appState.filters.linesLT = document.getElementById('fltLT').checked;
+    appState.filters.poles = document.getElementById('fltPoles').checked; appState.filters.dts = document.getElementById('fltDTs').checked; appState.filters.consumers = document.getElementById('fltCons').checked;
     window.closeModal(); renderEntireNetwork(); showToast("Filters Updated");
 }
 
@@ -611,9 +616,9 @@ window.deleteGssAndFeederStrict = function(code) {
     if (!conf1) return; const conf2 = prompt(`To strictly confirm deletion, please type the GSS code "${code}" below:`);
     if (conf2 !== code) return alert("Deletion cancelled: GSS code did not match.");
 
-    if (appState.gssNodes[code]) delete appState.gssNodes[code];
+    if (appState.gssNodes[code]) { window.markDeleted('gss_nodes', code); delete appState.gssNodes[code]; }
     const feedersToDelete = []; Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].feeder.parentGss === code) feedersToDelete.push(fCode); });
-    feedersToDelete.forEach(fCode => delete appState.feeders[fCode]);
+    feedersToDelete.forEach(fCode => { window.markDeleted('feeders', fCode); delete appState.feeders[fCode]; });
     
     if (!appState.feeders[appState.currentFeederCode] || feedersToDelete.includes(appState.currentFeederCode)) {
         const remainingFeeders = Object.keys(appState.feeders);
@@ -665,339 +670,44 @@ window.executeSecureAppReset = function() {
     localforage.clear().then(() => { localStorage.clear(); location.reload(); });
 }
 
-function updateOrphanStatus() {
-    appState.orphanPoleIds.clear(); const net = getActiveNetwork(), adj = {}, gssCode = net.feeder.parentGss, gssId = 'GSS_' + gssCode; adj[gssId] = [];
-    net.poles.forEach(p => adj['POLE_' + p.poleNo] = []); net.dts.forEach(d => adj['DT_' + d.code] = []);
-    net.dts.forEach(d => { if(d.parentPole) { const pId = 'POLE_' + d.parentPole; if (!adj[pId]) adj[pId] = []; adj[pId].push('DT_' + d.code); adj['DT_' + d.code].push(pId); } });
-    net.lines.forEach(l => { const u = String(l.fromNode), v = String(l.toNode); if (!adj[u]) adj[u] = []; if (!adj[v]) adj[v] = []; adj[u].push(v); adj[v].push(u); });
-    const visited = new Set([gssId]), queue = [gssId];
-    while (queue.length > 0) { const curr = queue.shift(); (adj[curr] || []).forEach(neighbor => { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } }); }
-    net.poles.forEach(p => { if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id); });
-    net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
-}
-
-window.toggleSearchBox = function() {
-    window.haptic(15); const box = document.getElementById('searchBoxOverlay');
-    if (box.style.display === 'none') { box.style.display = 'flex'; document.getElementById('appSearchBar').focus(); } else { box.style.display = 'none'; window.clearSearch(); }
-}
-window.handleSearch = function(e) {
-    const query = e.target.value.toLowerCase().trim(), suggPanel = document.getElementById('searchSuggestions');
-    if(query.length === 0) { suggPanel.classList.remove('active'); return; }
-    const net = getActiveNetwork(); let results = [];
-    net.consumers.forEach(c => { if (String(c.kno).toLowerCase().includes(query) || (c.name && c.name.toLowerCase().includes(query))) results.push({ type: 'CONSUMER', id: c.id, title: c.name, desc: `K-No: ${c.kno} | Connected to: ${c.parentRef}` }); });
-    net.dts.forEach(d => { if (String(d.code).toLowerCase().includes(query) || String(d.rating).includes(query) || (d.location && d.location.toLowerCase().includes(query)) || (d.name && d.name.toLowerCase().includes(query))) results.push({ type: 'DT', id: d.id, title: d.name ? d.name : `DT Code: ${d.code}`, desc: `Rating: ${d.rating} kVA | Loc: ${d.location || 'N/A'}` }); });
-    if (results.length > 0) {
-        suggPanel.innerHTML = results.slice(0, 15).map(r => `<div class="suggestion-item" onclick="window.selectSearchResult('${r.type}', '${r.id}')"><div class="sugg-title"><span>${r.type === 'CONSUMER' ? '<i class="fa-solid fa-house" style="color:#3b82f6;"></i>' : '<i class="fa-solid fa-bolt" style="color:#f59e0b;"></i>'} ${r.title}</span></div><div class="sugg-desc">${r.desc}</div></div>`).join('');
-        suggPanel.classList.add('active');
-    } else { suggPanel.innerHTML = `<div style="padding:10px 12px; font-size:0.8rem; color:#64748b;">No results found</div>`; suggPanel.classList.add('active'); }
-}
-window.clearSearch = function() { document.getElementById('appSearchBar').value = ''; document.getElementById('searchSuggestions').classList.remove('active'); }
-window.selectSearchResult = function(type, id) {
-    const net = getActiveNetwork(); window.clearSearch(); window.toggleSearchBox(); let target = null;
-    if(type === 'CONSUMER') target = net.consumers.find(c => c.id === id); 
-    else if(type === 'DT') target = net.dts.find(d => d.id === id);
-    if(target && target.lat && map) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); window.openObjectSheet(type, id); }
-}
-
-window.autoUpdateDTMount = function() {
-    const parentRef = document.getElementById('inpDTParent').value;
-    const net = getActiveNetwork();
-    const p = net.poles.find(x => String(x.poleNo) === String(parentRef));
-    if(p) {
-        const mountSel = document.getElementById('inpDTMount');
-        if(p.structure === 'Double' || p.structure === 'Lattice Tower') mountSel.value = 'Double Pole Structure';
-        else mountSel.value = 'Single Pole';
-    }
-};
-
-window.openAddForm = function(type) {
-    window.toggleSpeedDial(false); 
-    if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'flex'; } 
-    else window.showFormModal(type, null, null);
-}
-window.confirmPlacement = function() { window.haptic(30); document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); }
-window.cancelPlacement = function() { window.haptic(15); document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; }
-
-window.showFormModal = function(type, snapLat, snapLng, editId = null) {
-    if(map) map.closePopup();
-    const net = getActiveNetwork(); const center = map.getCenter(); 
-    snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
-    
-    let isEdit = editId !== null; let existingObj = {};
-    if(isEdit) {
-        if(type === 'POLE' || type === 'LTPOLE') existingObj = net.poles.find(x => x.id === editId) || {};
-        else if(type === 'LINE') existingObj = net.lines.find(x => x.id === editId) || {};
-        else if(type === 'DT') existingObj = net.dts.find(x => x.id === editId) || {};
-        else if(type === 'CONSUMER') existingObj = net.consumers.find(x => x.id === editId) || {};
-    }
-
-    const formLat = isEdit ? (existingObj.lat || snapLat) : snapLat; const formLng = isEdit ? (existingObj.lng || snapLng) : snapLng;
-
-    if (type === 'GSS') {
-        const g = appState.gssNodes[editId]; if (!g) return;
-        openModal(`<div class="sheet-head"><div class="sheet-title">Edit GSS</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>GSS Name*</label><input type="text" id="editGssName" class="form-input" value="${g.name}"></div><button class="btn-action-primary" onclick="window.saveEditedGss('${g.code}')">Save Changes</button>`);
-    }
-    else if (type === 'POLE') {
-        const nextNo = isEdit ? existingObj.poleNo : (net.poles.filter(p => p.lineType !== 'LT').length + 1);
-        const selStruct = s => (existingObj.structure === s) ? 'selected' : ''; const selCond = c => (existingObj.condition === c) ? 'selected' : '';
-        const photoB64 = existingObj.photo || ''; const showPhoto = (existingObj.condition==='Tilted'||existingObj.condition==='Damaged') ? 'block' : 'none';
-        
-        openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit HT Pole':'Add HT Pole'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Pole Number*</label><input type="number" id="inpPoleNo" class="form-input" value="${nextNo}" ${isEdit?'readonly disabled style="background:var(--bg-base);"':''}></div>
-            <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
-            <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
-                <div class="form-row"><label>Pole Structure</label><select id="inpPoleStruct" class="form-select"><option value="Single" ${selStruct('Single')}>Single Pole</option><option value="Double" ${selStruct('Double')}>Double Pole</option><option value="Lattice Tower" ${selStruct('Lattice Tower')}>Lattice Tower</option><option value="Rail Pole" ${selStruct('Rail Pole')}>Rail Pole</option></select></div>
-                <div class="form-row"><label>Condition</label><select id="inpPoleCond" class="form-select" onchange="document.getElementById('polePhotoDiv').style.display = (this.value==='Tilted'||this.value==='Damaged')?'block':'none'"><option value="OK" ${selCond('OK')}>OK</option><option value="Tilted" ${selCond('Tilted')}>Tilted</option><option value="Damaged" ${selCond('Damaged')}>Damaged</option></select></div>
-                <div id="polePhotoDiv" style="display:${showPhoto}; margin-bottom:12px;"><button class="btn-camera" onclick="window.capturePhoto('inpPolePhoto')"><i class="fa-solid fa-camera"></i> Capture Pole Issue</button><input type="hidden" id="inpPolePhoto" value="${photoB64}"><img id="inpPolePhoto_preview" class="photo-preview" src="${photoB64}" style="display:${photoB64?'block':'none'}"></div>
-            </div>
-            <input type="hidden" id="inpPoleCategory" value="HT"><input type="hidden" id="inpLat" value="${formLat}"><input type="hidden" id="inpLng" value="${formLng}">
-            <button class="btn-action-primary" onclick="window.savePoleData('${editId || ''}')">Save HT Pole</button>`);
-    } 
-    else if (type === 'LTPOLE') {
-        if (!isEdit && net.dts.length === 0) return alert("You must add a DT first before adding an LT Pole!");
-        let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); 
-        const dtOpts = sortedDTs.map(d => `<option value="${d.id}" ${existingObj.dtCode===String(d.id)?'selected':''}>DT: ${d.id} (${window.formatDistance(window.calcDistance(snapLat, snapLng, d.lat, d.lng))})</option>`).join('');
-        const selStruct = s => (existingObj.structure === s) ? 'selected' : ''; const selCond = c => (existingObj.condition === c) ? 'selected' : '';
-        const photoB64 = existingObj.photo || ''; const showPhoto = (existingObj.condition==='Tilted'||existingObj.condition==='Damaged') ? 'block' : 'none';
-
-        openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit LT Pole':'Add LT Pole'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            ${isEdit ? `<div class="form-row"><label>Pole Number</label><input type="text" id="inpPoleNo" class="form-input" value="${existingObj.poleNo}" disabled style="background:var(--bg-base);"></div>` : ''}
-            <div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select" ${isEdit?'disabled style="background:var(--bg-base);"':''}>${dtOpts}</select></div>
-            <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
-            <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
-                <div class="form-row"><label>Pole Structure</label><select id="inpPoleStruct" class="form-select"><option value="Single" ${selStruct('Single')}>Single Pole</option><option value="Double" ${selStruct('Double')}>Double Pole</option><option value="Rail Pole" ${selStruct('Rail Pole')}>Rail Pole</option></select></div>
-                <div class="form-row"><label>Condition</label><select id="inpPoleCond" class="form-select" onchange="document.getElementById('polePhotoDiv').style.display = (this.value==='Tilted'||this.value==='Damaged')?'block':'none'"><option value="OK" ${selCond('OK')}>OK</option><option value="Tilted" ${selCond('Tilted')}>Tilted</option><option value="Damaged" ${selCond('Damaged')}>Damaged</option></select></div>
-                <div id="polePhotoDiv" style="display:${showPhoto}; margin-bottom:12px;"><button class="btn-camera" onclick="window.capturePhoto('inpPolePhoto')"><i class="fa-solid fa-camera"></i> Capture Pole Issue</button><input type="hidden" id="inpPolePhoto" value="${photoB64}"><img id="inpPolePhoto_preview" class="photo-preview" src="${photoB64}" style="display:${photoB64?'block':'none'}"></div>
-            </div>
-            <input type="hidden" id="inpPoleCategory" value="LT"><input type="hidden" id="inpLat" value="${formLat}"><input type="hidden" id="inpLng" value="${formLng}">
-            <button class="btn-action-primary" onclick="window.savePoleData('${editId || ''}')">Save LT Pole</button>`);
-    } 
-    else if (type === 'LINE') {
-        if (!isEdit && net.poles.length === 0) return alert("Add at least one pole first!");
-        const selType = t => (existingObj.type && existingObj.type.includes(t)) ? 'selected' : '';
-        const selPhase = p => (existingObj.phaseType === p) ? 'selected' : '';
-        
-        window.filterLineNodes = function() {
-            const type = document.getElementById('inpLineType').value, net = getActiveNetwork(), fromSel = document.getElementById('inpFromNode'), dtSelectorBox = document.getElementById('ltLineDTSelector');
-            let defaultFrom = isEdit ? existingObj.fromNode : String(document.getElementById('inpDefaultFrom').value); const center = map.getCenter(); let nodes = [];
-            if (type.includes('LT')) {
-                dtSelectorBox.style.display = 'block'; const targetDTElem = document.getElementById('inpTargetDT'), selectedDT = targetDTElem ? targetDTElem.value : ''; if(!selectedDT) return;
-                nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(selectedDT)).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: 'POLE_' + p.poleNo}));
-                const dtObj = net.dts.find(d => String(d.code) === String(selectedDT)); if(dtObj) nodes.push({id: 'DT_'+selectedDT, title: 'DT: '+selectedDT, lat: dtObj.lat, lng: dtObj.lng});
-            } else {
-                dtSelectorBox.style.display = 'none'; nodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({...p, title: 'HT Pole '+p.poleNo, id: 'POLE_' + p.poleNo}));
-                const parentGss = appState.gssNodes[net.feeder.parentGss]; 
-                if (parentGss) nodes.push({id: 'GSS_'+parentGss.code, title: 'GSS ('+parentGss.code+')', lat: parentGss.lat, lng: parentGss.lng});
-            }
-            nodes = window.sortByDistance(nodes, center.lat, center.lng); if (!defaultFrom && nodes.length > 0) defaultFrom = nodes[0].id;
-            fromSel.innerHTML = nodes.map(n => `<option value="${n.id}" ${n.id === defaultFrom ? 'selected' : ''}>${n.title} (${window.formatDistance(window.calcDistance(center.lat, center.lng, n.lat, n.lng))})</option>`).join('');
-            window.syncLineToSelect();
-        };
-        window.syncLineToSelect = function() {
-            const type = document.getElementById('inpLineType').value, fromSel = document.getElementById('inpFromNode'), fromVal = fromSel && fromSel.options.length > 0 ? String(fromSel.value) : '';
-            const toSel = document.getElementById('inpToNode'), net = getActiveNetwork(), center = map.getCenter(); let nodes = [];
-            if (type.includes('LT')) {
-                const targetDTElem = document.getElementById('inpTargetDT'), selectedDT = targetDTElem ? String(targetDTElem.value) : '';
-                nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === selectedDT && ('POLE_'+p.poleNo) !== fromVal).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: 'POLE_' + p.poleNo}));
-                if(selectedDT && ('DT_'+selectedDT) !== fromVal) { const dtObj = net.dts.find(d => String(d.code) === selectedDT); if(dtObj) nodes.push({id: 'DT_'+selectedDT, title: 'DT: '+selectedDT, lat: dtObj.lat, lng: dtObj.lng}); }
-            } else {
-                nodes = net.poles.filter(p => p.lineType !== 'LT' && ('POLE_'+p.poleNo) !== fromVal).map(p => ({...p, title: 'HT Pole '+p.poleNo, id: 'POLE_' + p.poleNo}));
-                const parentGss = appState.gssNodes[net.feeder.parentGss]; 
-                if (parentGss && ('GSS_'+parentGss.code) !== fromVal) nodes.push({id: 'GSS_'+parentGss.code, title: 'GSS ('+parentGss.code+')', lat: parentGss.lat, lng: parentGss.lng});
-            }
-            nodes = window.sortByDistance(nodes, center.lat, center.lng); 
-            let defTo = isEdit ? existingObj.toNode : '';
-            toSel.innerHTML = nodes.map(n => `<option value="${n.id}" ${n.id === defTo ? 'selected' : ''}>${n.title} (${window.formatDistance(window.calcDistance(center.lat, center.lng, n.lat, n.lng))})</option>`).join(''); 
-        };
-        const htNodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: 'POLE_'+p.poleNo, lat: p.lat, lng: p.lng}));
-        const feederGss = appState.gssNodes[net.feeder.parentGss]; if(feederGss) htNodes.push({id: 'GSS_'+feederGss.code, lat: feederGss.lat, lng: feederGss.lng});
-        let sortedHT = window.sortByDistance(htNodes, snapLat, snapLng); let initialDefaultFrom = sortedHT.length > 0 ? sortedHT[0].id : '';
-
-        openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit Line':'Add Line'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Line Type*</label><select id="inpLineType" class="form-select" onchange="window.filterLineNodes()"><option value="11 KV LINE" ${selType('11 KV LINE')}>11 KV Line</option><option value="11 KV UG CABLE" ${selType('UG CABLE')}>11 KV UG CABLE</option><option value="LT LINE" ${selType('LT LINE')}>LT Line</option></select></div>
-            <div id="ltLineDTSelector" style="display:none; background:#f1f5f9; padding:8px; border-radius:8px; margin-bottom:12px;"><label style="font-size:0.75rem; font-weight:700;">Select DT for LT Line Routing*</label><select id="inpTargetDT" class="form-select" onchange="window.filterLineNodes()"></select></div>
-            <input type="hidden" id="inpDefaultFrom" value="${initialDefaultFrom}">
-            <div class="form-grid-2"><div class="form-row"><label>From Node*</label><select id="inpFromNode" class="form-select" onchange="window.syncLineToSelect()" ${isEdit?'disabled':''}></select></div><div class="form-row"><label>To Node*</label><select id="inpToNode" class="form-select" ${isEdit?'disabled':''}></select></div></div>
-            <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
-            <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
-                <div class="form-grid-2"><div class="form-row"><label>Phase Type</label><select id="inpLinePhase" class="form-select"><option value="Three Phase" ${selPhase('Three Phase')}>Three Phase</option><option value="Single Phase" ${selPhase('Single Phase')}>Single Phase</option></select></div><div class="form-row"><label style="margin-top:10px;"><input type="checkbox" id="inpLineCrossing" onchange="document.getElementById('crossRemarkDiv').style.display=this.checked?'block':'none'" ${existingObj.hasCrossing?'checked':''}> Has Crossing?</label></div></div>
-                <div class="form-row" id="crossRemarkDiv" style="display:${existingObj.hasCrossing?'block':'none'};"><label>Crossing Remark</label><input type="text" id="inpLineCrossRemark" class="form-input" value="${existingObj.crossingRemark || ''}" placeholder="e.g. NH-8 Crossing"></div>
-            </div>
-            <button class="btn-action-primary" onclick="window.saveLineData('${editId || ''}')">Save Line</button>`);
-        setTimeout(() => { let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); document.getElementById('inpTargetDT').innerHTML = sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id}</option>`).join(''); window.filterLineNodes(); }, 30);
-    } 
-    else if (type === 'DT') {
-        let parentNodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: p.poleNo, title: 'HT Pole '+p.poleNo, lat: p.lat, lng: p.lng})); const feederGss = appState.gssNodes[net.feeder.parentGss]; if(feederGss) parentNodes.push({id: feederGss.code, title: 'GSS '+feederGss.code, lat: feederGss.lat, lng: feederGss.lng});
-        parentNodes = window.sortByDistance(parentNodes, snapLat, snapLng); const parentOpts = parentNodes.map(p => `<option value="${p.id}" ${existingObj.parentPole===String(p.id)?'selected':''}>${p.title} (${window.formatDistance(window.calcDistance(snapLat, snapLng, p.lat, p.lng))})</option>`).join('');
-        const selMount = m => (existingObj.mountedOn === m) ? 'selected' : ''; const selPhase = p => (existingObj.phase === p) ? 'selected' : '';
-        const photoB64 = existingObj.photo || ''; const titleText = isEdit ? (existingObj.name || `DT: ${existingObj.code}`) : 'Add DT';
-
-        openModal(`<div class="sheet-head"><div class="sheet-title">${titleText}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Connected To (HT Node)*</label><select id="inpDTParent" class="form-select" onchange="window.autoUpdateDTMount()" ${isEdit?'disabled':''}>${parentOpts}</select></div>
-            <div class="form-row"><label>DT Name / Location</label><input type="text" id="inpDTName" class="form-input" value="${existingObj.name||''}" placeholder="e.g. Subhash Chowk Transformer"></div>
-            <div class="form-grid-2"><div class="form-row"><label>DT Code*</label><input type="number" id="inpDTCode" class="form-input" value="${existingObj.code || Math.floor(Math.random()*9000)}" ${isEdit?'disabled':''}></div><div class="form-row"><label>Rating (kVA)*</label><select id="inpDTRating" class="form-select"></select></div></div>
-            <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
-            <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
-                <div class="form-grid-2"><div class="form-row"><label>Phase*</label><select id="inpDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', '${existingObj.rating||''}')"><option value="Three Phase" ${selPhase('Three Phase')}>Three Phase</option><option value="Single Phase" ${selPhase('Single Phase')}>Single Phase</option></select></div><div class="form-row"><label>Mounted On</label><select id="inpDTMount" class="form-select"><option value="Double Pole Structure" ${selMount('Double Pole Structure')}>Double Pole Structure</option><option value="Single Pole" ${selMount('Single Pole')}>Single Pole</option></select></div></div>
-                <div class="form-grid-2"><div class="form-row"><label>Sr. No</label><input type="text" id="inpDTSrNo" class="form-input" value="${existingObj.srNo||''}"></div><div class="form-row"><label>TN Number</label><input type="text" id="inpDTTN" class="form-input" value="${existingObj.tn||''}"></div></div>
-                <div style="margin-bottom:12px;"><button class="btn-camera" onclick="window.capturePhoto('inpDTPhoto')"><i class="fa-solid fa-camera"></i> Capture DT Photo</button><input type="hidden" id="inpDTPhoto" value="${photoB64}"><img id="inpDTPhoto_preview" class="photo-preview" src="${photoB64}" style="display:${photoB64?'block':'none'}"></div>
-            </div>
-            <input type="hidden" id="inpLat" value="${formLat}"><input type="hidden" id="inpLng" value="${formLng}">
-            <button class="btn-action-primary" onclick="window.saveDTData('${editId || ''}')">Save DT</button>`);
-        setTimeout(() => { window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating', existingObj.rating); if(!isEdit) window.autoUpdateDTMount(); }, 30);
-    } 
-    else if (type === 'CONSUMER') {
-        if (!isEdit && net.dts.length === 0) return alert("Must have at least one DT to connect Consumer!"); 
-        let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); 
-        const dtOpts = sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id}</option>`).join('');
-        const selType = t => (existingObj.conType === t) ? 'selected' : ''; const selStat = s => (existingObj.status === s) ? 'selected' : '';
-        const photoB64 = existingObj.photo || '';
-
-        openModal(`<div class="sheet-head"><div class="sheet-title">${isEdit?'Edit Consumer':'Add Consumer'}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Select Parent DT*</label><select id="inpConsDT" class="form-select" onchange="window.filterConsumerPoles()" ${isEdit?'disabled':''}>${dtOpts}</select></div>
-            <div class="form-row"><label>Connects To (LT Pole / DT)*</label><select id="inpConsParent" class="form-select" ${isEdit?'disabled':''}></select></div>
-            <div class="form-row"><label>Consumer Name*</label><input type="text" id="inpConsName" class="form-input" value="${existingObj.name||''}"></div>
-            <div class="form-grid-2"><div class="form-row"><label>K-Number (12 Digits)*</label><input type="text" id="inpConsKno" class="form-input" value="${existingObj.kno||''}" maxlength="12" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,12);"></div><div class="form-row"><label>A/C No. (8 Digits)*</label><input type="text" id="inpConsAcNo" class="form-input" value="${existingObj.acNo||''}" maxlength="8" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,8);"></div></div>
-            <div class="adv-toggle-btn" onclick="document.getElementById('advDetailsDiv').style.display='block'; this.style.display='none';">Show Advanced Details ▼</div>
-            <div id="advDetailsDiv" style="display:${isEdit?'block':'none'};">
-                <div class="form-grid-2"><div class="form-row"><label>Consumer Type</label><select id="inpConsType" class="form-select"><option value="DS" ${selType('DS')}>DS</option><option value="NDS" ${selType('NDS')}>NDS</option><option value="AG" ${selType('AG')}>AG</option><option value="SIP/MIP" ${selType('SIP/MIP')}>SIP/MIP</option><option value="PHED" ${selType('PHED')}>PHED</option><option value="Other" ${selType('Other')}>Other</option></select></div><div class="form-row"><label>Status</label><select id="inpConsStatus" class="form-select"><option value="Regular" ${selStat('Regular')}>Regular</option><option value="DC" ${selStat('DC')}>DC</option><option value="PDC" ${selStat('PDC')}>PDC</option></select></div></div>
-                <div class="form-grid-2"><div class="form-row"><label>Meter No.</label><input type="text" id="inpConsMeter" class="form-input" value="${existingObj.meterNo||''}"></div><div class="form-row"><label>Load (kW)</label><input type="number" id="inpConsLoad" class="form-input" value="${existingObj.load||'1'}"></div></div>
-                <div style="margin-bottom:12px;"><button class="btn-camera" onclick="window.capturePhoto('inpConsPhoto')"><i class="fa-solid fa-camera"></i> Capture Premises</button><input type="hidden" id="inpConsPhoto" value="${photoB64}"><img id="inpConsPhoto_preview" class="photo-preview" src="${photoB64}" style="display:${photoB64?'block':'none'}"></div>
-            </div>
-            <input type="hidden" id="inpLat" value="${formLat}"><input type="hidden" id="inpLng" value="${formLng}">
-            <button class="btn-action-primary" onclick="window.saveConsumerData('${editId || ''}')">Save Consumer</button>`);
-        setTimeout(() => { if(isEdit) { let pDT = existingObj.parentType === 'DT' ? existingObj.parentRef : net.poles.find(p=>p.poleNo==existingObj.parentRef)?.dtCode; if(pDT) document.getElementById('inpConsDT').value = pDT; } window.filterConsumerPoles(existingObj.parentRef); }, 30);
-    }
-}
-
-window.updateDTRatingDropdowns = function(phaseId, ratingId, existingVal) {
-    const phase = document.getElementById(phaseId).value, ratingSel = document.getElementById(ratingId);
-    let opts = '';
-    if(phase === 'Single Phase') opts = `<option value="5">5 kVA</option><option value="10">10 kVA</option><option value="16" selected>16 kVA</option><option value="25">25 kVA</option>`;
-    else opts = `<option value="10">10 kVA</option><option value="16">16 kVA</option><option value="25" selected>25 kVA</option><option value="63">63 kVA</option><option value="100">100 kVA</option><option value="160">160 kVA</option><option value="250">250 kVA</option><option value="315">315 kVA</option><option value="500">500 kVA</option>`;
-    ratingSel.innerHTML = opts; if(existingVal) ratingSel.value = existingVal;
-}
-window.filterConsumerPoles = function(existingParentRef) {
-    const net = getActiveNetwork(), selectedDT = document.getElementById('inpConsDT').value, centerLat = parseFloat(document.getElementById('inpLat').value), centerLng = parseFloat(document.getElementById('inpLng').value);
-    let nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(selectedDT)).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: p.poleNo}));
-    const dtObj = net.dts.find(d => String(d.code) === String(selectedDT)); if(dtObj) nodes.push({id: selectedDT, title: 'Direct to DT: '+selectedDT, lat: dtObj.lat, lng: dtObj.lng});
-    nodes = window.sortByDistance(nodes, centerLat, centerLng); 
-    document.getElementById('inpConsParent').innerHTML = nodes.map(n => `<option value="${n.id}" ${existingParentRef===String(n.id)?'selected':''}>${n.title} (${window.formatDistance(window.calcDistance(centerLat, centerLng, n.lat, n.lng))})</option>`).join('');
-}
-
-window.saveEditedGss = function(code) {
-    window.haptic(30); saveSnapshot(); const g = appState.gssNodes[code]; 
-    if (g) g.name = document.getElementById('editGssName').value.trim(); 
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("GSS Updated"); 
-}
-
-window.savePoleData = function(editId) { 
-    window.haptic(30); saveSnapshot(); 
-    const category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value), structure = document.getElementById('inpPoleStruct').value, condition = document.getElementById('inpPoleCond').value, photo = document.getElementById('inpPolePhoto').value;
-    let no = ''; const noElem = document.getElementById('inpPoleNo'); if (noElem) { no = noElem.value.trim(); }
-    const net = getActiveNetwork(); 
-    if (editId) {
-        if (!no) return alert(t("errReq"));
-        if (net.poles.some(p => p.id !== editId && String(p.poleNo) === no)) return alert(t("alertExists"));
-        let p = net.poles.find(x => x.id === editId); if(!p) return;
-        p.poleNo = no; p.structure = structure; p.condition = condition; p.photo = photo;
-    } else {
-        let dtCode = category === 'LT' ? document.getElementById('inpLTPoleDT').value : undefined;
-        if (category === 'LT' && !no) { const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode)); no = `${dtCode}-${existingLTPoles.length + 1}`; }
-        if (!no) return alert(t("errReq"));
-        if (net.poles.some(p => String(p.poleNo) === no)) return alert(t("alertExists"));
-        net.poles.push({ id: 'P_'+Date.now(), poleNo: no, lineType: category, structure, condition, photo, dtCode, lat, lng }); 
-    }
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
-}
-
-window.saveLineData = function(editId) {
-    window.haptic(30); saveSnapshot(); const from = document.getElementById('inpFromNode').value, to = document.getElementById('inpToNode').value, type = document.getElementById('inpLineType').value, phaseType = document.getElementById('inpLinePhase').value, hasCrossing = document.getElementById('inpLineCrossing').checked, crossingRemark = document.getElementById('inpLineCrossRemark').value.trim();
-    if (from === to) return alert("Cannot connect node to itself!"); if (!to) return alert("Please select a target node!");
-    const net = getActiveNetwork(), spec = getLineSpec(type);
-    
-    if (phaseType === 'Three Phase' && !String(from).startsWith('GSS')) {
-        const connectedLines = net.lines.filter(l => (l.fromNode === from || l.toNode === from) && l.id !== editId);
-        if (connectedLines.length > 0) {
-            const hasThreePhase = connectedLines.some(l => l.phaseType === 'Three Phase');
-            if (!hasThreePhase) { return alert("Error: Is Pole par peeche se aane wali koi Three Phase line nahi hai. Aap yahan se aage Three Phase line nahi jod sakte!"); }
-        }
-    }
-
-    if(net.lines.find(l => l.id !== editId && ((l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from)))) return alert("A line already exists between these two nodes!");
-    
-    if(editId) {
-        let l = net.lines.find(x => x.id === editId); if(!l) return;
-        l.type = spec.name; l.phaseType = phaseType; l.hasCrossing = hasCrossing; l.crossingRemark = crossingRemark;
-    } else {
-        const c1 = getNodeCoords(from), c2 = getNodeCoords(to); if(!c1 || !c2) return alert("Invalid node coordinates!"); const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); 
-        net.lines.push({ id: 'LN_'+Date.now(), type: spec.name, phaseType, hasCrossing, crossingRemark, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]] }); 
-    }
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
-}
-
-window.saveDTData = function(editId) {
-    window.haptic(30); saveSnapshot(); 
-    const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value, name = document.getElementById('inpDTName').value.trim();
-    const location = name, srNo = document.getElementById('inpDTSrNo').value.trim(), tn = document.getElementById('inpDTTN').value.trim(), mountedOn = document.getElementById('inpDTMount').value, photo = document.getElementById('inpDTPhoto').value;
-    
-    if (!code) return alert(t("errReq")); const net = getActiveNetwork();
-
-    const poleNodeId = 'POLE_' + parentRef;
-    const htLinesOnPole = net.lines.filter(l => (l.fromNode === poleNodeId || l.toNode === poleNodeId) && l.type.includes('11 KV'));
-    if (htLinesOnPole.length > 0) {
-        const hasThreePhaseLine = htLinesOnPole.some(l => l.phaseType === 'Three Phase');
-        if (!hasThreePhaseLine && phase === 'Three Phase') { return alert("Error: Is Pole par sirf Single Phase 11kV line judi hai. Aap yahan par Three Phase DT install nahi kar sakte!"); }
-    }
-    
-    if(editId) {
-        if (net.dts.some(d => d.id !== editId && String(d.code) === code)) return alert(t("alertExists"));
-        let d = net.dts.find(x => x.id === editId); if(!d) return;
-        d.code = code; d.name = name; d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
-    } else {
-        if (net.dts.some(d => String(d.code) === code)) return alert(t("alertExists"));
-        const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); let lat = net.feeder.lat, lng = net.feeder.lng; if (p) { lat = p.lat; lng = p.lng; }
-        net.dts.push({ id: 'DT_'+Date.now(), parentPole: parentRef, code, name, rating, phase, srNo, tn, mountedOn, location, photo, lat, lng });
-    }
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
-}
-
-window.saveConsumerData = function(editId) {
-    window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpConsParent').value, kno = document.getElementById('inpConsKno').value.trim(), acNo = document.getElementById('inpConsAcNo').value.trim(), name = document.getElementById('inpConsName').value.trim(), meterNo = document.getElementById('inpConsMeter').value.trim(), conType = document.getElementById('inpConsType').value, status = document.getElementById('inpConsStatus').value, load = document.getElementById('inpConsLoad').value.trim(), photo = document.getElementById('inpConsPhoto').value;
-    if (!name || !kno || !acNo) return alert(t("errReq")); 
-    if(kno.length !== 12) return alert("K-Number must be exactly 12 digits!"); if(acNo.length !== 8) return alert("A/C No. must be exactly 8 digits!");
-    const net = getActiveNetwork();
-
-    if(editId) {
-        if(net.consumers.some(c => c.id !== editId && String(c.kno) === String(kno))) return alert("K-Number already exists!");
-        let c = net.consumers.find(x => x.id === editId); if(!c) return;
-        c.kno = kno; c.acNo = acNo; c.name = name; c.meterNo = meterNo; c.conType = conType; c.status = status; c.load = load; c.photo = photo;
-    } else {
-        if(net.consumers.some(c => String(c.kno) === String(kno))) return alert("K-Number already exists in this feeder!");
-        let parentType = 'POLE'; const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); if (!p) parentType = 'DT';
-        const lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value);
-        net.consumers.push({ id: 'CS_'+Date.now(), parentRef, parentType, kno, acNo, meterNo, conType, status, name, load, photo, lat, lng }); 
-    }
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
-}
-
-window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
-
 function deleteDTLogic(dtId, net) {
     const d = net.dts.find(x => x.id === dtId); if(!d) return;
     const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn);
+    net.lines.forEach(l => { if (l.fromNode === ('DT_' + d.code) || l.toNode === ('DT_' + d.code) || ltPoleNodeIds.includes(String(l.fromNode)) || ltPoleNodeIds.includes(String(l.toNode))) window.markDeleted('lines', l.id); });
     net.lines = net.lines.filter(l => l.fromNode !== ('DT_' + d.code) && l.toNode !== ('DT_' + d.code) && !ltPoleNodeIds.includes(String(l.fromNode)) && !ltPoleNodeIds.includes(String(l.toNode)));
+    net.consumers.forEach(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); if(isDirectToDT || isOnRemovedLTPole) window.markDeleted('consumers', c.id); });
     net.consumers = net.consumers.filter(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); return !(isDirectToDT || isOnRemovedLTPole); });
-    net.poles = net.poles.filter(p => !ltPoleIds.includes(String(p.poleNo))); net.dts = net.dts.filter(x => x.id !== dtId);
+    ltPolesToRemove.forEach(p => window.markDeleted('poles', p.id));
+    net.poles = net.poles.filter(p => !ltPoleIds.includes(String(p.poleNo)));
+    window.markDeleted('dts', dtId); net.dts = net.dts.filter(x => x.id !== dtId);
 }
-function deleteLTPoleLogic(p, net) { net.consumers = net.consumers.filter(c => !(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo))); net.lines = net.lines.filter(l => String(l.fromNode) !== ('POLE_'+p.poleNo) && String(l.toNode) !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== p.id); }
+
+function deleteLTPoleLogic(p, net) {
+    net.consumers.forEach(c => { if(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo)) window.markDeleted('consumers', c.id); });
+    net.consumers = net.consumers.filter(c => !(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo)));
+    net.lines.forEach(l => { if(String(l.fromNode) === ('POLE_'+p.poleNo) || String(l.toNode) === ('POLE_'+p.poleNo)) window.markDeleted('lines', l.id); });
+    net.lines = net.lines.filter(l => String(l.fromNode) !== ('POLE_'+p.poleNo) && String(l.toNode) !== ('POLE_'+p.poleNo));
+    window.markDeleted('poles', p.id); net.poles = net.poles.filter(x => x.id !== p.id);
+}
+
 window.deleteEntity = function(type, id) {
     window.haptic([50,50,50]); const net = getActiveNetwork(); if(!confirm(t("confDel"))) return; saveSnapshot();
-    if (type === 'line') net.lines = net.lines.filter(x => x.id !== id); else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); else if (type === 'dt') deleteDTLogic(id, net);
+    if (type === 'line') { window.markDeleted('lines', id); net.lines = net.lines.filter(x => x.id !== id); } 
+    else if (type === 'consumer') { window.markDeleted('consumers', id); net.consumers = net.consumers.filter(x => x.id !== id); } 
+    else if (type === 'dt') deleteDTLogic(id, net);
     else if (type === 'pole') {
         const p = net.poles.find(x => x.id === id);
-        if (p) { if (p.lineType === 'LT') deleteLTPoleLogic(p, net); else { const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); dtsOnPole.forEach(dt => deleteDTLogic(dt.id, net)); net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== id); } }
-    } else if (type === 'gss') { if (appState.gssNodes[id]) delete appState.gssNodes[id]; }
+        if (p) { 
+            if (p.lineType === 'LT') deleteLTPoleLogic(p, net); 
+            else { 
+                const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); 
+                dtsOnPole.forEach(dt => deleteDTLogic(dt.id, net)); 
+                net.lines.forEach(l => { if(l.fromNode === ('POLE_'+p.poleNo) || l.toNode === ('POLE_'+p.poleNo)) window.markDeleted('lines', l.id); });
+                net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); 
+                window.markDeleted('poles', id); net.poles = net.poles.filter(x => x.id !== id); 
+            } 
+        }
+    } else if (type === 'gss') { if (appState.gssNodes[id]) { window.markDeleted('gss_nodes', id); delete appState.gssNodes[id]; } }
     window.closeObjectSheet(); renderEntireNetwork(); triggerPersistence(); showToast(t("toastDel"));
 }
 
@@ -1016,6 +726,7 @@ window.startObjectMove = function(type, id, title) {
     }
     if (target && target.lat && map) { map.panTo([target.lat, target.lng]); const liveIconContainer = document.getElementById('live-move-icon'); liveIconContainer.innerHTML = htmlContent; liveIconContainer.style.display = 'block'; renderEntireNetwork(); }
 }
+
 window.confirmObjectMove = function() {
     window.haptic(30); if (!appState.activeMove) return; saveSnapshot(); const c = map.getCenter(); const lat = parseFloat(c.lat.toFixed(6)), lng = parseFloat(c.lng.toFixed(6)), net = getActiveNetwork(); 
     if (appState.activeMove.type === 'GSS') {
@@ -1029,6 +740,7 @@ window.confirmObjectMove = function() {
     }
     window.cancelObjectMove(); renderEntireNetwork(); triggerPersistence(); showToast("Location Updated!");
 }
+
 window.cancelObjectMove = function() { window.haptic(15); appState.activeMove = null; document.getElementById('live-move-icon').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
 
 function getFormattedDateTime() { const d = new Date(); const pad = (n) => n.toString().padStart(2, '0'); return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; }
@@ -1039,9 +751,7 @@ async function smartExportFile(filename, dataBlobOrText, mimeType) {
         if (window.cordova && cordova.file) {
             const storageLocation = cordova.file.externalRootDirectory + 'Download/';
             window.resolveLocalFileSystemURL(storageLocation, function(dirEntry) {
-                dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) {
-                    fileEntry.createWriter(function(fileWriter) { fileWriter.onwriteend = function() { showToast("File saved to Downloads!"); }; fileWriter.onerror = function(e) { console.error(e); showToast("File write error"); }; fileWriter.write(blob); });
-                }, err => { console.error(err); showToast("Error creating file"); });
+                dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) { fileEntry.createWriter(function(fileWriter) { fileWriter.onwriteend = function() { showToast("File saved to Downloads!"); }; fileWriter.onerror = function(e) { console.error(e); showToast("File write error"); }; fileWriter.write(blob); }); }, err => { console.error(err); showToast("Error creating file"); });
             }, err => { console.error(err); showToast("Error accessing Downloads"); });
         } else {
             const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.style.display = 'none'; a.href = url; a.download = filename; document.body.appendChild(a); a.click(); setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500); showToast("File Downloaded!");
@@ -1053,11 +763,7 @@ window.exportFullJSONBackup = async function() { window.toggleSidebar(false); co
 window.handleImportChoice = function(e) {
     const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
     reader.onload = async function(event) {
-        try {
-            const content = event.target.result; const importedData = JSON.parse(content);
-            if (importedData.feeders && importedData.gssNodes) { appState = importedData; triggerPersistence(); renderEntireNetwork(); showToast("Data Imported Successfully!"); } 
-            else alert("Invalid Backup Format! File missing core node structures.");
-        } catch (err) { alert("Error parsing file."); }
+        try { const content = event.target.result; const importedData = JSON.parse(content); if (importedData.feeders && importedData.gssNodes) { appState = importedData; triggerPersistence(); renderEntireNetwork(); showToast("Data Imported Successfully!"); } else alert("Invalid Backup Format! File missing core node structures."); } catch (err) { alert("Error parsing file."); }
     };
     reader.readAsText(file); e.target.value = ''; window.toggleSidebar(false);
 }
@@ -1085,8 +791,7 @@ window.exportToGoogleEarth_KML = async function() {
 }
 
 window.generateCadSLDPdf = async function() { 
-    window.toggleSidebar(false); const net = getActiveNetwork();
-    if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
+    window.toggleSidebar(false); const net = getActiveNetwork(); if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
     showToast("Generating Auto-Fit SLD PDF..."); const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
     if(appState.gssNodes[net.feeder.parentGss]) allPoints.push(appState.gssNodes[net.feeder.parentGss]);
@@ -1135,7 +840,6 @@ window.openAboutModal = function() {
 }
 
 let appInitialized = false;
-
 async function initializeApplication() {
     if(appInitialized) return; appInitialized = true;
     if (window.cordova && cordova.plugins && cordova.plugins.permissions) {
@@ -1150,6 +854,7 @@ async function initializeApplication() {
         let data = null;
         if (typeof localforage !== 'undefined') { data = await localforage.getItem(DB_KEY); } else { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
         if (data && data.feeders) { appState = data; if (!appState.unsyncedCount) appState.unsyncedCount = 0; }
+        if (!appState.deletedItems) appState.deletedItems = { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] };
         if(appState.settings.darkMode) document.documentElement.setAttribute('data-theme', 'dark');
 
         translateApp(); updateSyncUI();
