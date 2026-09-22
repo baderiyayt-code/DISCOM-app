@@ -13,6 +13,7 @@ let appState = {
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
     gssNodes: {}, feeders: {},
+    dirtyItems: { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }, 
     deletedItems: [], 
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
 };
@@ -69,13 +70,18 @@ function setSyncStatus(status) {
     else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
 }
 
-// ==== UNIVERSAL DELETION TRACKER ====
+// ==== UNIVERSAL TRACKERS ====
+window.markDirty = function(type, id) {
+    if (!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
+    if (!appState.dirtyItems[type]) appState.dirtyItems[type] = [];
+    if (!appState.dirtyItems[type].includes(id)) { appState.dirtyItems[type].push(id); }
+};
+
 window.markDeleted = function(id) {
     if (!appState.deletedItems) appState.deletedItems = [];
     if (!appState.deletedItems.includes(id)) appState.deletedItems.push(id);
 };
 
-// ==== 🚀 SMART LIVE SYNC (BROADCAST API) ====
 let realtimeChannel = null;
 window.setupRealtimeSync = function() {
     if (!supabaseClient || !appState.user.isLoggedIn) return;
@@ -88,7 +94,6 @@ window.setupRealtimeSync = function() {
     }).subscribe();
 };
 
-// Data Cleaning Utility
 function cleanData(arr) {
     return arr.map(obj => {
         let cleaned = {};
@@ -97,7 +102,7 @@ function cleanData(arr) {
     });
 }
 
-// ==== CLOUD SYNC ====
+// ==== 🚀 REDESIGNED SYNC: PHOTO SEPARATION ARCHITECTURE ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -105,37 +110,67 @@ window.syncToSupabase = async function(manual = false) {
 
     try {
         const uid = appState.user.id;
-        let payload = [];
+        let corePayload = [];
+        let photoPayload = [];
+        let dirty = appState.dirtyItems || { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
 
         Object.values(appState.gssNodes).forEach(g => {
-            if(g && g.code) payload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
+            if(g && g.code && dirty['GSS'].includes(g.code)) corePayload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
         });
 
         Object.keys(appState.feeders).forEach(fCode => {
             const net = appState.feeders[fCode];
-            if(net && net.feeder && net.feeder.code) payload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
-            net.poles.forEach(p => payload.push({ id: p.id, type: 'POLE', data: { ...p, feederCode: fCode }, user_id: uid }));
-            net.dts.forEach(d => payload.push({ id: d.id, type: 'DT', data: { ...d, feederCode: fCode }, user_id: uid }));
-            net.lines.forEach(l => payload.push({ id: l.id, type: 'LINE', data: { ...l, feederCode: fCode }, user_id: uid }));
-            net.consumers.forEach(c => payload.push({ id: c.id, type: 'CONSUMER', data: { ...c, feederCode: fCode }, user_id: uid }));
+            if(net && net.feeder && net.feeder.code && dirty['FEEDER'].includes(fCode)) {
+                corePayload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
+            }
+            
+            net.poles.forEach(p => { 
+                if(dirty['POLE'].includes(p.id)) {
+                    let pCopy = { ...p, feederCode: fCode };
+                    if(pCopy.photo && pCopy.photo.length > 50) { photoPayload.push({ parent_id: p.id, image_data: pCopy.photo, user_id: uid }); delete pCopy.photo; pCopy.hasPhoto = true; } else { pCopy.hasPhoto = false; }
+                    corePayload.push({ id: p.id, type: 'POLE', data: pCopy, user_id: uid }); 
+                } 
+            });
+            net.dts.forEach(d => { 
+                if(dirty['DT'].includes(d.id)) {
+                    let dCopy = { ...d, feederCode: fCode };
+                    if(dCopy.photo && dCopy.photo.length > 50) { photoPayload.push({ parent_id: d.id, image_data: dCopy.photo, user_id: uid }); delete dCopy.photo; dCopy.hasPhoto = true; } else { dCopy.hasPhoto = false; }
+                    corePayload.push({ id: d.id, type: 'DT', data: dCopy, user_id: uid }); 
+                } 
+            });
+            net.lines.forEach(l => { 
+                if(dirty['LINE'].includes(l.id)) corePayload.push({ id: l.id, type: 'LINE', data: { ...l, feederCode: fCode }, user_id: uid }); 
+            });
+            net.consumers.forEach(c => { 
+                if(dirty['CONSUMER'].includes(c.id)) {
+                    let cCopy = { ...c, feederCode: fCode };
+                    if(cCopy.photo && cCopy.photo.length > 50) { photoPayload.push({ parent_id: c.id, image_data: cCopy.photo, user_id: uid }); delete cCopy.photo; cCopy.hasPhoto = true; } else { cCopy.hasPhoto = false; }
+                    corePayload.push({ id: c.id, type: 'CONSUMER', data: cCopy, user_id: uid }); 
+                } 
+            });
         });
 
-        let safePayload = JSON.parse(JSON.stringify(cleanData(payload)));
-
-        if (safePayload.length > 0) {
-            const { error } = await supabaseClient.from('network_elements').upsert(safePayload);
-            if (error) {
-                console.error("Upsert Error:", error);
-                alert("Cloud Save Error (RLS Policy Issue?): " + error.message);
-                throw error;
-            }
+        // 1. Sync Core Lightweight Data
+        let safeCorePayload = JSON.parse(JSON.stringify(cleanData(corePayload)));
+        if (safeCorePayload.length > 0) {
+            const { error: coreErr } = await supabaseClient.from('network_elements').upsert(safeCorePayload);
+            if (coreErr) throw coreErr;
         }
 
+        // 2. Sync Heavy Photos Independently
+        if (photoPayload.length > 0) {
+            const { error: photoErr } = await supabaseClient.from('entity_photos').upsert(photoPayload);
+            if (photoErr) console.warn("Photo Sync Warning:", photoErr); // Photos shouldn't fail the whole sync
+        }
+
+        // 3. Deletion Queue Processing
         if (appState.deletedItems && appState.deletedItems.length > 0) {
-            const { error } = await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
-            if (!error) appState.deletedItems = []; 
+            await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
+            await supabaseClient.from('entity_photos').delete().eq('user_id', uid).in('parent_id', appState.deletedItems);
+            appState.deletedItems = []; 
         }
 
+        appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
         setSyncStatus('synced');
     } catch (err) { console.error("Sync Error:", err); setSyncStatus('offline'); } 
@@ -148,24 +183,38 @@ async function pullFromSupabase(isBackground = false) {
     
     try {
         const uid = appState.user.id;
-        const { data, error } = await supabaseClient.from('network_elements').select('*').eq('user_id', uid);
         
-        if (error) {
-            alert("Fetch Error: " + error.message);
-            throw error;
+        // Parallel Fetch: Fetch Core Data AND Photos together
+        const [coreRes, photoRes] = await Promise.all([
+            supabaseClient.from('network_elements').select('*').eq('user_id', uid),
+            supabaseClient.from('entity_photos').select('parent_id, image_data').eq('user_id', uid)
+        ]);
+        
+        if (coreRes.error) throw coreRes.error;
+
+        // Create Photo Dictionary for Instant Re-attachment
+        let photoDictionary = {};
+        if (photoRes.data) {
+            photoRes.data.forEach(imgRow => { photoDictionary[imgRow.parent_id] = imgRow.image_data; });
         }
 
-        if (data && data.length > 0) {
-            let newGss = {}, newFeeders = {};
+        let newGss = {}, newFeeders = {};
 
-            data.forEach(item => {
+        if (coreRes.data && coreRes.data.length > 0) {
+            coreRes.data.forEach(item => {
                 if (item.type === 'GSS' && item.data && item.data.code) newGss[item.data.code] = item.data;
                 if (item.type === 'FEEDER' && item.data && item.data.code) newFeeders[item.data.code] = { feeder: item.data, poles: [], dts: [], lines: [], consumers: [] };
             });
 
-            data.forEach(item => {
+            coreRes.data.forEach(item => {
                 const d = item.data;
                 if(!d) return;
+                
+                // Re-attach photo securely to the object if it exists in DB
+                if (d.hasPhoto && photoDictionary[item.id]) {
+                    d.photo = photoDictionary[item.id];
+                }
+
                 const fc = d.feederCode || "1"; 
                 if(!newFeeders[fc]) newFeeders[fc] = { feeder: { name: "Feeder "+fc, code: fc, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
                 
@@ -174,38 +223,22 @@ async function pullFromSupabase(isBackground = false) {
                 if (item.type === 'LINE') newFeeders[fc].lines.push(d);
                 if (item.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
             });
-
-            // Failsafe if DB corrupt
-            if(Object.keys(newFeeders).length === 0) newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
-            if(Object.keys(newGss).length === 0) newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
-
-            appState.gssNodes = newGss; appState.feeders = newFeeders;
-            if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
-            appState.unsyncedCount = 0;
-            
-            getActiveNetwork(); 
-            
-            if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
-            renderEntireNetwork(); 
-            if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
-            if(!isBackground) centerMapOnGSS(); 
-            setSyncStatus('synced'); 
-        } else {
-            // === LOCAL DATA PROTECTION SHIELD ===
-            // Agar Cloud Database Khali hai, par Mobile me purana data pada hai
-            // To App usey delete nahi karegi balki Cloud par wapas upload kar degi.
-            let hasLocalData = false;
-            Object.keys(appState.feeders).forEach(fCode => {
-                if (appState.feeders[fCode].poles.length > 0 || appState.feeders[fCode].dts.length > 0) hasLocalData = true;
-            });
-
-            if(hasLocalData) {
-                console.log("Cloud is Empty, but Mobile has data. Force Syncing UP...");
-                window.syncToSupabase();
-            } else {
-                setSyncStatus('synced');
-            }
         }
+
+        if(Object.keys(newFeeders).length === 0) newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+        if(Object.keys(newGss).length === 0) newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+
+        appState.gssNodes = newGss; appState.feeders = newFeeders;
+        if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
+        appState.unsyncedCount = 0;
+        
+        getActiveNetwork(); 
+        
+        if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
+        renderEntireNetwork(); 
+        if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
+        if(!isBackground) centerMapOnGSS(); 
+        setSyncStatus('synced'); 
     } catch (err) { console.error("Pull error:", err); setSyncStatus('offline'); }
 }
 
