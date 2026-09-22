@@ -13,7 +13,7 @@ let appState = {
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
     gssNodes: {}, feeders: {},
-    deletedItems: [], // Universal Delete Tracker
+    deletedItems: [], 
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
 };
 
@@ -43,16 +43,34 @@ const i18n = {
 function t(key) { return (i18n['en'][key] || key); }
 function translateApp() { document.querySelectorAll('[data-i18n]').forEach(el => { const key = el.getAttribute('data-i18n'); if (el.tagName.toLowerCase() === 'input' && el.type === 'text') el.placeholder = t(key); else el.innerHTML = t(key); }); }
 
+// ==== AGGRESSIVE AUTO-HEAL LOGIC ====
 function getActiveNetwork() {
-    if (!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
-    let net = appState.feeders[appState.currentFeederCode];
-    if (!net) { 
-        net = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] }; 
-        appState.feeders["1"] = net; 
-        appState.gssNodes["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+    let keys = Object.keys(appState.feeders);
+    if (keys.length === 0) {
+        appState.feeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
         appState.currentFeederCode = "1";
     }
-    if (!Array.isArray(net.poles)) net.poles = []; if (!Array.isArray(net.lines)) net.lines = []; if (!Array.isArray(net.dts)) net.dts = []; if (!Array.isArray(net.consumers)) net.consumers = [];
+    
+    let net = appState.feeders[appState.currentFeederCode];
+    if (!net) {
+        appState.currentFeederCode = Object.keys(appState.feeders)[0];
+        net = appState.feeders[appState.currentFeederCode];
+    }
+
+    // Har halat me UI ko crash hone se bachane ka logic
+    if (!net.feeder) net.feeder = { name: "11 kV Feeder-01", code: appState.currentFeederCode, subdivCode: "SD-01", parentGss: "1" };
+    if (!net.feeder.name) net.feeder.name = "11 kV Feeder-01";
+    if (!net.feeder.parentGss) net.feeder.parentGss = "1";
+    
+    if (!appState.gssNodes[net.feeder.parentGss]) {
+        appState.gssNodes[net.feeder.parentGss] = { code: net.feeder.parentGss, name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+    }
+
+    if (!Array.isArray(net.poles)) net.poles = []; 
+    if (!Array.isArray(net.lines)) net.lines = []; 
+    if (!Array.isArray(net.dts)) net.dts = []; 
+    if (!Array.isArray(net.consumers)) net.consumers = [];
+    
     return net;
 }
 
@@ -69,13 +87,12 @@ function setSyncStatus(status) {
     else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
 }
 
-// ==== UNIVERSAL DELETION TRACKER ====
 window.markDeleted = function(id) {
     if (!appState.deletedItems) appState.deletedItems = [];
     if (!appState.deletedItems.includes(id)) appState.deletedItems.push(id);
 };
 
-// ==== 🚀 SMART LIVE SYNC (BROADCAST API) ====
+// ==== LIVE BROADCAST API ====
 let realtimeChannel = null;
 window.setupRealtimeSync = function() {
     if (!supabaseClient || !appState.user.isLoggedIn) return;
@@ -88,7 +105,7 @@ window.setupRealtimeSync = function() {
     }).subscribe();
 };
 
-// ==== UNIVERSAL CLOUD SYNC (NO SQL ERRORS) ====
+// ==== UNIVERSAL CLOUD SYNC ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -98,34 +115,31 @@ window.syncToSupabase = async function(manual = false) {
         const uid = appState.user.id;
         let payload = [];
 
-        // 1. Pack GSS Nodes
         Object.values(appState.gssNodes).forEach(g => {
-            payload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
+            if(g && g.code) payload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
         });
 
-        // 2. Pack Feeders and their children
         Object.keys(appState.feeders).forEach(fCode => {
             const net = appState.feeders[fCode];
-            payload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
+            if(net && net.feeder && net.feeder.code) {
+                payload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
+            }
             net.poles.forEach(p => payload.push({ id: p.id, type: 'POLE', data: { ...p, feederCode: fCode }, user_id: uid }));
             net.dts.forEach(d => payload.push({ id: d.id, type: 'DT', data: { ...d, feederCode: fCode }, user_id: uid }));
             net.lines.forEach(l => payload.push({ id: l.id, type: 'LINE', data: { ...l, feederCode: fCode }, user_id: uid }));
             net.consumers.forEach(c => payload.push({ id: c.id, type: 'CONSUMER', data: { ...c, feederCode: fCode }, user_id: uid }));
         });
 
-        // 3. Upsert Everything to Single Table
         if (payload.length > 0) {
             const { error } = await supabaseClient.from('network_elements').upsert(payload);
             if (error) console.error("Upsert Error:", error);
         }
 
-        // 4. Targeted Delete Processing
         if (appState.deletedItems && appState.deletedItems.length > 0) {
             const { error } = await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
-            if (!error) appState.deletedItems = []; // Clear queue on success
+            if (!error) appState.deletedItems = []; 
         }
 
-        // 5. Send Broadcast
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
         setSyncStatus('synced');
     } catch (err) { console.error("Sync Error:", err); setSyncStatus('offline'); } 
@@ -145,32 +159,39 @@ async function pullFromSupabase(isBackground = false) {
         let newGss = {}, newFeeders = {};
 
         if (data && data.length > 0) {
-            // First Pass: Create GSS and Feeders
             data.forEach(item => {
-                if (item.type === 'GSS') newGss[item.data.code] = item.data;
-                if (item.type === 'FEEDER') newFeeders[item.data.code] = { feeder: item.data, poles: [], dts: [], lines: [], consumers: [] };
+                if (item.type === 'GSS' && item.data && item.data.code) newGss[item.data.code] = item.data;
+                if (item.type === 'FEEDER' && item.data && item.data.code) newFeeders[item.data.code] = { feeder: item.data, poles: [], dts: [], lines: [], consumers: [] };
             });
 
-            // Second Pass: Populate network objects
+            // Safe Fallback agar purana corrupt data pull ho
+            if(Object.keys(newFeeders).length === 0) {
+                newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+            }
+            if(Object.keys(newGss).length === 0) {
+                newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+            }
+
             data.forEach(item => {
                 const d = item.data;
-                const fc = d.feederCode;
+                if(!d) return;
+                const fc = d.feederCode || "1"; 
                 if (item.type === 'POLE' && newFeeders[fc]) newFeeders[fc].poles.push(d);
                 if (item.type === 'DT' && newFeeders[fc]) newFeeders[fc].dts.push(d);
                 if (item.type === 'LINE' && newFeeders[fc]) newFeeders[fc].lines.push(d);
                 if (item.type === 'CONSUMER' && newFeeders[fc]) newFeeders[fc].consumers.push(d);
             });
-        }
-
-        // Fresh Start Fallback
-        if(Object.keys(newFeeders).length === 0) {
+        } else {
             newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
             newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
         }
 
-        appState.gssNodes = newGss; appState.feeders = newFeeders;
+        appState.gssNodes = newGss; 
+        appState.feeders = newFeeders;
         if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
         appState.unsyncedCount = 0;
+        
+        getActiveNetwork(); // HEAL ANY BROKEN LINKS
         
         if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
         renderEntireNetwork(); 
@@ -714,6 +735,7 @@ window.startObjectMove = function(type, id, title) {
     }
     if (target && target.lat && map) { map.panTo([target.lat, target.lng]); const liveIconContainer = document.getElementById('live-move-icon'); liveIconContainer.innerHTML = htmlContent; liveIconContainer.style.display = 'block'; renderEntireNetwork(); }
 }
+
 window.confirmObjectMove = function() {
     window.haptic(30); if (!appState.activeMove) return; saveSnapshot(); const c = map.getCenter(); const lat = parseFloat(c.lat.toFixed(6)), lng = parseFloat(c.lng.toFixed(6)), net = getActiveNetwork(); 
     if (appState.activeMove.type === 'GSS') {
@@ -727,6 +749,7 @@ window.confirmObjectMove = function() {
     }
     window.cancelObjectMove(); renderEntireNetwork(); triggerPersistence(); showToast("Location Updated!");
 }
+
 window.cancelObjectMove = function() { window.haptic(15); appState.activeMove = null; document.getElementById('live-move-icon').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
 
 function getFormattedDateTime() { const d = new Date(); const pad = (n) => n.toString().padStart(2, '0'); return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; }
@@ -845,7 +868,7 @@ async function initializeApplication() {
 
         translateApp(); updateSyncUI();
         
-        if (appState.user && appState.user.isLoggedIn) { applyAuthUIVisuals(); if(map) { renderEntireNetwork(); centerMapOnGSS(); } } 
+        if (appState.user && appState.user.isLoggedIn) { applyAuthUIVisuals(); if(map) { getActiveNetwork(); renderEntireNetwork(); centerMapOnGSS(); } } 
         if (supabaseClient) {
             supabaseClient.auth.getSession().then(({ data }) => {
                 if (data && data.session && data.session.user) {
