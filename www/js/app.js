@@ -12,8 +12,8 @@ let appState = {
     user: { isLoggedIn: false, name: "", email: "", id: null },
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
-    gssNodes: { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } },
-    feeders: { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } },
+    gssNodes: {},
+    feeders: {},
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
 };
 
@@ -67,7 +67,12 @@ function translateApp() { document.querySelectorAll('[data-i18n]').forEach(el =>
 function getActiveNetwork() {
     if (!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
     let net = appState.feeders[appState.currentFeederCode];
-    if (!net) { net = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] }; appState.feeders[appState.currentFeederCode] = net; }
+    if (!net) { 
+        net = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] }; 
+        appState.feeders["1"] = net; 
+        appState.gssNodes["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+        appState.currentFeederCode = "1";
+    }
     if (!Array.isArray(net.poles)) net.poles = []; if (!Array.isArray(net.lines)) net.lines = []; if (!Array.isArray(net.dts)) net.dts = []; if (!Array.isArray(net.consumers)) net.consumers = [];
     return net;
 }
@@ -83,21 +88,43 @@ function setSyncStatus(status) {
     if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
     else if(status === 'synced') {
         ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>';
-        appState.unsyncedCount = 0; updateSyncUI(); triggerPersistence(false);
+        appState.unsyncedCount = 0; updateSyncUI(); 
     }
     else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
 }
+
+// ==== LIVE SYNC (REALTIME) LISTENER ====
+let realtimeChannel = null;
+window.setupRealtimeSync = function() {
+    if (!supabaseClient || !appState.user.isLoggedIn) return;
+    if (realtimeChannel) return;
+
+    realtimeChannel = supabaseClient.channel('discom-live-sync')
+    .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        if(window.isSyncingLocal) return; // Prevent loop if this device made the change
+        
+        clearTimeout(window.rtDebounce);
+        window.rtDebounce = setTimeout(() => {
+            showToast("Live Update Received! 🔄 Refreshing Map...");
+            pullFromSupabase(true); // Pull quietly in background
+        }, 1200);
+    })
+    .subscribe((status) => {
+        if(status === 'SUBSCRIBED') console.log('Realtime Connected & Listening!');
+    });
+};
 
 // ==== ADVANCED RELATIONAL SYNC LOGIC ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
+    
+    window.isSyncingLocal = true; // Block realtime loop
     setSyncStatus('syncing');
 
     try {
         const uid = appState.user.id;
         
-        // 1. Prepare Arrays
         const gssArr = Object.values(appState.gssNodes).map(g => ({ ...g, user_id: uid }));
         const feedersArr = Object.keys(appState.feeders).map(k => ({ ...appState.feeders[k].feeder, user_id: uid }));
         
@@ -111,7 +138,7 @@ window.syncToSupabase = async function(manual = false) {
             net.consumers.forEach(c => consArr.push({ ...c, feeder_code: fCode, user_id: uid }));
         });
 
-        // 2. Sequential Upsert to respect Foreign Key Constraints
+        // 1. Sequential Upsert
         if(gssArr.length > 0) await supabaseClient.from('gss_nodes').upsert(gssArr);
         if(feedersArr.length > 0) await supabaseClient.from('feeders').upsert(feedersArr);
         if(polesArr.length > 0) await supabaseClient.from('poles').upsert(polesArr);
@@ -119,32 +146,39 @@ window.syncToSupabase = async function(manual = false) {
         if(linesArr.length > 0) await supabaseClient.from('lines').upsert(linesArr);
         if(consArr.length > 0) await supabaseClient.from('consumers').upsert(consArr);
 
-        // 3. Clean up deleted records from Cloud
-        const activePoleIds = polesArr.map(p => p.id);
-        const activeDtIds = dtsArr.map(d => d.id);
-        const activeLineIds = linesArr.map(l => l.id);
-        const activeConsIds = consArr.map(c => c.id);
+        // 2. Safe Cleanup (Delete records removed locally)
+        const safeDelete = async (table, activeIds, idCol = 'id') => {
+            if (activeIds.length > 0) {
+                // FIXED: Use pure Array for '.in' filter to avoid Postgres Syntax Error
+                await supabaseClient.from(table).delete().eq('user_id', uid).not(idCol, 'in', `(${activeIds.join(',')})`);
+            } else {
+                await supabaseClient.from(table).delete().eq('user_id', uid);
+            }
+        };
 
-        if(activePoleIds.length > 0) await supabaseClient.from('poles').delete().eq('user_id', uid).not('id', 'in', `(${activePoleIds.join(',')})`);
-        if(activeDtIds.length > 0) await supabaseClient.from('dts').delete().eq('user_id', uid).not('id', 'in', `(${activeDtIds.join(',')})`);
-        if(activeLineIds.length > 0) await supabaseClient.from('lines').delete().eq('user_id', uid).not('id', 'in', `(${activeLineIds.join(',')})`);
-        if(activeConsIds.length > 0) await supabaseClient.from('consumers').delete().eq('user_id', uid).not('id', 'in', `(${activeConsIds.join(',')})`);
+        await safeDelete('gss_nodes', gssArr.map(g => g.code), 'code');
+        await safeDelete('feeders', feedersArr.map(f => f.code), 'code');
+        await safeDelete('poles', polesArr.map(p => p.id));
+        await safeDelete('dts', dtsArr.map(d => d.id));
+        await safeDelete('lines', linesArr.map(l => l.id));
+        await safeDelete('consumers', consArr.map(c => c.id));
 
         setSyncStatus('synced');
     } catch (err) {
         console.error("Relational Sync Error:", err);
         setSyncStatus('offline');
+    } finally {
+        setTimeout(() => { window.isSyncingLocal = false; }, 1500);
     }
 }
 
-async function pullFromSupabase() {
+async function pullFromSupabase(isBackground = false) {
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
-    setSyncStatus('syncing');
+    if(!isBackground) setSyncStatus('syncing');
     
     try {
         const uid = appState.user.id;
         
-        // Fetch Relational Data
         const [gssRes, fdrRes, poleRes, dtRes, lineRes, consRes] = await Promise.all([
             supabaseClient.from('gss_nodes').select('*').eq('user_id', uid),
             supabaseClient.from('feeders').select('*').eq('user_id', uid),
@@ -156,11 +190,11 @@ async function pullFromSupabase() {
 
         let newGss = {}, newFeeders = {};
 
-        if (gssRes.data && gssRes.data.length > 0) {
+        if (gssRes.data) {
             gssRes.data.forEach(g => { delete g.user_id; newGss[g.code] = g; });
         }
         
-        if (fdrRes.data && fdrRes.data.length > 0) {
+        if (fdrRes.data) {
             fdrRes.data.forEach(f => {
                 delete f.user_id;
                 newFeeders[f.code] = { feeder: f, poles: [], dts: [], lines: [], consumers: [] };
@@ -170,20 +204,27 @@ async function pullFromSupabase() {
             if (dtRes.data) dtRes.data.forEach(d => { const fc = d.feeder_code; delete d.user_id; delete d.feeder_code; if(newFeeders[fc]) newFeeders[fc].dts.push(d); });
             if (lineRes.data) lineRes.data.forEach(l => { const fc = l.feeder_code; delete l.user_id; delete l.feeder_code; if(newFeeders[fc]) newFeeders[fc].lines.push(l); });
             if (consRes.data) consRes.data.forEach(c => { const fc = c.feeder_code; delete c.user_id; delete c.feeder_code; if(newFeeders[fc]) newFeeders[fc].consumers.push(c); });
-            
-            appState.gssNodes = newGss;
-            appState.feeders = newFeeders;
-            appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
-            appState.unsyncedCount = 0;
-            
-            if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
-            
-            renderEntireNetwork(); 
-            if(map) { setTimeout(() => { map.invalidateSize(); }, 300); }
-            centerMapOnGSS(); 
         }
+
+        // Fresh Login Fallback (If DB is empty)
+        if(Object.keys(newFeeders).length === 0) {
+            newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+            newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+        }
+
+        appState.gssNodes = newGss;
+        appState.feeders = newFeeders;
+        if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
+        
+        appState.unsyncedCount = 0;
+        
+        if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
+        
+        renderEntireNetwork(); 
+        if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
+        if(!isBackground) centerMapOnGSS(); 
+        
         setSyncStatus('synced'); 
-        updateSyncUI();
     } catch (err) { 
         console.error("Pull Sync error:", err); 
         setSyncStatus('offline'); 
@@ -213,6 +254,8 @@ function applyAuthUIVisuals() {
     const adminCard = document.getElementById('adminPasswordCard'); 
     if (adminCard) adminCard.style.display = (appState.user.email === ADMIN_EMAIL) ? 'block' : 'none';
     
+    window.setupRealtimeSync(); // Start listening for multi-device updates
+
     if(map) {
         setTimeout(() => { map.invalidateSize(); }, 300);
     }
