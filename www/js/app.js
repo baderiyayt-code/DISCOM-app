@@ -12,7 +12,8 @@ let appState = {
     user: { isLoggedIn: false, name: "", email: "", id: null },
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
-    gssNodes: {}, feeders: {},
+    gssNodes: { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } },
+    feeders: { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } },
     dirtyItems: { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }, 
     deletedItems: [], 
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
@@ -45,14 +46,14 @@ function t(key) { return (i18n['en'][key] || key); }
 function translateApp() { document.querySelectorAll('[data-i18n]').forEach(el => { const key = el.getAttribute('data-i18n'); if (el.tagName.toLowerCase() === 'input' && el.type === 'text') el.placeholder = t(key); else el.innerHTML = t(key); }); }
 
 function getActiveNetwork() {
-    if (!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
-    let net = appState.feeders[appState.currentFeederCode];
-    if (!net) { 
-        net = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] }; 
-        appState.feeders["1"] = net; 
-        appState.gssNodes["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+    if (!appState.feeders || Object.keys(appState.feeders).length === 0) {
+        appState.feeders = { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } };
+        appState.gssNodes = { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } };
         appState.currentFeederCode = "1";
     }
+    if (!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0];
+    
+    let net = appState.feeders[appState.currentFeederCode];
     if (!Array.isArray(net.poles)) net.poles = []; if (!Array.isArray(net.lines)) net.lines = []; if (!Array.isArray(net.dts)) net.dts = []; if (!Array.isArray(net.consumers)) net.consumers = [];
     return net;
 }
@@ -64,10 +65,17 @@ function showToast(msg) {
 
 function setSyncStatus(status) {
     const ind = document.getElementById('sync-indicator');
+    if (!ind) return;
     if(!navigator.onLine) status = 'offline';
-    if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
-    else if(status === 'synced') { ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>'; appState.unsyncedCount = 0; updateSyncUI(); }
-    else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
+    
+    let iconHtml = '';
+    if(status === 'syncing') iconHtml = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
+    else if(status === 'synced') iconHtml = '<i class="fa-solid fa-cloud-check sync-success"></i>';
+    else iconHtml = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
+    
+    ind.innerHTML = iconHtml + `<span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount > 0 ? 'block' : 'none'};">${appState.unsyncedCount}</span>`;
+    
+    if (status === 'synced') { appState.unsyncedCount = 0; updateSyncUI(); }
 }
 
 // ==== UNIVERSAL TRACKERS ====
@@ -102,7 +110,7 @@ function cleanData(arr) {
     });
 }
 
-// ==== 🚀 REDESIGNED SYNC: PHOTO SEPARATION ARCHITECTURE ====
+// ==== 🚀 CLOUD SYNC (Delta Push) ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -124,46 +132,35 @@ window.syncToSupabase = async function(manual = false) {
                 corePayload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
             }
             
-            net.poles.forEach(p => { 
-                if(dirty['POLE'].includes(p.id)) {
+            const processNode = (p, type) => {
+                if(dirty[type].includes(p.id)) {
                     let pCopy = { ...p, feederCode: fCode };
-                    if(pCopy.photo && pCopy.photo.length > 50) { photoPayload.push({ parent_id: p.id, image_data: pCopy.photo, user_id: uid }); delete pCopy.photo; pCopy.hasPhoto = true; } else { pCopy.hasPhoto = false; }
-                    corePayload.push({ id: p.id, type: 'POLE', data: pCopy, user_id: uid }); 
-                } 
-            });
-            net.dts.forEach(d => { 
-                if(dirty['DT'].includes(d.id)) {
-                    let dCopy = { ...d, feederCode: fCode };
-                    if(dCopy.photo && dCopy.photo.length > 50) { photoPayload.push({ parent_id: d.id, image_data: dCopy.photo, user_id: uid }); delete dCopy.photo; dCopy.hasPhoto = true; } else { dCopy.hasPhoto = false; }
-                    corePayload.push({ id: d.id, type: 'DT', data: dCopy, user_id: uid }); 
-                } 
-            });
-            net.lines.forEach(l => { 
-                if(dirty['LINE'].includes(l.id)) corePayload.push({ id: l.id, type: 'LINE', data: { ...l, feederCode: fCode }, user_id: uid }); 
-            });
-            net.consumers.forEach(c => { 
-                if(dirty['CONSUMER'].includes(c.id)) {
-                    let cCopy = { ...c, feederCode: fCode };
-                    if(cCopy.photo && cCopy.photo.length > 50) { photoPayload.push({ parent_id: c.id, image_data: cCopy.photo, user_id: uid }); delete cCopy.photo; cCopy.hasPhoto = true; } else { cCopy.hasPhoto = false; }
-                    corePayload.push({ id: c.id, type: 'CONSUMER', data: cCopy, user_id: uid }); 
-                } 
-            });
+                    if(pCopy.photo && pCopy.photo.startsWith('data:image')) { 
+                        photoPayload.push({ parent_id: p.id, image_data: pCopy.photo, user_id: uid }); 
+                        pCopy.hasPhoto = true; 
+                    } else { pCopy.hasPhoto = !!pCopy.hasPhoto; }
+                    delete pCopy.photo; 
+                    corePayload.push({ id: p.id, type: type, data: pCopy, user_id: uid }); 
+                }
+            };
+
+            net.poles.forEach(p => processNode(p, 'POLE'));
+            net.dts.forEach(d => processNode(d, 'DT'));
+            net.lines.forEach(l => processNode(l, 'LINE'));
+            net.consumers.forEach(c => processNode(c, 'CONSUMER'));
         });
 
-        // 1. Sync Core Lightweight Data
         let safeCorePayload = JSON.parse(JSON.stringify(cleanData(corePayload)));
         if (safeCorePayload.length > 0) {
             const { error: coreErr } = await supabaseClient.from('network_elements').upsert(safeCorePayload);
             if (coreErr) throw coreErr;
         }
 
-        // 2. Sync Heavy Photos Independently
         if (photoPayload.length > 0) {
             const { error: photoErr } = await supabaseClient.from('entity_photos').upsert(photoPayload);
-            if (photoErr) console.warn("Photo Sync Warning:", photoErr); // Photos shouldn't fail the whole sync
+            if (photoErr) console.warn("Photo Backup Delayed:", photoErr);
         }
 
-        // 3. Deletion Queue Processing
         if (appState.deletedItems && appState.deletedItems.length > 0) {
             await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
             await supabaseClient.from('entity_photos').delete().eq('user_id', uid).in('parent_id', appState.deletedItems);
@@ -184,23 +181,19 @@ async function pullFromSupabase(isBackground = false) {
     try {
         const uid = appState.user.id;
         
-        // Parallel Fetch: Fetch Core Data AND Photos together
         const [coreRes, photoRes] = await Promise.all([
             supabaseClient.from('network_elements').select('*').eq('user_id', uid),
             supabaseClient.from('entity_photos').select('parent_id, image_data').eq('user_id', uid)
         ]);
-        
         if (coreRes.error) throw coreRes.error;
 
-        // Create Photo Dictionary for Instant Re-attachment
         let photoDictionary = {};
         if (photoRes.data) {
             photoRes.data.forEach(imgRow => { photoDictionary[imgRow.parent_id] = imgRow.image_data; });
         }
 
-        let newGss = {}, newFeeders = {};
-
         if (coreRes.data && coreRes.data.length > 0) {
+            let newGss = {}, newFeeders = {};
             coreRes.data.forEach(item => {
                 if (item.type === 'GSS' && item.data && item.data.code) newGss[item.data.code] = item.data;
                 if (item.type === 'FEEDER' && item.data && item.data.code) newFeeders[item.data.code] = { feeder: item.data, poles: [], dts: [], lines: [], consumers: [] };
@@ -209,12 +202,7 @@ async function pullFromSupabase(isBackground = false) {
             coreRes.data.forEach(item => {
                 const d = item.data;
                 if(!d) return;
-                
-                // Re-attach photo securely to the object if it exists in DB
-                if (d.hasPhoto && photoDictionary[item.id]) {
-                    d.photo = photoDictionary[item.id];
-                }
-
+                if (d.hasPhoto && photoDictionary[item.id]) { d.photo = photoDictionary[item.id]; }
                 const fc = d.feederCode || "1"; 
                 if(!newFeeders[fc]) newFeeders[fc] = { feeder: { name: "Feeder "+fc, code: fc, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
                 
@@ -223,17 +211,31 @@ async function pullFromSupabase(isBackground = false) {
                 if (item.type === 'LINE') newFeeders[fc].lines.push(d);
                 if (item.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
             });
+            
+            appState.gssNodes = newGss; 
+            appState.feeders = newFeeders;
+            
+        } else {
+            // SAFE FALLBACK: If cloud is completely empty, keep local data or inject defaults
+            let hasLocalData = false;
+            if(appState.feeders) {
+                Object.keys(appState.feeders).forEach(fCode => {
+                    if (appState.feeders[fCode].poles.length > 0 || appState.feeders[fCode].dts.length > 0) hasLocalData = true;
+                });
+            }
+            if(hasLocalData) {
+                // If cloud is empty but mobile has data, auto-heal and push up.
+                window.syncToSupabase();
+            } else {
+                appState.feeders = { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } };
+                appState.gssNodes = { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } };
+            }
         }
 
-        if(Object.keys(newFeeders).length === 0) newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
-        if(Object.keys(newGss).length === 0) newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
-
-        appState.gssNodes = newGss; appState.feeders = newFeeders;
-        if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
+        if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
         appState.unsyncedCount = 0;
         
         getActiveNetwork(); 
-        
         if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
         renderEntireNetwork(); 
         if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
@@ -378,18 +380,19 @@ window.toggleLiveTracking = function() {
     }
 }
 
+// ==== LAZY LOAD PHOTOS IN BOTTOM SHEET ====
 window.openObjectSheet = function(type, id) {
-    window.haptic(15); const net = getActiveNetwork(); let obj = null, title = '', subtitle = '', details = '', photo = '', actions = '';
+    window.haptic(15); const net = getActiveNetwork(); let obj = null, title = '', subtitle = '', details = '', actions = '';
     
     if (type === 'POLE' || type === 'LTPOLE') {
         obj = net.poles.find(x => x.id === id); if(!obj) return; let displayNo = obj.poleNo; if (obj.lineType === 'LT' && String(obj.poleNo).includes('-')) displayNo = String(obj.poleNo).split('-')[1];
-        title = `Pole: ${displayNo}`; subtitle = `${obj.lineType || 'HT'} Line Pole`; photo = obj.photo;
+        title = `Pole: ${displayNo}`; subtitle = `${obj.lineType || 'HT'} Line Pole`;
         details = `<div class="info-grid"><div class="info-item"><span>Parent Node</span><b>${obj.dtCode || 'Feeder'}</b></div><div class="info-item"><span>Structure</span><b>${obj.structure || 'Single'}</b></div><div class="info-item"><span>Condition</span><b style="color:${(obj.condition==='Tilted'||obj.condition==='Damaged')?'#ef4444':'var(--text-main)'}">${obj.condition || 'OK'}</b></div></div>`;
         actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('${obj.lineType === 'LT' ? 'LTPOLE' : 'POLE'}','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('POLE','${obj.id}','${obj.poleNo}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('pole','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
     } 
     else if (type === 'DT') {
         obj = net.dts.find(x => x.id === id); if(!obj) return; let dtNameStr = obj.name ? obj.name : `DT Code: ${obj.code}`;
-        title = `${dtNameStr}`; subtitle = `Code: ${obj.code} | ${obj.rating} kVA | ${obj.phase || 'Three Phase'}`; photo = obj.photo;
+        title = `${dtNameStr}`; subtitle = `Code: ${obj.code} | ${obj.rating} kVA | ${obj.phase || 'Three Phase'}`;
         let dtCons = net.consumers.filter(c => (c.parentType === 'DT' && String(c.parentRef) === String(obj.code)) || (c.parentType === 'POLE' && net.poles.find(p => String(p.poleNo) === String(c.parentRef) && String(p.dtCode) === String(obj.code))));
         let totCons = dtCons.length; let totLoad = dtCons.reduce((sum, c) => sum + (parseFloat(c.load) || 0), 0);
         details = `<div class="info-grid"><div class="info-item"><span>Mounted On</span><b>${obj.mountedOn || 'Single Pole'}</b></div><div class="info-item"><span>Total Consumers</span><b>${totCons}</b></div><div class="info-item"><span>Total Load</span><b>${totLoad.toFixed(2)} kW</b></div><div class="info-item"><span>Sr No.</span><b>${obj.srNo || 'N/A'}</b></div><div class="info-item"><span>TN No.</span><b>${obj.tn || 'N/A'}</b></div></div>`;
@@ -397,7 +400,7 @@ window.openObjectSheet = function(type, id) {
     }
     else if (type === 'CONSUMER') {
         obj = net.consumers.find(x => x.id === id); if(!obj) return;
-        title = `${obj.name}`; subtitle = `${obj.conType || 'DS'} | ${obj.status || 'Regular'}`; photo = obj.photo;
+        title = `${obj.name}`; subtitle = `${obj.conType || 'DS'} | ${obj.status || 'Regular'}`;
         details = `<div class="info-grid"><div class="info-item"><span>K-Number</span><b>${obj.kno}</b></div><div class="info-item"><span>A/C No.</span><b>${obj.acNo || 'N/A'}</b></div><div class="info-item"><span>Meter No.</span><b>${obj.meterNo || 'N/A'}</b></div><div class="info-item"><span>Load</span><b>${obj.load || '1 kW'}</b></div><div class="info-item"><span>Connected To</span><b>${obj.parentRef}</b></div></div>`;
         actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('consumer','${obj.id}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('CONSUMER','${obj.id}','${obj.name}')"><i class="fa-solid fa-up-down-left-right"></i> Move</button><button class="sheet-btn delete" onclick="window.closeObjectSheet(); window.deleteEntity('consumer','${obj.id}')"><i class="fa-solid fa-trash"></i> Delete</button>`;
     }
@@ -413,7 +416,37 @@ window.openObjectSheet = function(type, id) {
         actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('gss','${obj.code}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('GSS','${obj.code}','${obj.code}')"><i class="fa-solid fa-up-down-left-right"></i> Relocate</button>`;
     }
     
-    let photoHtml = photo ? `<img src="${photo}" class="sheet-photo">` : '';
+    // Asynchronous Photo Loader
+    let idStr = obj ? (obj.id || obj.code) : 'unknown';
+    let photoHtml = '';
+    
+    if(obj && obj.hasPhoto) {
+        if(obj.photo && obj.photo.startsWith('data:image')) {
+            photoHtml = `<img src="${obj.photo}" class="sheet-photo">`;
+        } else {
+            photoHtml = `<img src="" id="async-photo-${idStr}" class="sheet-photo" style="display:none; background:#1e293b; object-fit:contain;">
+                         <div id="photo-loader-${idStr}" style="text-align:center; padding:30px 10px; color:var(--text-sub); font-size:0.85rem; background:var(--bg-base); border-radius:12px; margin-bottom:16px;">
+                            <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:var(--accent); margin-bottom:8px;"></i><br>Loading Photo...
+                         </div>`;
+                         
+            supabaseClient.from('entity_photos').select('image_data').eq('parent_id', idStr).single().then(({data}) => {
+                if(data && data.image_data) {
+                    obj.photo = data.image_data;
+                    const imgEl = document.getElementById(`async-photo-${idStr}`);
+                    const loaderEl = document.getElementById(`photo-loader-${idStr}`);
+                    if(imgEl) { imgEl.src = obj.photo; imgEl.style.display = 'block'; }
+                    if(loaderEl) loaderEl.style.display = 'none';
+                    if (typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState);
+                } else {
+                    const loaderEl = document.getElementById(`photo-loader-${idStr}`);
+                    if(loaderEl) loaderEl.innerHTML = '<i class="fa-solid fa-image-slash" style="font-size:1.5rem; margin-bottom:8px;"></i><br>Photo not found';
+                }
+            });
+        }
+    } else if (obj && obj.photo) {
+        photoHtml = `<img src="${obj.photo}" class="sheet-photo">`;
+    }
+
     document.getElementById('obj-sheet-content').innerHTML = `${photoHtml}<h3 class="sheet-obj-title">${title}</h3><p class="sheet-obj-subtitle">${subtitle}</p>${details}<div class="sheet-actions-row">${actions}</div>`;
     document.getElementById('bottom-info-sheet').classList.add('open');
 };
@@ -431,16 +464,18 @@ function renderEntireNetwork() {
     try {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(), f = appState.filters;
 
-        const activeGss = appState.gssNodes[net.feeder.parentGss];
-        if (activeGss && typeof activeGss.lat === 'number') {
-            if (!(appState.activeMove && appState.activeMove.id === activeGss.code)) {
-                const dynZGss = Math.floor(-activeGss.lat * 10000);
-                const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="22" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/><text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text></svg>`;
-                const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); 
-                const m = L.marker([activeGss.lat, activeGss.lng], { icon: gssIcon, zIndexOffset: 950000 + dynZGss }).addTo(featureGroups.gss);
-                m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', activeGss.code); });
+        // Render ALL GSS Nodes
+        Object.values(appState.gssNodes).forEach(gss => {
+            if (gss && typeof gss.lat === 'number') {
+                if (!(appState.activeMove && appState.activeMove.id === gss.code)) {
+                    const dynZGss = Math.floor(-gss.lat * 10000);
+                    const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="22" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/><text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text></svg>`;
+                    const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); 
+                    const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 950000 + dynZGss }).addTo(featureGroups.gss);
+                    m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', gss.code); });
+                }
             }
-        }
+        });
 
         if (f.poles) {
             net.poles.forEach(p => {
