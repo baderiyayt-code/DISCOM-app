@@ -13,18 +13,24 @@ let appState = {
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
     gssNodes: {}, feeders: {},
-    dirtyItems: { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }, // NEW: Delta Tracker
-    deletedItems: [], // NEW: Deletion Tracker
+    dirtyItems: { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }, 
+    deletedItems: [], 
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
 };
 
 let historyStack = []; let map = null;
 window.haptic = function(pattern) { if (window.cordova && navigator.vibrate) navigator.vibrate(pattern); };
 
+// FIX: Safe check added to prevent "Cannot read properties of null" error
 function updateSyncUI() {
     const badge = document.getElementById('sync-badge');
-    if(appState.unsyncedCount > 0) { badge.innerText = appState.unsyncedCount; badge.style.display = 'block'; } 
-    else { badge.style.display = 'none'; }
+    if (!badge) return; // Fail-safe
+    if(appState.unsyncedCount > 0) { 
+        badge.innerText = appState.unsyncedCount; 
+        badge.style.display = 'block'; 
+    } else { 
+        badge.style.display = 'none'; 
+    }
 }
 
 const i18n = {
@@ -62,15 +68,25 @@ function showToast(msg) {
     if (!toast || !msgElem) return; msgElem.innerText = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
 }
 
+// FIX: Retains the badge element so it doesn't get destroyed on sync success
 function setSyncStatus(status) {
     const ind = document.getElementById('sync-indicator');
+    if (!ind) return;
     if(!navigator.onLine) status = 'offline';
-    if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
-    else if(status === 'synced') { ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>'; appState.unsyncedCount = 0; updateSyncUI(); }
-    else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
+    
+    let iconHtml = '';
+    if(status === 'syncing') iconHtml = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
+    else if(status === 'synced') iconHtml = '<i class="fa-solid fa-cloud-check sync-success"></i>';
+    else iconHtml = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
+    
+    ind.innerHTML = iconHtml + `<span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount > 0 ? 'block' : 'none'};">${appState.unsyncedCount}</span>`;
+    
+    if (status === 'synced') { 
+        appState.unsyncedCount = 0; 
+        updateSyncUI(); 
+    }
 }
 
-// ==== 🚀 DELTA TRACKING (Conflict-Free Sync Helpers) ====
 window.markDirty = function(type, id) {
     if (!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
     if (!appState.dirtyItems[type]) appState.dirtyItems[type] = [];
@@ -82,7 +98,6 @@ window.markDeleted = function(id) {
     if (!appState.deletedItems.includes(id)) appState.deletedItems.push(id);
 };
 
-// ==== LIVE BROADCAST API ====
 let realtimeChannel = null;
 window.setupRealtimeSync = function() {
     if (!supabaseClient || !appState.user.isLoggedIn) return;
@@ -91,7 +106,7 @@ window.setupRealtimeSync = function() {
     realtimeChannel.on('broadcast', { event: 'db-updated' }, (payload) => {
         if(window.isSyncingLocal || appState.unsyncedCount > 0) return; 
         clearTimeout(window.rtDebounce);
-        window.rtDebounce = setTimeout(() => { showToast("Live Update Received! 🔄"); pullFromSupabase(true); }, 1000);
+        window.rtDebounce = setTimeout(() => { showToast("Live Update Received! 🔄"); pullFromSupabase(true); }, 800);
     }).subscribe();
 };
 
@@ -103,12 +118,10 @@ function cleanData(arr) {
     });
 }
 
-// ==== TARGETED CLOUD SYNC (Delta Push Only) ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
     
-    // Check if there is anything actually dirty or deleted
     if(!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
     if(!appState.deletedItems) appState.deletedItems = [];
     
@@ -124,7 +137,6 @@ window.syncToSupabase = async function(manual = false) {
         let payload = [];
         let dirty = appState.dirtyItems;
 
-        // 1. Pack ONLY Modified/New Items (Delta)
         Object.values(appState.gssNodes).forEach(g => {
             if(g && g.code && dirty['GSS'].includes(g.code)) payload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
         });
@@ -141,23 +153,19 @@ window.syncToSupabase = async function(manual = false) {
 
         let safePayload = JSON.parse(JSON.stringify(cleanData(payload)));
 
-        // 2. Safely Upsert ONLY changed objects
         if (safePayload.length > 0) {
             const { error } = await supabaseClient.from('network_elements').upsert(safePayload);
             if (error) throw error;
         }
 
-        // 3. Delete ONLY explicitly deleted objects
         if (appState.deletedItems.length > 0) {
             const { error } = await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
             if (error) throw error;
         }
 
-        // Success - Clear local queues completely
         appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
         appState.deletedItems = [];
 
-        // Broadcast change to other devices
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
         
         setSyncStatus('synced');
@@ -657,7 +665,6 @@ window.openAddGssModal = function() {
     window.toggleSidebar(false);
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addNewGss">Add New GSS</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>GSS Code*</label><input type="text" id="inpGssCode" class="form-input" placeholder="e.g. 132"></div><div class="form-row"><label>GSS Name*</label><input type="text" id="inpGssName" class="form-input" placeholder="e.g. 132/33 kV Substation"></div><button class="btn-action-primary" onclick="window.saveNewGss()">Save GSS at Map Center</button>`);
 };
-
 window.saveNewGss = function() {
     window.haptic(30); const code = document.getElementById('inpGssCode').value.trim(), name = document.getElementById('inpGssName').value.trim();
     if (!code || !name) return alert("Enter GSS Code and Name"); if (appState.gssNodes[code]) return alert("GSS Code already exists!");
@@ -670,7 +677,6 @@ window.openAddNewFeederModal = function() {
     const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}">${g.code} - ${g.name}</option>`).join('');
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addFeeder">Add Feeder</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>Feeder Code (Numeric Only)*</label><input type="number" id="newFdrCode" class="form-input" value="${Object.keys(appState.feeders).length + 1}"></div><div class="form-row"><label>Feeder Name*</label><input type="text" id="newFdrName" class="form-input" placeholder="e.g. City Feed 11kV"></div><div class="form-row"><label>Parent GSS*</label><select id="newFdrGss" class="form-select">${gssOpts}</select></div><button class="btn-action-primary" onclick="window.createNewFeeder()" data-i18n="saveFeeder">Save Feeder</button>`);
 }
-
 window.createNewFeeder = function() {
     window.haptic(30); const code = document.getElementById('newFdrCode').value.trim(), name = document.getElementById('newFdrName').value.trim(), gss = document.getElementById('newFdrGss').value;
     if (!code || !name) return alert(t("errReq")); 
@@ -683,7 +689,6 @@ window.openFeederConfigModal = function() {
     const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}" ${net.feeder.parentGss==g.code?'selected':''}>${g.code} - ${g.name}</option>`).join('');
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-tower-broadcast"></i> <span data-i18n="manageFdr">Manage Feeders</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>Feeder Name</label><input type="text" id="cfgFeederName" class="form-input" value="${net.feeder.name}"></div><div class="form-row"><label>Parent GSS Source</label><select id="cfgParentGss" class="form-select">${gssOpts}</select></div><button class="btn-action-primary" onclick="window.saveFeederConfiguration()">Save Config</button>`);
 }
-
 window.saveFeederConfiguration = function() {
     window.haptic(30); const net = getActiveNetwork(); net.feeder.name = document.getElementById('cfgFeederName').value; net.feeder.parentGss = document.getElementById('cfgParentGss').value; 
     window.markDirty('FEEDER', net.feeder.code); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(t("toastSettings"));
@@ -881,108 +886,6 @@ window.openAboutModal = function() {
     window.toggleSidebar(false); openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-circle-info"></i> <span data-i18n="about">About App</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div style="text-align:center; padding: 20px 0;"><div class="auth-logo" style="color:var(--accent); font-size:3rem; margin-bottom:10px;"><i class="fa-solid fa-bolt-lightning"></i></div><h2 style="font-size:1.4rem; font-weight:800; margin-bottom:5px;">DISCOM Survey Pro</h2><p style="color:var(--text-sub); font-size:0.9rem; margin-bottom:20px;">Enterprise Survey App</p><div style="background:var(--bg-base); padding:15px; border-radius:12px; border:1px solid var(--border);"><p style="font-weight:700; font-size:1rem; color:var(--text-main);">Developed by</p><p style="font-size:1.2rem; font-weight:900; color:var(--accent); margin-top:4px;">Suraj Singh Mehta</p></div><p style="font-size:0.75rem; color:var(--text-sub); margin-top:20px;">Version 1.0.0</p></div>`);
 }
 
-window.savePoleData = function(editId) { 
-    window.haptic(30); saveSnapshot(); 
-    const category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value), structure = document.getElementById('inpPoleStruct').value, condition = document.getElementById('inpPoleCond').value, photo = document.getElementById('inpPolePhoto').value;
-    let no = ''; const noElem = document.getElementById('inpPoleNo'); if (noElem) { no = noElem.value.trim(); }
-    const net = getActiveNetwork(); 
-    if (editId) {
-        if (!no) return alert(t("errReq"));
-        if (net.poles.some(p => p.id !== editId && String(p.poleNo) === no)) return alert(t("alertExists"));
-        let p = net.poles.find(x => x.id === editId); if(!p) return;
-        p.poleNo = no; p.structure = structure; p.condition = condition; p.photo = photo;
-        window.markDirty('POLE', editId);
-    } else {
-        let dtCode = category === 'LT' ? document.getElementById('inpLTPoleDT').value : undefined;
-        if (category === 'LT' && !no) { const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode)); no = `${dtCode}-${existingLTPoles.length + 1}`; }
-        if (!no) return alert(t("errReq"));
-        if (net.poles.some(p => String(p.poleNo) === no)) return alert(t("alertExists"));
-        const newId = 'P_'+Date.now();
-        net.poles.push({ id: newId, poleNo: no, lineType: category, structure, condition, photo, dtCode, lat, lng }); 
-        window.markDirty('POLE', newId);
-    }
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
-}
-
-window.saveLineData = function(editId) {
-    window.haptic(30); saveSnapshot(); const from = document.getElementById('inpFromNode').value, to = document.getElementById('inpToNode').value, type = document.getElementById('inpLineType').value, phaseType = document.getElementById('inpLinePhase').value, hasCrossing = document.getElementById('inpLineCrossing').checked, crossingRemark = document.getElementById('inpLineCrossRemark').value.trim();
-    if (from === to) return alert("Cannot connect node to itself!"); if (!to) return alert("Please select a target node!");
-    const net = getActiveNetwork(), spec = getLineSpec(type);
-    
-    if (phaseType === 'Three Phase' && !String(from).startsWith('GSS')) {
-        const connectedLines = net.lines.filter(l => (l.fromNode === from || l.toNode === from) && l.id !== editId);
-        if (connectedLines.length > 0) {
-            const hasThreePhase = connectedLines.some(l => l.phaseType === 'Three Phase');
-            if (!hasThreePhase) { return alert("Error: Is Pole par peeche se aane wali koi Three Phase line nahi hai. Aap yahan se aage Three Phase line nahi jod sakte!"); }
-        }
-    }
-
-    if(net.lines.find(l => l.id !== editId && ((l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from)))) return alert("A line already exists between these two nodes!");
-    
-    if(editId) {
-        let l = net.lines.find(x => x.id === editId); if(!l) return;
-        l.type = spec.name; l.phaseType = phaseType; l.hasCrossing = hasCrossing; l.crossingRemark = crossingRemark;
-        window.markDirty('LINE', editId);
-    } else {
-        const c1 = getNodeCoords(from), c2 = getNodeCoords(to); if(!c1 || !c2) return alert("Invalid node coordinates!"); const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); 
-        const newId = 'LN_'+Date.now();
-        net.lines.push({ id: newId, type: spec.name, phaseType, hasCrossing, crossingRemark, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]] }); 
-        window.markDirty('LINE', newId);
-    }
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
-}
-
-window.saveDTData = function(editId) {
-    window.haptic(30); saveSnapshot(); 
-    const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value, name = document.getElementById('inpDTName').value.trim();
-    const location = name, srNo = document.getElementById('inpDTSrNo').value.trim(), tn = document.getElementById('inpDTTN').value.trim(), mountedOn = document.getElementById('inpDTMount').value, photo = document.getElementById('inpDTPhoto').value;
-    
-    if (!code) return alert(t("errReq")); const net = getActiveNetwork();
-
-    const poleNodeId = 'POLE_' + parentRef;
-    const htLinesOnPole = net.lines.filter(l => (l.fromNode === poleNodeId || l.toNode === poleNodeId) && l.type.includes('11 KV'));
-    if (htLinesOnPole.length > 0) {
-        const hasThreePhaseLine = htLinesOnPole.some(l => l.phaseType === 'Three Phase');
-        if (!hasThreePhaseLine && phase === 'Three Phase') { return alert("Error: Is Pole par sirf Single Phase 11kV line judi hai. Aap yahan par Three Phase DT install nahi kar sakte!"); }
-    }
-    
-    if(editId) {
-        if (net.dts.some(d => d.id !== editId && String(d.code) === code)) return alert(t("alertExists"));
-        let d = net.dts.find(x => x.id === editId); if(!d) return;
-        d.code = code; d.name = name; d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
-        window.markDirty('DT', editId);
-    } else {
-        if (net.dts.some(d => String(d.code) === code)) return alert(t("alertExists"));
-        const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); let lat = net.feeder.lat, lng = net.feeder.lng; if (p) { lat = p.lat; lng = p.lng; }
-        const newId = 'DT_'+Date.now();
-        net.dts.push({ id: newId, parentPole: parentRef, code, name, rating, phase, srNo, tn, mountedOn, location, photo, lat, lng });
-        window.markDirty('DT', newId);
-    }
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
-}
-
-window.saveConsumerData = function(editId) {
-    window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpConsParent').value, kno = document.getElementById('inpConsKno').value.trim(), acNo = document.getElementById('inpConsAcNo').value.trim(), name = document.getElementById('inpConsName').value.trim(), meterNo = document.getElementById('inpConsMeter').value.trim(), conType = document.getElementById('inpConsType').value, status = document.getElementById('inpConsStatus').value, load = document.getElementById('inpConsLoad').value.trim(), photo = document.getElementById('inpConsPhoto').value;
-    if (!name || !kno || !acNo) return alert(t("errReq")); 
-    if(kno.length !== 12) return alert("K-Number must be exactly 12 digits!"); if(acNo.length !== 8) return alert("A/C No. must be exactly 8 digits!");
-    const net = getActiveNetwork();
-
-    if(editId) {
-        if(net.consumers.some(c => c.id !== editId && String(c.kno) === String(kno))) return alert("K-Number already exists!");
-        let c = net.consumers.find(x => x.id === editId); if(!c) return;
-        c.kno = kno; c.acNo = acNo; c.name = name; c.meterNo = meterNo; c.conType = conType; c.status = status; c.load = load; c.photo = photo;
-        window.markDirty('CONSUMER', editId);
-    } else {
-        if(net.consumers.some(c => String(c.kno) === String(kno))) return alert("K-Number already exists in this feeder!");
-        let parentType = 'POLE'; const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); if (!p) parentType = 'DT';
-        const lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value);
-        const newId = 'CS_'+Date.now();
-        net.consumers.push({ id: newId, parentRef, parentType, kno, acNo, meterNo, conType, status, name, load, photo, lat, lng }); 
-        window.markDirty('CONSUMER', newId);
-    }
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
-}
-
 let appInitialized = false;
 async function initializeApplication() {
     if(appInitialized) return; appInitialized = true;
@@ -1006,12 +909,8 @@ async function initializeApplication() {
         
         if (appState.user && appState.user.isLoggedIn) { 
             applyAuthUIVisuals(); 
-            
-            // Sync local unsaved changes UP first, before pulling changes DOWN
             const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
-            if (hasDirty || appState.deletedItems.length > 0) {
-                await window.syncToSupabase();
-            }
+            if (hasDirty || appState.deletedItems.length > 0) { await window.syncToSupabase(); }
             await pullFromSupabase(); 
         } 
         
@@ -1021,11 +920,8 @@ async function initializeApplication() {
                     appState.user.isLoggedIn = true; appState.user.email = data.session.user.email; appState.user.id = data.session.user.id;
                     appState.user.name = data.session.user.user_metadata?.full_name || data.session.user.email.split('@')[0];
                     applyAuthUIVisuals(); 
-                    
                     const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
-                    if (hasDirty || appState.deletedItems.length > 0) {
-                        await window.syncToSupabase();
-                    }
+                    if (hasDirty || appState.deletedItems.length > 0) { await window.syncToSupabase(); }
                     await pullFromSupabase(); 
                 }
             });
