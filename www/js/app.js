@@ -21,16 +21,10 @@ let appState = {
 let historyStack = []; let map = null;
 window.haptic = function(pattern) { if (window.cordova && navigator.vibrate) navigator.vibrate(pattern); };
 
-// FIX: Safe check added to prevent "Cannot read properties of null" error
 function updateSyncUI() {
     const badge = document.getElementById('sync-badge');
-    if (!badge) return; // Fail-safe
-    if(appState.unsyncedCount > 0) { 
-        badge.innerText = appState.unsyncedCount; 
-        badge.style.display = 'block'; 
-    } else { 
-        badge.style.display = 'none'; 
-    }
+    if(appState.unsyncedCount > 0) { badge.innerText = appState.unsyncedCount; badge.style.display = 'block'; } 
+    else { badge.style.display = 'none'; }
 }
 
 const i18n = {
@@ -68,7 +62,6 @@ function showToast(msg) {
     if (!toast || !msgElem) return; msgElem.innerText = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
 }
 
-// FIX: Safely update sync status icon
 function setSyncStatus(status) {
     const ind = document.getElementById('sync-indicator');
     if (!ind) return;
@@ -80,7 +73,6 @@ function setSyncStatus(status) {
     else iconHtml = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
     
     ind.innerHTML = iconHtml + `<span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount > 0 ? 'block' : 'none'};">${appState.unsyncedCount}</span>`;
-    
     if (status === 'synced') { appState.unsyncedCount = 0; updateSyncUI(); }
 }
 
@@ -116,7 +108,7 @@ function cleanData(arr) {
     });
 }
 
-// ==== CLOUD SYNC (Delta Push) ====
+// ==== 🚀 HIERARCHICAL CLOUD SYNC (Delta Push) ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -133,29 +125,32 @@ window.syncToSupabase = async function(manual = false) {
 
     try {
         const uid = appState.user.id;
-        let corePayload = [];
-        let photoPayload = [];
+        let gssPayload = [], fdrPayload = [], objPayload = [], photoPayload = [];
         let dirty = appState.dirtyItems;
 
+        // Level 1: Extract GSS
         Object.values(appState.gssNodes).forEach(g => {
-            if(g && g.code && dirty['GSS'].includes(g.code)) corePayload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
+            if(g && g.code && dirty['GSS'].includes(g.code)) {
+                gssPayload.push({ gss_code: g.code, gss_name: g.name, lat: g.lat, lng: g.lng, user_id: uid });
+            }
         });
 
+        // Level 2 & 3: Extract Feeders and Objects
         Object.keys(appState.feeders).forEach(fCode => {
             const net = appState.feeders[fCode];
             if(net && net.feeder && net.feeder.code && dirty['FEEDER'].includes(fCode)) {
-                corePayload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
+                fdrPayload.push({ feeder_code: fCode, gss_code: net.feeder.parentGss, feeder_name: net.feeder.name, user_id: uid });
             }
             
             const processNode = (p, type) => {
                 if(dirty[type].includes(p.id)) {
-                    let pCopy = { ...p, feederCode: fCode };
-                    if(pCopy.photo && pCopy.photo.startsWith('data:image')) { 
-                        photoPayload.push({ parent_id: p.id, image_data: pCopy.photo, user_id: uid }); 
-                        pCopy.hasPhoto = true; 
-                    } else { pCopy.hasPhoto = !!pCopy.hasPhoto; }
-                    delete pCopy.photo; 
-                    corePayload.push({ id: p.id, type: type, data: pCopy, user_id: uid }); 
+                    let copy = { ...p };
+                    if(copy.photo && copy.photo.startsWith('data:image')) { 
+                        photoPayload.push({ parent_id: p.id, image_data: copy.photo, user_id: uid }); 
+                        copy.hasPhoto = true; 
+                    } else { copy.hasPhoto = !!copy.hasPhoto; }
+                    delete copy.photo; 
+                    objPayload.push({ id: p.id, feeder_code: fCode, type: type, data: copy, user_id: uid }); 
                 }
             };
 
@@ -165,20 +160,18 @@ window.syncToSupabase = async function(manual = false) {
             net.consumers.forEach(c => processNode(c, 'CONSUMER'));
         });
 
-        let safeCorePayload = JSON.parse(JSON.stringify(cleanData(corePayload)));
-        if (safeCorePayload.length > 0) {
-            const { error: coreErr } = await supabaseClient.from('network_elements').upsert(safeCorePayload);
-            if (coreErr) throw coreErr;
-        }
+        // HIERARCHICAL UPSERTS
+        if (gssPayload.length > 0) await supabaseClient.from('gss_records').upsert(cleanData(gssPayload));
+        if (fdrPayload.length > 0) await supabaseClient.from('feeder_records').upsert(cleanData(fdrPayload));
+        if (objPayload.length > 0) await supabaseClient.from('network_objects').upsert(JSON.parse(JSON.stringify(cleanData(objPayload))));
+        if (photoPayload.length > 0) await supabaseClient.from('object_photos').upsert(photoPayload);
 
-        if (photoPayload.length > 0) {
-            const { error: photoErr } = await supabaseClient.from('entity_photos').upsert(photoPayload);
-            if (photoErr) console.warn("Photo Backup Delayed:", photoErr);
-        }
-
-        if (appState.deletedItems && appState.deletedItems.length > 0) {
-            await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
-            await supabaseClient.from('entity_photos').delete().eq('user_id', uid).in('parent_id', appState.deletedItems);
+        // Targeted Deletions Across Hierarchy
+        if (appState.deletedItems.length > 0) {
+            await supabaseClient.from('gss_records').delete().eq('user_id', uid).in('gss_code', appState.deletedItems);
+            await supabaseClient.from('feeder_records').delete().eq('user_id', uid).in('feeder_code', appState.deletedItems);
+            await supabaseClient.from('network_objects').delete().eq('user_id', uid).in('id', appState.deletedItems);
+            await supabaseClient.from('object_photos').delete().eq('user_id', uid).in('parent_id', appState.deletedItems);
             appState.deletedItems = []; 
         }
 
@@ -189,6 +182,7 @@ window.syncToSupabase = async function(manual = false) {
     finally { setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
 }
 
+// ==== 🚀 HIERARCHICAL CLOUD PULL ====
 async function pullFromSupabase(isBackground = false) {
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
     if(!isBackground) setSyncStatus('syncing');
@@ -196,57 +190,60 @@ async function pullFromSupabase(isBackground = false) {
     try {
         const uid = appState.user.id;
         
-        const [coreRes, photoRes] = await Promise.all([
-            supabaseClient.from('network_elements').select('*').eq('user_id', uid),
-            supabaseClient.from('entity_photos').select('parent_id, image_data').eq('user_id', uid)
+        // Fetch Level 1, 2, and 3 in parallel
+        const [gssRes, fdrRes, objRes] = await Promise.all([
+            supabaseClient.from('gss_records').select('*').eq('user_id', uid),
+            supabaseClient.from('feeder_records').select('*').eq('user_id', uid),
+            supabaseClient.from('network_objects').select('*').eq('user_id', uid)
         ]);
-        if (coreRes.error) throw coreRes.error;
 
-        let photoDictionary = {};
-        if (photoRes.data) {
-            photoRes.data.forEach(imgRow => { photoDictionary[imgRow.parent_id] = imgRow.image_data; });
+        let newGss = {}, newFeeders = {};
+
+        // 1. Rebuild GSS Layer
+        if (gssRes.data && gssRes.data.length > 0) {
+            gssRes.data.forEach(g => {
+                newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng };
+            });
         }
 
-        if (coreRes.data && coreRes.data.length > 0) {
-            let newGss = {}, newFeeders = {};
-            coreRes.data.forEach(item => {
-                if (item.type === 'GSS' && item.data && item.data.code) newGss[item.data.code] = item.data;
-                if (item.type === 'FEEDER' && item.data && item.data.code) newFeeders[item.data.code] = { feeder: item.data, poles: [], dts: [], lines: [], consumers: [] };
+        // 2. Rebuild Feeder Layer
+        if (fdrRes.data && fdrRes.data.length > 0) {
+            fdrRes.data.forEach(f => {
+                newFeeders[f.feeder_code] = { feeder: { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
             });
+        }
 
-            coreRes.data.forEach(item => {
-                const d = item.data;
-                if(!d) return;
-                if (d.hasPhoto && photoDictionary[item.id]) { d.photo = photoDictionary[item.id]; }
-                const fc = d.feederCode || "1"; 
-                if(!newFeeders[fc]) newFeeders[fc] = { feeder: { name: "Feeder "+fc, code: fc, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+        // 3. Attach Network Objects to Feeders
+        if (objRes.data && objRes.data.length > 0) {
+            objRes.data.forEach(obj => {
+                const fc = obj.feeder_code;
+                if(!newFeeders[fc]) {
+                    newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1", subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
+                }
+                const d = obj.data;
                 
-                if (item.type === 'POLE') newFeeders[fc].poles.push(d);
-                if (item.type === 'DT') newFeeders[fc].dts.push(d);
-                if (item.type === 'LINE') newFeeders[fc].lines.push(d);
-                if (item.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
+                // Retain local photos to save bandwidth
+                try {
+                    let oldNet = appState.feeders[fc];
+                    if(oldNet) {
+                        let oldArr = obj.type === 'POLE' ? oldNet.poles : obj.type === 'DT' ? oldNet.dts : obj.type === 'CONSUMER' ? oldNet.consumers : null;
+                        if(oldArr) { let localObj = oldArr.find(x => x.id === d.id); if(localObj && localObj.photo) d.photo = localObj.photo; }
+                    }
+                } catch(e){}
+
+                if (obj.type === 'POLE') newFeeders[fc].poles.push(d);
+                if (obj.type === 'DT') newFeeders[fc].dts.push(d);
+                if (obj.type === 'LINE') newFeeders[fc].lines.push(d);
+                if (obj.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
             });
-            
-            appState.gssNodes = newGss; 
-            appState.feeders = newFeeders;
-            
-        } else {
-            // SAFE FALLBACK: If cloud is completely empty, keep local data or inject defaults
-            let hasLocalData = false;
-            if(appState.feeders) {
-                Object.keys(appState.feeders).forEach(fCode => {
-                    if (appState.feeders[fCode].poles.length > 0 || appState.feeders[fCode].dts.length > 0) hasLocalData = true;
-                });
-            }
-            if(hasLocalData) {
-                window.syncToSupabase();
-            } else {
-                appState.feeders = { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } };
-                appState.gssNodes = { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } };
-            }
         }
 
-        if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
+        // Failsafe Fallbacks
+        if(Object.keys(newGss).length === 0) newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+        if(Object.keys(newFeeders).length === 0) newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+
+        appState.gssNodes = newGss; appState.feeders = newFeeders;
+        if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
         appState.unsyncedCount = 0;
         
         getActiveNetwork(); 
@@ -333,7 +330,6 @@ function initMapSystem() {
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
     map.on('click', () => window.closeObjectSheet()); map.on('dragstart', () => { window.followLiveLocation = false; });
 
-    // FIX: Map zoom layer logic to make GSS visible at almost all levels
     function updateMapZoomClasses() {
         if(!map) return; const z = map.getZoom(); const mapEl = document.getElementById('map');
         mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss-square');
@@ -342,7 +338,7 @@ function initMapSystem() {
         if (z > 18) { map.addLayer(featureGroups.consumerLines); map.addLayer(featureGroups.consumers); }
         if (z > 17) { map.addLayer(featureGroups.ltPoles); } if (z > 16) { map.addLayer(featureGroups.ltLines); }
         if (z > 15) { map.addLayer(featureGroups.htPoles); } if (z > 14) { map.addLayer(featureGroups.dts); }
-        if (z > 11) { map.addLayer(featureGroups.gss); } // Ensure GSS is always visible when zooming out
+        if (z > 11) { map.addLayer(featureGroups.gss); } 
         if (z <= 13) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
     }
     map.on('zoomend', updateMapZoomClasses); 
@@ -396,7 +392,6 @@ window.toggleLiveTracking = function() {
     }
 }
 
-// ==== LAZY LOAD PHOTOS IN BOTTOM SHEET ====
 window.openObjectSheet = function(type, id) {
     window.haptic(15); const net = getActiveNetwork(); let obj = null, title = '', subtitle = '', details = '', actions = '';
     
@@ -444,7 +439,7 @@ window.openObjectSheet = function(type, id) {
                             <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:var(--accent); margin-bottom:8px;"></i><br>Loading Photo...
                          </div>`;
                          
-            supabaseClient.from('entity_photos').select('image_data').eq('parent_id', idStr).single().then(({data}) => {
+            supabaseClient.from('object_photos').select('image_data').eq('parent_id', idStr).single().then(({data}) => {
                 if(data && data.image_data) {
                     obj.photo = data.image_data;
                     const imgEl = document.getElementById(`async-photo-${idStr}`);
@@ -467,25 +462,15 @@ window.openObjectSheet = function(type, id) {
 };
 window.closeObjectSheet = function() { window.haptic(15); document.getElementById('bottom-info-sheet').classList.remove('open'); };
 
-function calculateParallelCoords(p1, p2, offsetMeters) {
-    const R = 6378137, lat1 = p1.lat * Math.PI/180, lng1 = p1.lng * Math.PI/180, lat2 = p2.lat * Math.PI/180, lng2 = p2.lng * Math.PI/180;
-    const bearing = Math.atan2(Math.sin(lng2-lng1)*Math.cos(lat2), Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(lng2-lng1));
-    const angle = bearing + Math.PI/2, dLat = (offsetMeters / R) * Math.cos(angle) * (180/Math.PI), dLng = (offsetMeters / (R * Math.cos(lat1))) * Math.sin(angle) * (180/Math.PI);
-    return [ [p1.lat + dLat, p1.lng + dLng], [p2.lat + dLat, p2.lng + dLng] ];
-}
-
-// FIX: GSS Marker Safe Parsing (Har condition me draw hoga)
 function renderEntireNetwork() {
     if(!map) return;
     try {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(), f = appState.filters;
 
-        // Render ALL GSS Nodes
         Object.values(appState.gssNodes).forEach(gss => {
             if (gss && gss.lat != null && gss.lng != null) {
                 if (!(appState.activeMove && appState.activeMove.id === gss.code)) {
-                    const lat = parseFloat(gss.lat);
-                    const lng = parseFloat(gss.lng);
+                    const lat = parseFloat(gss.lat); const lng = parseFloat(gss.lng);
                     const dynZGss = Math.floor(-lat * 10000);
                     const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="22" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/><text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text></svg>`;
                     const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); 
@@ -953,6 +938,108 @@ window.generateCadSLDPdf = async function() {
 
 window.openAboutModal = function() {
     window.toggleSidebar(false); openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-circle-info"></i> <span data-i18n="about">About App</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div style="text-align:center; padding: 20px 0;"><div class="auth-logo" style="color:var(--accent); font-size:3rem; margin-bottom:10px;"><i class="fa-solid fa-bolt-lightning"></i></div><h2 style="font-size:1.4rem; font-weight:800; margin-bottom:5px;">DISCOM Survey Pro</h2><p style="color:var(--text-sub); font-size:0.9rem; margin-bottom:20px;">Enterprise Survey App</p><div style="background:var(--bg-base); padding:15px; border-radius:12px; border:1px solid var(--border);"><p style="font-weight:700; font-size:1rem; color:var(--text-main);">Developed by</p><p style="font-size:1.2rem; font-weight:900; color:var(--accent); margin-top:4px;">Suraj Singh Mehta</p></div><p style="font-size:0.75rem; color:var(--text-sub); margin-top:20px;">Version 1.0.0</p></div>`);
+}
+
+window.savePoleData = function(editId) { 
+    window.haptic(30); saveSnapshot(); 
+    const category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value), structure = document.getElementById('inpPoleStruct').value, condition = document.getElementById('inpPoleCond').value, photo = document.getElementById('inpPolePhoto').value;
+    let no = ''; const noElem = document.getElementById('inpPoleNo'); if (noElem) { no = noElem.value.trim(); }
+    const net = getActiveNetwork(); 
+    if (editId) {
+        if (!no) return alert(t("errReq"));
+        if (net.poles.some(p => p.id !== editId && String(p.poleNo) === no)) return alert(t("alertExists"));
+        let p = net.poles.find(x => x.id === editId); if(!p) return;
+        p.poleNo = no; p.structure = structure; p.condition = condition; p.photo = photo;
+        window.markDirty('POLE', editId);
+    } else {
+        let dtCode = category === 'LT' ? document.getElementById('inpLTPoleDT').value : undefined;
+        if (category === 'LT' && !no) { const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode)); no = `${dtCode}-${existingLTPoles.length + 1}`; }
+        if (!no) return alert(t("errReq"));
+        if (net.poles.some(p => String(p.poleNo) === no)) return alert(t("alertExists"));
+        const newId = 'P_'+Date.now();
+        net.poles.push({ id: newId, poleNo: no, lineType: category, structure, condition, photo, dtCode, lat, lng }); 
+        window.markDirty('POLE', newId);
+    }
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
+}
+
+window.saveLineData = function(editId) {
+    window.haptic(30); saveSnapshot(); const from = document.getElementById('inpFromNode').value, to = document.getElementById('inpToNode').value, type = document.getElementById('inpLineType').value, phaseType = document.getElementById('inpLinePhase').value, hasCrossing = document.getElementById('inpLineCrossing').checked, crossingRemark = document.getElementById('inpLineCrossRemark').value.trim();
+    if (from === to) return alert("Cannot connect node to itself!"); if (!to) return alert("Please select a target node!");
+    const net = getActiveNetwork(), spec = getLineSpec(type);
+    
+    if (phaseType === 'Three Phase' && !String(from).startsWith('GSS')) {
+        const connectedLines = net.lines.filter(l => (l.fromNode === from || l.toNode === from) && l.id !== editId);
+        if (connectedLines.length > 0) {
+            const hasThreePhase = connectedLines.some(l => l.phaseType === 'Three Phase');
+            if (!hasThreePhase) { return alert("Error: Is Pole par peeche se aane wali koi Three Phase line nahi hai. Aap yahan se aage Three Phase line nahi jod sakte!"); }
+        }
+    }
+
+    if(net.lines.find(l => l.id !== editId && ((l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from)))) return alert("A line already exists between these two nodes!");
+    
+    if(editId) {
+        let l = net.lines.find(x => x.id === editId); if(!l) return;
+        l.type = spec.name; l.phaseType = phaseType; l.hasCrossing = hasCrossing; l.crossingRemark = crossingRemark;
+        window.markDirty('LINE', editId);
+    } else {
+        const c1 = getNodeCoords(from), c2 = getNodeCoords(to); if(!c1 || !c2) return alert("Invalid node coordinates!"); const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); 
+        const newId = 'LN_'+Date.now();
+        net.lines.push({ id: newId, type: spec.name, phaseType, hasCrossing, crossingRemark, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]] }); 
+        window.markDirty('LINE', newId);
+    }
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
+}
+
+window.saveDTData = function(editId) {
+    window.haptic(30); saveSnapshot(); 
+    const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value, name = document.getElementById('inpDTName').value.trim();
+    const location = name, srNo = document.getElementById('inpDTSrNo').value.trim(), tn = document.getElementById('inpDTTN').value.trim(), mountedOn = document.getElementById('inpDTMount').value, photo = document.getElementById('inpDTPhoto').value;
+    
+    if (!code) return alert(t("errReq")); const net = getActiveNetwork();
+
+    const poleNodeId = 'POLE_' + parentRef;
+    const htLinesOnPole = net.lines.filter(l => (l.fromNode === poleNodeId || l.toNode === poleNodeId) && l.type.includes('11 KV'));
+    if (htLinesOnPole.length > 0) {
+        const hasThreePhaseLine = htLinesOnPole.some(l => l.phaseType === 'Three Phase');
+        if (!hasThreePhaseLine && phase === 'Three Phase') { return alert("Error: Is Pole par sirf Single Phase 11kV line judi hai. Aap yahan par Three Phase DT install nahi kar sakte!"); }
+    }
+    
+    if(editId) {
+        if (net.dts.some(d => d.id !== editId && String(d.code) === code)) return alert(t("alertExists"));
+        let d = net.dts.find(x => x.id === editId); if(!d) return;
+        d.code = code; d.name = name; d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
+        window.markDirty('DT', editId);
+    } else {
+        if (net.dts.some(d => String(d.code) === code)) return alert(t("alertExists"));
+        const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); let lat = net.feeder.lat, lng = net.feeder.lng; if (p) { lat = p.lat; lng = p.lng; }
+        const newId = 'DT_'+Date.now();
+        net.dts.push({ id: newId, parentPole: parentRef, code, name, rating, phase, srNo, tn, mountedOn, location, photo, lat, lng });
+        window.markDirty('DT', newId);
+    }
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
+}
+
+window.saveConsumerData = function(editId) {
+    window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpConsParent').value, kno = document.getElementById('inpConsKno').value.trim(), acNo = document.getElementById('inpConsAcNo').value.trim(), name = document.getElementById('inpConsName').value.trim(), meterNo = document.getElementById('inpConsMeter').value.trim(), conType = document.getElementById('inpConsType').value, status = document.getElementById('inpConsStatus').value, load = document.getElementById('inpConsLoad').value.trim(), photo = document.getElementById('inpConsPhoto').value;
+    if (!name || !kno || !acNo) return alert(t("errReq")); 
+    if(kno.length !== 12) return alert("K-Number must be exactly 12 digits!"); if(acNo.length !== 8) return alert("A/C No. must be exactly 8 digits!");
+    const net = getActiveNetwork();
+
+    if(editId) {
+        if(net.consumers.some(c => c.id !== editId && String(c.kno) === String(kno))) return alert("K-Number already exists!");
+        let c = net.consumers.find(x => x.id === editId); if(!c) return;
+        c.kno = kno; c.acNo = acNo; c.name = name; c.meterNo = meterNo; c.conType = conType; c.status = status; c.load = load; c.photo = photo;
+        window.markDirty('CONSUMER', editId);
+    } else {
+        if(net.consumers.some(c => String(c.kno) === String(kno))) return alert("K-Number already exists in this feeder!");
+        let parentType = 'POLE'; const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); if (!p) parentType = 'DT';
+        const lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value);
+        const newId = 'CS_'+Date.now();
+        net.consumers.push({ id: newId, parentRef, parentType, kno, acNo, meterNo, conType, status, name, load, photo, lat, lng }); 
+        window.markDirty('CONSUMER', newId);
+    }
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
 
 let appInitialized = false;
