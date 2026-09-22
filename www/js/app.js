@@ -12,9 +12,8 @@ let appState = {
     user: { isLoggedIn: false, name: "", email: "", id: null },
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
-    gssNodes: { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } },
-    feeders: { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } },
-    deletedItems: { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] },
+    gssNodes: {}, feeders: {},
+    deletedItems: [], 
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
 };
 
@@ -70,11 +69,10 @@ function setSyncStatus(status) {
     else ind.innerHTML = `<i class="fa-solid fa-cloud-xmark sync-error"></i><span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount>0?'block':'none'};">${appState.unsyncedCount}</span>`;
 }
 
-// ==== TRACK DELETED ITEMS SAFELY ====
-window.markDeleted = function(type, id) {
-    if (!appState.deletedItems) appState.deletedItems = { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] };
-    if (!appState.deletedItems[type]) appState.deletedItems[type] = [];
-    if (!appState.deletedItems[type].includes(id)) { appState.deletedItems[type].push(id); }
+// ==== UNIVERSAL DELETION TRACKER ====
+window.markDeleted = function(id) {
+    if (!appState.deletedItems) appState.deletedItems = [];
+    if (!appState.deletedItems.includes(id)) appState.deletedItems.push(id);
 };
 
 // ==== 🚀 SMART LIVE SYNC (BROADCAST API) ====
@@ -82,83 +80,57 @@ let realtimeChannel = null;
 window.setupRealtimeSync = function() {
     if (!supabaseClient || !appState.user.isLoggedIn) return;
     if (realtimeChannel) return;
-    
     realtimeChannel = supabaseClient.channel('discom-live-sync', { config: { broadcast: { ack: false } } });
     realtimeChannel.on('broadcast', { event: 'db-updated' }, (payload) => {
-        if(window.isSyncingLocal) return; // Ignore if this specific device sent the update
+        if(window.isSyncingLocal || appState.unsyncedCount > 0) return; 
         clearTimeout(window.rtDebounce);
-        window.rtDebounce = setTimeout(() => { 
-            showToast("Live Update Received! 🔄 Refreshing..."); 
-            pullFromSupabase(true); 
-        }, 1200);
+        window.rtDebounce = setTimeout(() => { showToast("Live Update Received! 🔄"); pullFromSupabase(true); }, 800);
     }).subscribe();
 };
 
-function cleanData(arr) {
-    return arr.map(obj => {
-        let cleaned = {};
-        for(let key in obj) { if(obj[key] !== undefined) cleaned[key] = obj[key]; }
-        return cleaned;
-    });
-}
-
-// ==== TARGETED CLOUD SYNC (CONFLICT-FREE) ====
+// ==== UNIVERSAL CLOUD SYNC ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
-    
-    window.isSyncingLocal = true; 
-    setSyncStatus('syncing');
+    window.isSyncingLocal = true; setSyncStatus('syncing');
 
     try {
         const uid = appState.user.id;
-        const gssArr = Object.values(appState.gssNodes).map(g => ({ ...g, user_id: uid }));
-        const feedersArr = Object.keys(appState.feeders).map(k => ({ ...appState.feeders[k].feeder, user_id: uid }));
-        let polesArr = [], dtsArr = [], linesArr = [], consArr = [];
-        
-        Object.keys(appState.feeders).forEach(fCode => {
-            const net = appState.feeders[fCode];
-            net.poles.forEach(p => polesArr.push({ ...p, feeder_code: fCode, user_id: uid }));
-            net.dts.forEach(d => dtsArr.push({ ...d, feeder_code: fCode, user_id: uid }));
-            net.lines.forEach(l => linesArr.push({ ...l, feeder_code: fCode, user_id: uid }));
-            net.consumers.forEach(c => consArr.push({ ...c, feeder_code: fCode, user_id: uid }));
+        let payload = [];
+
+        Object.values(appState.gssNodes).forEach(g => {
+            if(g && g.code) payload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
         });
 
-        // 1. ADD / UPDATE DATA SAFELY
-        if(gssArr.length > 0) await supabaseClient.from('gss_nodes').upsert(cleanData(gssArr));
-        if(feedersArr.length > 0) await supabaseClient.from('feeders').upsert(cleanData(feedersArr));
-        if(polesArr.length > 0) await supabaseClient.from('poles').upsert(cleanData(polesArr));
-        if(dtsArr.length > 0) await supabaseClient.from('dts').upsert(cleanData(dtsArr));
-        if(linesArr.length > 0) await supabaseClient.from('lines').upsert(cleanData(linesArr));
-        if(consArr.length > 0) await supabaseClient.from('consumers').upsert(cleanData(consArr));
+        Object.keys(appState.feeders).forEach(fCode => {
+            const net = appState.feeders[fCode];
+            if(net && net.feeder && net.feeder.code) payload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
+            net.poles.forEach(p => payload.push({ id: p.id, type: 'POLE', data: { ...p, feederCode: fCode }, user_id: uid }));
+            net.dts.forEach(d => payload.push({ id: d.id, type: 'DT', data: { ...d, feederCode: fCode }, user_id: uid }));
+            net.lines.forEach(l => payload.push({ id: l.id, type: 'LINE', data: { ...l, feederCode: fCode }, user_id: uid }));
+            net.consumers.forEach(c => payload.push({ id: c.id, type: 'CONSUMER', data: { ...c, feederCode: fCode }, user_id: uid }));
+        });
 
-        // 2. DELETE ONLY WHAT WAS INTENTIONALLY REMOVED
-        if (!appState.deletedItems) appState.deletedItems = { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] };
-        
-        const processDeletes = async (table, ids, idCol = 'id') => {
-            if(ids && ids.length > 0) {
-                const { error } = await supabaseClient.from(table).delete().eq('user_id', uid).in(idCol, ids);
-                if (!error) appState.deletedItems[table] = []; // Reset locally if successful
+        // Safe JSON parsing ensures Postgres doesn't crash on undefined values
+        let safePayload = JSON.parse(JSON.stringify(payload));
+
+        if (safePayload.length > 0) {
+            const { error } = await supabaseClient.from('network_elements').upsert(safePayload);
+            if (error) {
+                console.error("Upsert Error:", error);
+                alert("Cloud Save Error: " + error.message); // Visual error for the user
             }
-        };
+        }
 
-        await processDeletes('gss_nodes', appState.deletedItems.gss_nodes, 'code');
-        await processDeletes('feeders', appState.deletedItems.feeders, 'code');
-        await processDeletes('poles', appState.deletedItems.poles);
-        await processDeletes('dts', appState.deletedItems.dts);
-        await processDeletes('lines', appState.deletedItems.lines);
-        await processDeletes('consumers', appState.deletedItems.consumers);
+        if (appState.deletedItems && appState.deletedItems.length > 0) {
+            const { error } = await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
+            if (!error) appState.deletedItems = []; 
+        }
 
-        // 3. BROADCAST PING TO OTHER DEVICES
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
-        
         setSyncStatus('synced');
-    } catch (err) { 
-        console.error("Sync Error:", err); 
-        setSyncStatus('offline'); 
-    } finally { 
-        setTimeout(() => { window.isSyncingLocal = false; }, 1500); 
-    }
+    } catch (err) { console.error("Sync Error:", err); setSyncStatus('offline'); } 
+    finally { setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
 }
 
 async function pullFromSupabase(isBackground = false) {
@@ -167,30 +139,36 @@ async function pullFromSupabase(isBackground = false) {
     
     try {
         const uid = appState.user.id;
-        const [gssRes, fdrRes, poleRes, dtRes, lineRes, consRes] = await Promise.all([
-            supabaseClient.from('gss_nodes').select('*').eq('user_id', uid),
-            supabaseClient.from('feeders').select('*').eq('user_id', uid),
-            supabaseClient.from('poles').select('*').eq('user_id', uid),
-            supabaseClient.from('dts').select('*').eq('user_id', uid),
-            supabaseClient.from('lines').select('*').eq('user_id', uid),
-            supabaseClient.from('consumers').select('*').eq('user_id', uid)
-        ]);
+        const { data, error } = await supabaseClient.from('network_elements').select('*').eq('user_id', uid);
+        
+        if (error) {
+            alert("Fetch Error: " + error.message);
+            throw error;
+        }
 
         let newGss = {}, newFeeders = {};
-        
-        if (gssRes.data && gssRes.data.length > 0) {
-            gssRes.data.forEach(g => { delete g.user_id; newGss[g.code] = g; });
-        }
-        
-        if (fdrRes.data && fdrRes.data.length > 0) {
-            fdrRes.data.forEach(f => { delete f.user_id; newFeeders[f.code] = { feeder: f, poles: [], dts: [], lines: [], consumers: [] }; });
-            if (poleRes.data) poleRes.data.forEach(p => { const fc = p.feeder_code; delete p.user_id; delete p.feeder_code; if(newFeeders[fc]) newFeeders[fc].poles.push(p); });
-            if (dtRes.data) dtRes.data.forEach(d => { const fc = d.feeder_code; delete d.user_id; delete d.feeder_code; if(newFeeders[fc]) newFeeders[fc].dts.push(d); });
-            if (lineRes.data) lineRes.data.forEach(l => { const fc = l.feeder_code; delete l.user_id; delete l.feeder_code; if(newFeeders[fc]) newFeeders[fc].lines.push(l); });
-            if (consRes.data) consRes.data.forEach(c => { const fc = c.feeder_code; delete c.user_id; delete c.feeder_code; if(newFeeders[fc]) newFeeders[fc].consumers.push(c); });
+
+        if (data && data.length > 0) {
+            data.forEach(item => {
+                if (item.type === 'GSS' && item.data && item.data.code) newGss[item.data.code] = item.data;
+                if (item.type === 'FEEDER' && item.data && item.data.code) newFeeders[item.data.code] = { feeder: item.data, poles: [], dts: [], lines: [], consumers: [] };
+            });
+
+            // Ensure feeders exist before attaching objects to them to avoid dropped data
+            data.forEach(item => {
+                const d = item.data;
+                if(!d) return;
+                const fc = d.feederCode || "1"; 
+                if(!newFeeders[fc]) newFeeders[fc] = { feeder: { name: "Feeder "+fc, code: fc, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+                
+                if (item.type === 'POLE') newFeeders[fc].poles.push(d);
+                if (item.type === 'DT') newFeeders[fc].dts.push(d);
+                if (item.type === 'LINE') newFeeders[fc].lines.push(d);
+                if (item.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
+            });
         }
 
-        // Failsafe Backup if Database is empty
+        // Fresh Start Fallback
         if(Object.keys(newFeeders).length === 0) {
             newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
         }
@@ -198,16 +176,16 @@ async function pullFromSupabase(isBackground = false) {
             newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
         }
 
-        appState.gssNodes = newGss; 
-        appState.feeders = newFeeders;
+        appState.gssNodes = newGss; appState.feeders = newFeeders;
         if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
         appState.unsyncedCount = 0;
+        
+        getActiveNetwork(); // Self Heal structure
         
         if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
         renderEntireNetwork(); 
         if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
         if(!isBackground) centerMapOnGSS(); 
-        
         setSyncStatus('synced'); 
     } catch (err) { console.error("Pull error:", err); setSyncStatus('offline'); }
 }
@@ -636,9 +614,9 @@ window.deleteGssAndFeederStrict = function(code) {
     if (!conf1) return; const conf2 = prompt(`To strictly confirm deletion, please type the GSS code "${code}" below:`);
     if (conf2 !== code) return alert("Deletion cancelled: GSS code did not match.");
 
-    if (appState.gssNodes[code]) { window.markDeleted('gss_nodes', code); delete appState.gssNodes[code]; }
+    if (appState.gssNodes[code]) { window.markDeleted('GSS_' + code); delete appState.gssNodes[code]; }
     const feedersToDelete = []; Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].feeder.parentGss === code) feedersToDelete.push(fCode); });
-    feedersToDelete.forEach(fCode => { window.markDeleted('feeders', fCode); delete appState.feeders[fCode]; });
+    feedersToDelete.forEach(fCode => { window.markDeleted('FDR_' + fCode); delete appState.feeders[fCode]; });
     
     if (!appState.feeders[appState.currentFeederCode] || feedersToDelete.includes(appState.currentFeederCode)) {
         const remainingFeeders = Object.keys(appState.feeders);
@@ -693,27 +671,27 @@ window.executeSecureAppReset = function() {
 function deleteDTLogic(dtId, net) {
     const d = net.dts.find(x => x.id === dtId); if(!d) return;
     const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn);
-    net.lines.forEach(l => { if (l.fromNode === ('DT_' + d.code) || l.toNode === ('DT_' + d.code) || ltPoleNodeIds.includes(String(l.fromNode)) || ltPoleNodeIds.includes(String(l.toNode))) window.markDeleted('lines', l.id); });
+    net.lines.forEach(l => { if (l.fromNode === ('DT_' + d.code) || l.toNode === ('DT_' + d.code) || ltPoleNodeIds.includes(String(l.fromNode)) || ltPoleNodeIds.includes(String(l.toNode))) window.markDeleted(l.id); });
     net.lines = net.lines.filter(l => l.fromNode !== ('DT_' + d.code) && l.toNode !== ('DT_' + d.code) && !ltPoleNodeIds.includes(String(l.fromNode)) && !ltPoleNodeIds.includes(String(l.toNode)));
-    net.consumers.forEach(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); if(isDirectToDT || isOnRemovedLTPole) window.markDeleted('consumers', c.id); });
+    net.consumers.forEach(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); if(isDirectToDT || isOnRemovedLTPole) window.markDeleted(c.id); });
     net.consumers = net.consumers.filter(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); return !(isDirectToDT || isOnRemovedLTPole); });
-    ltPolesToRemove.forEach(p => window.markDeleted('poles', p.id));
+    ltPolesToRemove.forEach(p => window.markDeleted(p.id));
     net.poles = net.poles.filter(p => !ltPoleIds.includes(String(p.poleNo)));
-    window.markDeleted('dts', dtId); net.dts = net.dts.filter(x => x.id !== dtId);
+    window.markDeleted(dtId); net.dts = net.dts.filter(x => x.id !== dtId);
 }
 
 function deleteLTPoleLogic(p, net) {
-    net.consumers.forEach(c => { if(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo)) window.markDeleted('consumers', c.id); });
+    net.consumers.forEach(c => { if(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo)) window.markDeleted(c.id); });
     net.consumers = net.consumers.filter(c => !(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo)));
-    net.lines.forEach(l => { if(String(l.fromNode) === ('POLE_'+p.poleNo) || String(l.toNode) === ('POLE_'+p.poleNo)) window.markDeleted('lines', l.id); });
+    net.lines.forEach(l => { if(String(l.fromNode) === ('POLE_'+p.poleNo) || String(l.toNode) === ('POLE_'+p.poleNo)) window.markDeleted(l.id); });
     net.lines = net.lines.filter(l => String(l.fromNode) !== ('POLE_'+p.poleNo) && String(l.toNode) !== ('POLE_'+p.poleNo));
-    window.markDeleted('poles', p.id); net.poles = net.poles.filter(x => x.id !== p.id);
+    window.markDeleted(p.id); net.poles = net.poles.filter(x => x.id !== p.id);
 }
 
 window.deleteEntity = function(type, id) {
     window.haptic([50,50,50]); const net = getActiveNetwork(); if(!confirm(t("confDel"))) return; saveSnapshot();
-    if (type === 'line') { window.markDeleted('lines', id); net.lines = net.lines.filter(x => x.id !== id); } 
-    else if (type === 'consumer') { window.markDeleted('consumers', id); net.consumers = net.consumers.filter(x => x.id !== id); } 
+    if (type === 'line') { window.markDeleted(id); net.lines = net.lines.filter(x => x.id !== id); } 
+    else if (type === 'consumer') { window.markDeleted(id); net.consumers = net.consumers.filter(x => x.id !== id); } 
     else if (type === 'dt') deleteDTLogic(id, net);
     else if (type === 'pole') {
         const p = net.poles.find(x => x.id === id);
@@ -722,12 +700,12 @@ window.deleteEntity = function(type, id) {
             else { 
                 const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); 
                 dtsOnPole.forEach(dt => deleteDTLogic(dt.id, net)); 
-                net.lines.forEach(l => { if(l.fromNode === ('POLE_'+p.poleNo) || l.toNode === ('POLE_'+p.poleNo)) window.markDeleted('lines', l.id); });
+                net.lines.forEach(l => { if(l.fromNode === ('POLE_'+p.poleNo) || l.toNode === ('POLE_'+p.poleNo)) window.markDeleted(l.id); });
                 net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); 
-                window.markDeleted('poles', id); net.poles = net.poles.filter(x => x.id !== id); 
+                window.markDeleted(id); net.poles = net.poles.filter(x => x.id !== id); 
             } 
         }
-    } else if (type === 'gss') { if (appState.gssNodes[id]) { window.markDeleted('gss_nodes', id); delete appState.gssNodes[id]; } }
+    } else if (type === 'gss') { if (appState.gssNodes[id]) { window.markDeleted('GSS_' + id); delete appState.gssNodes[id]; } }
     window.closeObjectSheet(); renderEntireNetwork(); triggerPersistence(); showToast(t("toastDel"));
 }
 
@@ -874,7 +852,7 @@ async function initializeApplication() {
         let data = null;
         if (typeof localforage !== 'undefined') { data = await localforage.getItem(DB_KEY); } else { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
         if (data && data.feeders) { appState = data; if (!appState.unsyncedCount) appState.unsyncedCount = 0; }
-        if (!appState.deletedItems) appState.deletedItems = { gss_nodes: [], feeders: [], poles: [], dts: [], lines: [], consumers: [] };
+        if (!appState.deletedItems) appState.deletedItems = [];
         if(appState.settings.darkMode) document.documentElement.setAttribute('data-theme', 'dark');
 
         translateApp(); updateSyncUI();
