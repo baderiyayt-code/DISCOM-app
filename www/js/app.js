@@ -12,8 +12,7 @@ let appState = {
     user: { isLoggedIn: false, name: "", email: "", id: null },
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
-    gssNodes: { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } },
-    feeders: { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } },
+    gssNodes: {}, feeders: {},
     dirtyItems: { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }, 
     deletedItems: [], 
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
@@ -22,10 +21,16 @@ let appState = {
 let historyStack = []; let map = null;
 window.haptic = function(pattern) { if (window.cordova && navigator.vibrate) navigator.vibrate(pattern); };
 
+// FIX: Safe check added to prevent "Cannot read properties of null" error
 function updateSyncUI() {
     const badge = document.getElementById('sync-badge');
-    if(appState.unsyncedCount > 0) { badge.innerText = appState.unsyncedCount; badge.style.display = 'block'; } 
-    else { badge.style.display = 'none'; }
+    if (!badge) return; // Fail-safe
+    if(appState.unsyncedCount > 0) { 
+        badge.innerText = appState.unsyncedCount; 
+        badge.style.display = 'block'; 
+    } else { 
+        badge.style.display = 'none'; 
+    }
 }
 
 const i18n = {
@@ -46,14 +51,14 @@ function t(key) { return (i18n['en'][key] || key); }
 function translateApp() { document.querySelectorAll('[data-i18n]').forEach(el => { const key = el.getAttribute('data-i18n'); if (el.tagName.toLowerCase() === 'input' && el.type === 'text') el.placeholder = t(key); else el.innerHTML = t(key); }); }
 
 function getActiveNetwork() {
-    if (!appState.feeders || Object.keys(appState.feeders).length === 0) {
-        appState.feeders = { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } };
-        appState.gssNodes = { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } };
+    if (!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
+    let net = appState.feeders[appState.currentFeederCode];
+    if (!net) { 
+        net = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] }; 
+        appState.feeders["1"] = net; 
+        appState.gssNodes["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
         appState.currentFeederCode = "1";
     }
-    if (!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0];
-    
-    let net = appState.feeders[appState.currentFeederCode];
     if (!Array.isArray(net.poles)) net.poles = []; if (!Array.isArray(net.lines)) net.lines = []; if (!Array.isArray(net.dts)) net.dts = []; if (!Array.isArray(net.consumers)) net.consumers = [];
     return net;
 }
@@ -63,6 +68,7 @@ function showToast(msg) {
     if (!toast || !msgElem) return; msgElem.innerText = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
 }
 
+// FIX: Safely update sync status icon
 function setSyncStatus(status) {
     const ind = document.getElementById('sync-indicator');
     if (!ind) return;
@@ -110,17 +116,26 @@ function cleanData(arr) {
     });
 }
 
-// ==== 🚀 CLOUD SYNC (Delta Push) ====
+// ==== CLOUD SYNC (Delta Push) ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
+    
+    if(!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
+    if(!appState.deletedItems) appState.deletedItems = [];
+    
+    const isDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
+    const isDeleted = appState.deletedItems.length > 0;
+    
+    if(!isDirty && !isDeleted) { setSyncStatus('synced'); return; }
+
     window.isSyncingLocal = true; setSyncStatus('syncing');
 
     try {
         const uid = appState.user.id;
         let corePayload = [];
         let photoPayload = [];
-        let dirty = appState.dirtyItems || { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
+        let dirty = appState.dirtyItems;
 
         Object.values(appState.gssNodes).forEach(g => {
             if(g && g.code && dirty['GSS'].includes(g.code)) corePayload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
@@ -224,7 +239,6 @@ async function pullFromSupabase(isBackground = false) {
                 });
             }
             if(hasLocalData) {
-                // If cloud is empty but mobile has data, auto-heal and push up.
                 window.syncToSupabase();
             } else {
                 appState.feeders = { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } };
@@ -319,6 +333,7 @@ function initMapSystem() {
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
     map.on('click', () => window.closeObjectSheet()); map.on('dragstart', () => { window.followLiveLocation = false; });
 
+    // FIX: Map zoom layer logic to make GSS visible at almost all levels
     function updateMapZoomClasses() {
         if(!map) return; const z = map.getZoom(); const mapEl = document.getElementById('map');
         mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss-square');
@@ -326,7 +341,8 @@ function initMapSystem() {
         
         if (z > 18) { map.addLayer(featureGroups.consumerLines); map.addLayer(featureGroups.consumers); }
         if (z > 17) { map.addLayer(featureGroups.ltPoles); } if (z > 16) { map.addLayer(featureGroups.ltLines); }
-        if (z > 15) { map.addLayer(featureGroups.htPoles); } if (z > 14) { map.addLayer(featureGroups.dts); map.addLayer(featureGroups.gss); }
+        if (z > 15) { map.addLayer(featureGroups.htPoles); } if (z > 14) { map.addLayer(featureGroups.dts); }
+        if (z > 11) { map.addLayer(featureGroups.gss); } // Ensure GSS is always visible when zooming out
         if (z <= 13) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
     }
     map.on('zoomend', updateMapZoomClasses); 
@@ -416,7 +432,6 @@ window.openObjectSheet = function(type, id) {
         actions = `<button class="sheet-btn edit" onclick="window.closeObjectSheet(); window.openEditModal('gss','${obj.code}')"><i class="fa-solid fa-pen"></i> Edit</button><button class="sheet-btn move" onclick="window.closeObjectSheet(); window.startObjectMove('GSS','${obj.code}','${obj.code}')"><i class="fa-solid fa-up-down-left-right"></i> Relocate</button>`;
     }
     
-    // Asynchronous Photo Loader
     let idStr = obj ? (obj.id || obj.code) : 'unknown';
     let photoHtml = '';
     
@@ -459,6 +474,7 @@ function calculateParallelCoords(p1, p2, offsetMeters) {
     return [ [p1.lat + dLat, p1.lng + dLng], [p2.lat + dLat, p2.lng + dLng] ];
 }
 
+// FIX: GSS Marker Safe Parsing (Har condition me draw hoga)
 function renderEntireNetwork() {
     if(!map) return;
     try {
@@ -466,12 +482,14 @@ function renderEntireNetwork() {
 
         // Render ALL GSS Nodes
         Object.values(appState.gssNodes).forEach(gss => {
-            if (gss && typeof gss.lat === 'number') {
+            if (gss && gss.lat != null && gss.lng != null) {
                 if (!(appState.activeMove && appState.activeMove.id === gss.code)) {
-                    const dynZGss = Math.floor(-gss.lat * 10000);
+                    const lat = parseFloat(gss.lat);
+                    const lng = parseFloat(gss.lng);
+                    const dynZGss = Math.floor(-lat * 10000);
                     const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="22" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/><text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text></svg>`;
                     const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); 
-                    const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 950000 + dynZGss }).addTo(featureGroups.gss);
+                    const m = L.marker([lat, lng], { icon: gssIcon, zIndexOffset: 950000 + dynZGss }).addTo(featureGroups.gss);
                     m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', gss.code); });
                 }
             }
