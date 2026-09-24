@@ -12,7 +12,8 @@ let appState = {
     user: { isLoggedIn: false, name: "", email: "", id: null },
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
-    gssNodes: {}, feeders: {},
+    gssNodes: { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } },
+    feeders: { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } },
     dirtyItems: { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }, 
     deletedItems: [], 
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
@@ -21,8 +22,10 @@ let appState = {
 let historyStack = []; let map = null;
 window.haptic = function(pattern) { if (window.cordova && navigator.vibrate) navigator.vibrate(pattern); };
 
+// UI Sync Badge Fail-Safe
 function updateSyncUI() {
     const badge = document.getElementById('sync-badge');
+    if(!badge) return;
     if(appState.unsyncedCount > 0) { badge.innerText = appState.unsyncedCount; badge.style.display = 'block'; } 
     else { badge.style.display = 'none'; }
 }
@@ -44,16 +47,25 @@ const i18n = {
 function t(key) { return (i18n['en'][key] || key); }
 function translateApp() { document.querySelectorAll('[data-i18n]').forEach(el => { const key = el.getAttribute('data-i18n'); if (el.tagName.toLowerCase() === 'input' && el.type === 'text') el.placeholder = t(key); else el.innerHTML = t(key); }); }
 
+// FIX: Auto-Healing Active Network Fetcher
 function getActiveNetwork() {
-    if (!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
-    let net = appState.feeders[appState.currentFeederCode];
-    if (!net) { 
-        net = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] }; 
-        appState.feeders["1"] = net; 
-        appState.gssNodes["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
+    if (!appState.feeders || Object.keys(appState.feeders).length === 0) {
+        appState.feeders = { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } };
+        appState.gssNodes = { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } };
         appState.currentFeederCode = "1";
     }
-    if (!Array.isArray(net.poles)) net.poles = []; if (!Array.isArray(net.lines)) net.lines = []; if (!Array.isArray(net.dts)) net.dts = []; if (!Array.isArray(net.consumers)) net.consumers = [];
+    
+    if (!appState.feeders[appState.currentFeederCode]) {
+        appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
+    }
+    
+    let net = appState.feeders[appState.currentFeederCode];
+    if (!net.feeder) net.feeder = { name: "Feeder "+appState.currentFeederCode, code: appState.currentFeederCode, parentGss: "1" };
+    
+    if (!Array.isArray(net.poles)) net.poles = []; 
+    if (!Array.isArray(net.lines)) net.lines = []; 
+    if (!Array.isArray(net.dts)) net.dts = []; 
+    if (!Array.isArray(net.consumers)) net.consumers = [];
     return net;
 }
 
@@ -66,7 +78,6 @@ function setSyncStatus(status) {
     const ind = document.getElementById('sync-indicator');
     if (!ind) return;
     if(!navigator.onLine) status = 'offline';
-    
     let iconHtml = '';
     if(status === 'syncing') iconHtml = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
     else if(status === 'synced') iconHtml = '<i class="fa-solid fa-cloud-check sync-success"></i>';
@@ -108,7 +119,7 @@ function cleanData(arr) {
     });
 }
 
-// ==== 🚀 HIERARCHICAL CLOUD SYNC (Delta Push) ====
+// ==== 🚀 SAFE CLOUD SYNC ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -125,32 +136,29 @@ window.syncToSupabase = async function(manual = false) {
 
     try {
         const uid = appState.user.id;
-        let gssPayload = [], fdrPayload = [], objPayload = [], photoPayload = [];
+        let corePayload = [];
+        let photoPayload = [];
         let dirty = appState.dirtyItems;
 
-        // Level 1: Extract GSS
         Object.values(appState.gssNodes).forEach(g => {
-            if(g && g.code && dirty['GSS'].includes(g.code)) {
-                gssPayload.push({ gss_code: g.code, gss_name: g.name, lat: g.lat, lng: g.lng, user_id: uid });
-            }
+            if(g && g.code && dirty['GSS'].includes(g.code)) corePayload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
         });
 
-        // Level 2 & 3: Extract Feeders and Objects
         Object.keys(appState.feeders).forEach(fCode => {
             const net = appState.feeders[fCode];
             if(net && net.feeder && net.feeder.code && dirty['FEEDER'].includes(fCode)) {
-                fdrPayload.push({ feeder_code: fCode, gss_code: net.feeder.parentGss, feeder_name: net.feeder.name, user_id: uid });
+                corePayload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
             }
             
             const processNode = (p, type) => {
                 if(dirty[type].includes(p.id)) {
-                    let copy = { ...p };
-                    if(copy.photo && copy.photo.startsWith('data:image')) { 
-                        photoPayload.push({ parent_id: p.id, image_data: copy.photo, user_id: uid }); 
-                        copy.hasPhoto = true; 
-                    } else { copy.hasPhoto = !!copy.hasPhoto; }
-                    delete copy.photo; 
-                    objPayload.push({ id: p.id, feeder_code: fCode, type: type, data: copy, user_id: uid }); 
+                    let pCopy = { ...p, feederCode: fCode };
+                    if(pCopy.photo && pCopy.photo.startsWith('data:image')) { 
+                        photoPayload.push({ parent_id: p.id, image_data: pCopy.photo, user_id: uid }); 
+                        pCopy.hasPhoto = true; 
+                    } else { pCopy.hasPhoto = !!pCopy.hasPhoto; }
+                    delete pCopy.photo; 
+                    corePayload.push({ id: p.id, type: type, data: pCopy, user_id: uid }); 
                 }
             };
 
@@ -160,18 +168,19 @@ window.syncToSupabase = async function(manual = false) {
             net.consumers.forEach(c => processNode(c, 'CONSUMER'));
         });
 
-        // HIERARCHICAL UPSERTS
-        if (gssPayload.length > 0) await supabaseClient.from('gss_records').upsert(cleanData(gssPayload));
-        if (fdrPayload.length > 0) await supabaseClient.from('feeder_records').upsert(cleanData(fdrPayload));
-        if (objPayload.length > 0) await supabaseClient.from('network_objects').upsert(JSON.parse(JSON.stringify(cleanData(objPayload))));
-        if (photoPayload.length > 0) await supabaseClient.from('object_photos').upsert(photoPayload);
+        let safeCorePayload = JSON.parse(JSON.stringify(cleanData(corePayload)));
+        if (safeCorePayload.length > 0) {
+            const { error: coreErr } = await supabaseClient.from('network_elements').upsert(safeCorePayload);
+            if (coreErr) throw coreErr;
+        }
 
-        // Targeted Deletions Across Hierarchy
-        if (appState.deletedItems.length > 0) {
-            await supabaseClient.from('gss_records').delete().eq('user_id', uid).in('gss_code', appState.deletedItems);
-            await supabaseClient.from('feeder_records').delete().eq('user_id', uid).in('feeder_code', appState.deletedItems);
-            await supabaseClient.from('network_objects').delete().eq('user_id', uid).in('id', appState.deletedItems);
-            await supabaseClient.from('object_photos').delete().eq('user_id', uid).in('parent_id', appState.deletedItems);
+        if (photoPayload.length > 0) {
+            await supabaseClient.from('entity_photos').upsert(photoPayload);
+        }
+
+        if (appState.deletedItems && appState.deletedItems.length > 0) {
+            await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
+            await supabaseClient.from('entity_photos').delete().eq('user_id', uid).in('parent_id', appState.deletedItems);
             appState.deletedItems = []; 
         }
 
@@ -182,7 +191,6 @@ window.syncToSupabase = async function(manual = false) {
     finally { setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
 }
 
-// ==== 🚀 HIERARCHICAL CLOUD PULL ====
 async function pullFromSupabase(isBackground = false) {
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
     if(!isBackground) setSyncStatus('syncing');
@@ -190,63 +198,50 @@ async function pullFromSupabase(isBackground = false) {
     try {
         const uid = appState.user.id;
         
-        // Fetch Level 1, 2, and 3 in parallel
-        const [gssRes, fdrRes, objRes] = await Promise.all([
-            supabaseClient.from('gss_records').select('*').eq('user_id', uid),
-            supabaseClient.from('feeder_records').select('*').eq('user_id', uid),
-            supabaseClient.from('network_objects').select('*').eq('user_id', uid)
+        const [coreRes, photoRes] = await Promise.all([
+            supabaseClient.from('network_elements').select('*').eq('user_id', uid),
+            supabaseClient.from('entity_photos').select('parent_id, image_data').eq('user_id', uid)
         ]);
+        if (coreRes.error) throw coreRes.error;
 
-        let newGss = {}, newFeeders = {};
-
-        // 1. Rebuild GSS Layer
-        if (gssRes.data && gssRes.data.length > 0) {
-            gssRes.data.forEach(g => {
-                newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng };
-            });
+        let photoDictionary = {};
+        if (photoRes.data) {
+            photoRes.data.forEach(imgRow => { photoDictionary[imgRow.parent_id] = imgRow.image_data; });
         }
 
-        // 2. Rebuild Feeder Layer
-        if (fdrRes.data && fdrRes.data.length > 0) {
-            fdrRes.data.forEach(f => {
-                newFeeders[f.feeder_code] = { feeder: { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
+        if (coreRes.data && coreRes.data.length > 0) {
+            let newGss = {}, newFeeders = {};
+            coreRes.data.forEach(item => {
+                if (item.type === 'GSS' && item.data && item.data.code) newGss[item.data.code] = item.data;
+                if (item.type === 'FEEDER' && item.data && item.data.code) newFeeders[item.data.code] = { feeder: item.data, poles: [], dts: [], lines: [], consumers: [] };
             });
-        }
 
-        // 3. Attach Network Objects to Feeders
-        if (objRes.data && objRes.data.length > 0) {
-            objRes.data.forEach(obj => {
-                const fc = obj.feeder_code;
-                if(!newFeeders[fc]) {
-                    newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1", subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
-                }
-                const d = obj.data;
+            coreRes.data.forEach(item => {
+                const d = item.data;
+                if(!d) return;
+                if (d.hasPhoto && photoDictionary[item.id]) { d.photo = photoDictionary[item.id]; }
+                const fc = d.feederCode || "1"; 
+                if(!newFeeders[fc]) newFeeders[fc] = { feeder: { name: "Feeder "+fc, code: fc, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
                 
-                // Retain local photos to save bandwidth
-                try {
-                    let oldNet = appState.feeders[fc];
-                    if(oldNet) {
-                        let oldArr = obj.type === 'POLE' ? oldNet.poles : obj.type === 'DT' ? oldNet.dts : obj.type === 'CONSUMER' ? oldNet.consumers : null;
-                        if(oldArr) { let localObj = oldArr.find(x => x.id === d.id); if(localObj && localObj.photo) d.photo = localObj.photo; }
-                    }
-                } catch(e){}
-
-                if (obj.type === 'POLE') newFeeders[fc].poles.push(d);
-                if (obj.type === 'DT') newFeeders[fc].dts.push(d);
-                if (obj.type === 'LINE') newFeeders[fc].lines.push(d);
-                if (obj.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
+                if (item.type === 'POLE') newFeeders[fc].poles.push(d);
+                if (item.type === 'DT') newFeeders[fc].dts.push(d);
+                if (item.type === 'LINE') newFeeders[fc].lines.push(d);
+                if (item.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
             });
+            
+            appState.gssNodes = newGss; 
+            appState.feeders = newFeeders;
+            
+        } else {
+            // FIX: Agar database khali hai toh empty structure build karein taaki crash na ho
+            appState.feeders = { "1": { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] } };
+            appState.gssNodes = { "1": { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 } };
         }
 
-        // Failsafe Fallbacks
-        if(Object.keys(newGss).length === 0) newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
-        if(Object.keys(newFeeders).length === 0) newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
-
-        appState.gssNodes = newGss; appState.feeders = newFeeders;
-        if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(newFeeders)[0] || "1";
+        if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = Object.keys(appState.feeders)[0] || "1";
         appState.unsyncedCount = 0;
         
-        getActiveNetwork(); 
+        getActiveNetwork(); // Self Heal structure
         if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
         renderEntireNetwork(); 
         if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
@@ -338,7 +333,8 @@ function initMapSystem() {
         if (z > 18) { map.addLayer(featureGroups.consumerLines); map.addLayer(featureGroups.consumers); }
         if (z > 17) { map.addLayer(featureGroups.ltPoles); } if (z > 16) { map.addLayer(featureGroups.ltLines); }
         if (z > 15) { map.addLayer(featureGroups.htPoles); } if (z > 14) { map.addLayer(featureGroups.dts); }
-        if (z > 11) { map.addLayer(featureGroups.gss); } 
+        // FIX: Ensure GSS layer is added at broader zoom levels
+        if (z > 10) { map.addLayer(featureGroups.gss); } 
         if (z <= 13) mapEl.classList.add('hide-gss-square'); else mapEl.classList.remove('hide-gss-square');
     }
     map.on('zoomend', updateMapZoomClasses); 
@@ -371,7 +367,7 @@ function initMapSystem() {
 
 function centerMapOnGSS() {
     if(!map) return; const net = getActiveNetwork(); const gss = appState.gssNodes[net.feeder.parentGss]; setTimeout(() => { map.invalidateSize(); }, 200);
-    if (gss && typeof gss.lat === 'number') map.setView([gss.lat, gss.lng], 16);
+    if (gss && typeof gss.lat !== 'undefined') map.setView([parseFloat(gss.lat), parseFloat(gss.lng)], 16);
 }
 
 window.liveTrackingId = null; window.liveUserMarker = null;
@@ -439,7 +435,7 @@ window.openObjectSheet = function(type, id) {
                             <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:var(--accent); margin-bottom:8px;"></i><br>Loading Photo...
                          </div>`;
                          
-            supabaseClient.from('object_photos').select('image_data').eq('parent_id', idStr).single().then(({data}) => {
+            supabaseClient.from('entity_photos').select('image_data').eq('parent_id', idStr).single().then(({data}) => {
                 if(data && data.image_data) {
                     obj.photo = data.image_data;
                     const imgEl = document.getElementById(`async-photo-${idStr}`);
@@ -462,15 +458,25 @@ window.openObjectSheet = function(type, id) {
 };
 window.closeObjectSheet = function() { window.haptic(15); document.getElementById('bottom-info-sheet').classList.remove('open'); };
 
+function calculateParallelCoords(p1, p2, offsetMeters) {
+    const R = 6378137, lat1 = p1.lat * Math.PI/180, lng1 = p1.lng * Math.PI/180, lat2 = p2.lat * Math.PI/180, lng2 = p2.lng * Math.PI/180;
+    const bearing = Math.atan2(Math.sin(lng2-lng1)*Math.cos(lat2), Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(lng2-lng1));
+    const angle = bearing + Math.PI/2, dLat = (offsetMeters / R) * Math.cos(angle) * (180/Math.PI), dLng = (offsetMeters / (R * Math.cos(lat1))) * Math.sin(angle) * (180/Math.PI);
+    return [ [p1.lat + dLat, p1.lng + dLng], [p2.lat + dLat, p2.lng + dLng] ];
+}
+
+// FIX: Bulletproof Object & GSS Renderer
 function renderEntireNetwork() {
     if(!map) return;
     try {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(), f = appState.filters;
 
+        // Force convert GSS coords to numbers and draw ALL GSS
         Object.values(appState.gssNodes).forEach(gss => {
-            if (gss && gss.lat != null && gss.lng != null) {
-                if (!(appState.activeMove && appState.activeMove.id === gss.code)) {
-                    const lat = parseFloat(gss.lat); const lng = parseFloat(gss.lng);
+            if (gss && gss.lat && gss.lng) {
+                const lat = parseFloat(gss.lat);
+                const lng = parseFloat(gss.lng);
+                if (!isNaN(lat) && !isNaN(lng) && !(appState.activeMove && appState.activeMove.id === gss.code)) {
                     const dynZGss = Math.floor(-lat * 10000);
                     const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="22" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/><text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text></svg>`;
                     const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); 
@@ -480,7 +486,7 @@ function renderEntireNetwork() {
             }
         });
 
-        if (f.poles) {
+        if (f.poles && Array.isArray(net.poles)) {
             net.poles.forEach(p => {
                 const isOrphan = appState.orphanPoleIds.has(p.id), isLT = p.lineType === 'LT';
                 if (appState.activeMove && appState.activeMove.id === p.id) return;
@@ -513,7 +519,7 @@ function renderEntireNetwork() {
             });
         }
 
-        if (f.dts) {
+        if (f.dts && Array.isArray(net.dts)) {
             let dtGroups = {};
             net.dts.forEach(d => {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => String(x.poleNo) === String(d.parentPole)); if (p) { d.lat = p.lat; d.lng = p.lng; } }
@@ -541,33 +547,35 @@ function renderEntireNetwork() {
             });
         }
 
-        net.lines.forEach(line => {
-            const c1 = getNodeCoords(line.fromNode), c2 = getNodeCoords(line.toNode); 
-            if (c1 && c2) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
-            const spec = getLineSpec(line.type); if (!f[spec.filterKey]) return;
-            const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
-            let linesToDraw = [];
-            
-            if(line.phaseType === 'Three Phase' && !line.type.includes('UG CABLE') && !line.type.includes('LT')) {
-                linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, -1.5), color: '#ef4444' }); 
-                linesToDraw.push({ coords: line.coords, color: '#eab308' }); 
-                linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, 1.5), color: '#3b82f6' }); 
-            } else { linesToDraw.push({ coords: line.coords, color: spec.color }); }
+        if (Array.isArray(net.lines)) {
+            net.lines.forEach(line => {
+                const c1 = getNodeCoords(line.fromNode), c2 = getNodeCoords(line.toNode); 
+                if (c1 && c2) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
+                const spec = getLineSpec(line.type); if (!f[spec.filterKey]) return;
+                const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
+                let linesToDraw = [];
+                
+                if(line.phaseType === 'Three Phase' && !line.type.includes('UG CABLE') && !line.type.includes('LT')) {
+                    linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, -1.5), color: '#ef4444' }); 
+                    linesToDraw.push({ coords: line.coords, color: '#eab308' }); 
+                    linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, 1.5), color: '#3b82f6' }); 
+                } else { linesToDraw.push({ coords: line.coords, color: spec.color }); }
 
-            linesToDraw.forEach(ld => {
-                const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
-                L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
-                hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
+                linesToDraw.forEach(ld => {
+                    const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
+                    L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
+                    hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
+                });
+
+                if(line.hasCrossing) {
+                    const midLat = (c1.lat + c2.lat) / 2, midLng = (c1.lng + c2.lng) / 2;
+                    const crossSvg = `<svg width="16" height="16" viewBox="0 0 16 16" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="2" x2="14" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/><line x1="14" y1="2" x2="2" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>`;
+                    L.marker([midLat, midLng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: crossSvg, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 2500 }).addTo(lineGrp);
+                }
             });
+        }
 
-            if(line.hasCrossing) {
-                const midLat = (c1.lat + c2.lat) / 2, midLng = (c1.lng + c2.lng) / 2;
-                const crossSvg = `<svg width="16" height="16" viewBox="0 0 16 16" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="2" x2="14" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/><line x1="14" y1="2" x2="2" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>`;
-                L.marker([midLat, midLng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: crossSvg, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 2500 }).addTo(lineGrp);
-            }
-        });
-
-        if (f.consumers) {
+        if (f.consumers && Array.isArray(net.consumers)) {
             net.consumers.forEach(c => {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
                 const dynZ = Math.floor(-c.lat * 10000); let bgColor = '#10b981'; 
@@ -584,19 +592,25 @@ function renderEntireNetwork() {
         }
 
         map.fire('zoomend');
+        
+        // Ensure UI elements like Select Dropdown are populated
+        const fSelect = document.getElementById('feederSelectHeader');
+        if (fSelect) {
+            fSelect.innerHTML = Object.keys(appState.feeders).map(code => 
+                `<option value="${code}" ${code === appState.currentFeederCode ? 'selected':''}>${appState.feeders[code].feeder.name}</option>`
+            ).join('');
+        }
+
         let t11 = 0, tLT = 0, dt3ph = 0, dt1ph = 0; 
-        net.lines.forEach(l => { if (getLineSpec(l.type).name.includes('LT')) tLT += (l.distanceMeters || 0); else t11 += (l.distanceMeters || 0); });
-        net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
+        if (Array.isArray(net.lines)) net.lines.forEach(l => { if (getLineSpec(l.type).name.includes('LT')) tLT += (l.distanceMeters || 0); else t11 += (l.distanceMeters || 0); });
+        if (Array.isArray(net.dts)) net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
         
         if(document.getElementById('kpi11')) document.getElementById('kpi11').innerText = window.formatDistance(t11);
         if(document.getElementById('kpiLT')) document.getElementById('kpiLT').innerText = window.formatDistance(tLT);
         if(document.getElementById('kpi3Ph')) document.getElementById('kpi3Ph').innerText = dt3ph; 
         if(document.getElementById('kpi1Ph')) document.getElementById('kpi1Ph').innerText = dt1ph;
-        if(document.getElementById('kpiCons')) document.getElementById('kpiCons').innerText = net.consumers.length;
+        if(document.getElementById('kpiCons')) document.getElementById('kpiCons').innerText = Array.isArray(net.consumers) ? net.consumers.length : 0;
         
-        const fSelect = document.getElementById('feederSelectHeader');
-        if (fSelect) fSelect.innerHTML = Object.keys(appState.feeders).map(code => `<option value="${code}" ${code === appState.currentFeederCode ? 'selected':''}>${appState.feeders[code].feeder.name}</option>`).join('');
-
     } catch(err) { console.error("Rendering error:", err); }
 }
 
