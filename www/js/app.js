@@ -88,12 +88,6 @@ window.markDeleted = function(id) {
     if (!appState.deletedItems.includes(id)) appState.deletedItems.push(id);
 };
 
-// FIX: Added missing function that was crashing renderEntireNetwork()
-window.updateOrphanStatus = function() {
-    if (!appState.orphanPoleIds) appState.orphanPoleIds = new Set();
-    appState.orphanPoleIds.clear();
-};
-
 let realtimeChannel = null;
 window.setupRealtimeSync = function() {
     if (!supabaseClient || !appState.user.isLoggedIn) return;
@@ -134,12 +128,14 @@ window.syncToSupabase = async function(manual = false) {
         let gssPayload = [], fdrPayload = [], objPayload = [], photoPayload = [];
         let dirty = appState.dirtyItems;
 
+        // Level 1: Extract GSS
         Object.values(appState.gssNodes).forEach(g => {
             if(g && g.code && dirty['GSS'].includes(g.code)) {
                 gssPayload.push({ gss_code: g.code, gss_name: g.name, lat: g.lat, lng: g.lng, user_id: uid });
             }
         });
 
+        // Level 2 & 3: Extract Feeders and Objects
         Object.keys(appState.feeders).forEach(fCode => {
             const net = appState.feeders[fCode];
             if(net && net.feeder && net.feeder.code && dirty['FEEDER'].includes(fCode)) {
@@ -164,27 +160,18 @@ window.syncToSupabase = async function(manual = false) {
             net.consumers.forEach(c => processNode(c, 'CONSUMER'));
         });
 
-        // FIX: Proper Error throwing to catch silent fails
-        if (gssPayload.length > 0) { const { error } = await supabaseClient.from('gss_records').upsert(cleanData(gssPayload)); if(error) throw error; }
-        if (fdrPayload.length > 0) { const { error } = await supabaseClient.from('feeder_records').upsert(cleanData(fdrPayload)); if(error) throw error; }
-        if (objPayload.length > 0) { const { error } = await supabaseClient.from('network_objects').upsert(JSON.parse(JSON.stringify(cleanData(objPayload)))); if(error) throw error; }
-        if (photoPayload.length > 0) { const { error } = await supabaseClient.from('object_photos').upsert(photoPayload); if(error) throw error; }
+        // HIERARCHICAL UPSERTS
+        if (gssPayload.length > 0) await supabaseClient.from('gss_records').upsert(cleanData(gssPayload));
+        if (fdrPayload.length > 0) await supabaseClient.from('feeder_records').upsert(cleanData(fdrPayload));
+        if (objPayload.length > 0) await supabaseClient.from('network_objects').upsert(JSON.parse(JSON.stringify(cleanData(objPayload))));
+        if (photoPayload.length > 0) await supabaseClient.from('object_photos').upsert(photoPayload);
 
-        // FIX: Handled prefixed ID deletion ('GSS_1', 'FDR_1') properly
+        // Targeted Deletions Across Hierarchy
         if (appState.deletedItems.length > 0) {
-            let delGss = [], delFdr = [], delObj = [];
-            appState.deletedItems.forEach(id => {
-                if(id.startsWith('GSS_')) delGss.push(id.replace('GSS_', ''));
-                else if(id.startsWith('FDR_')) delFdr.push(id.replace('FDR_', ''));
-                else delObj.push(id);
-            });
-
-            if (delGss.length > 0) { const { error } = await supabaseClient.from('gss_records').delete().eq('user_id', uid).in('gss_code', delGss); if(error) throw error; }
-            if (delFdr.length > 0) { const { error } = await supabaseClient.from('feeder_records').delete().eq('user_id', uid).in('feeder_code', delFdr); if(error) throw error; }
-            if (delObj.length > 0) {
-                const { error: e1 } = await supabaseClient.from('network_objects').delete().eq('user_id', uid).in('id', delObj); if(e1) throw e1;
-                const { error: e2 } = await supabaseClient.from('object_photos').delete().eq('user_id', uid).in('parent_id', delObj); if(e2) throw e2;
-            }
+            await supabaseClient.from('gss_records').delete().eq('user_id', uid).in('gss_code', appState.deletedItems);
+            await supabaseClient.from('feeder_records').delete().eq('user_id', uid).in('feeder_code', appState.deletedItems);
+            await supabaseClient.from('network_objects').delete().eq('user_id', uid).in('id', appState.deletedItems);
+            await supabaseClient.from('object_photos').delete().eq('user_id', uid).in('parent_id', appState.deletedItems);
             appState.deletedItems = []; 
         }
 
@@ -203,44 +190,39 @@ async function pullFromSupabase(isBackground = false) {
     try {
         const uid = appState.user.id;
         
+        // Fetch Level 1, 2, and 3 in parallel
         const [gssRes, fdrRes, objRes] = await Promise.all([
             supabaseClient.from('gss_records').select('*').eq('user_id', uid),
             supabaseClient.from('feeder_records').select('*').eq('user_id', uid),
             supabaseClient.from('network_objects').select('*').eq('user_id', uid)
         ]);
-        
-        // FIX: Proper error handling for pulls
-        if(gssRes.error) throw gssRes.error;
-        if(fdrRes.error) throw fdrRes.error;
-        if(objRes.error) throw objRes.error;
 
         let newGss = {}, newFeeders = {};
 
+        // 1. Rebuild GSS Layer
         if (gssRes.data && gssRes.data.length > 0) {
             gssRes.data.forEach(g => {
                 newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng };
             });
         }
 
+        // 2. Rebuild Feeder Layer
         if (fdrRes.data && fdrRes.data.length > 0) {
             fdrRes.data.forEach(f => {
                 newFeeders[f.feeder_code] = { feeder: { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
             });
         }
 
+        // 3. Attach Network Objects to Feeders
         if (objRes.data && objRes.data.length > 0) {
             objRes.data.forEach(obj => {
                 const fc = obj.feeder_code;
                 if(!newFeeders[fc]) {
                     newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1", subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
                 }
+                const d = obj.data;
                 
-                // FIX: Fallback parsing logic for strings inside JSONB to avoid rendering format breaks
-                let d = obj.data;
-                if (typeof d === 'string') {
-                    try { d = JSON.parse(d); } catch(e) { console.error("JSON parse failed for", d); }
-                }
-                
+                // Retain local photos to save bandwidth
                 try {
                     let oldNet = appState.feeders[fc];
                     if(oldNet) {
@@ -256,6 +238,7 @@ async function pullFromSupabase(isBackground = false) {
             });
         }
 
+        // Failsafe Fallbacks
         if(Object.keys(newGss).length === 0) newGss["1"] = { code: "1", name: "132/33 kV Substation", lat: 26.9150, lng: 75.7830 };
         if(Object.keys(newFeeders).length === 0) newFeeders["1"] = { feeder: { name: "11 kV Feeder-01", code: "1", subdivCode: "SD-01", parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
 
@@ -549,7 +532,7 @@ function renderEntireNetwork() {
                         svg = `<svg width="22" height="30" viewBox="0 0 22 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="8" width="14" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/><line x1="11" y1="8" x2="11" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="11" cy="3" r="2" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><text x="11" y="22" font-size="9" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text></svg>`;
                         iconAnc = [11 + dx, -6 + dy]; iconSz = [22, 30];
                     } else {
-                        svg = `<svg width="34" height="30" viewBox="0 0 34 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="8" width="30" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/><line x1="7" y1="8" x2="7" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="7" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1.5"/><line x1="17" y1="8" x2="17" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="17" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1.5"/><line x1="27" y1="8" x2="27" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="27" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1.5"/><text x="17" y="22" font-size="10" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text></svg>`;
+                        svg = `<svg width="34" height="30" viewBox="0 0 34 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="8" width="30" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/><line x1="7" y1="8" x2="7" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="7" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><line x1="17" y1="8" x2="17" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="17" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><line x1="27" y1="8" x2="27" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="27" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><text x="17" y="22" font-size="10" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text></svg>`;
                         iconAnc = [17 + dx, -6 + dy]; iconSz = [34, 30];
                     }
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: iconSz, iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ + (dtIndex * 10) }).addTo(featureGroups.dts);
