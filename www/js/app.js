@@ -124,7 +124,7 @@ function cleanData(arr) {
     });
 }
 
-// ==== CLOUD SYNC ====
+// ==== HIERARCHICAL CLOUD SYNC ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -141,31 +141,29 @@ window.syncToSupabase = async function(manual = false) {
 
     try {
         const uid = appState.user.id;
-        let corePayload = [];
-        let photoPayload = [];
-        let dirty = appState.dirtyItems;
+        let gssPayload = [], fdrPayload = [], objPayload = [], photoPayload = [];
 
         Object.values(appState.gssNodes).forEach(g => {
             if(g && g.code && checkDirty('GSS', g.code)) {
-                corePayload.push({ id: 'GSS_' + g.code, type: 'GSS', data: g, user_id: uid });
+                gssPayload.push({ gss_code: String(g.code), gss_name: g.name, lat: g.lat, lng: g.lng, user_id: uid });
             }
         });
 
         Object.keys(appState.feeders).forEach(fCode => {
             const net = appState.feeders[fCode];
             if(net && net.feeder && net.feeder.code && checkDirty('FEEDER', fCode)) {
-                corePayload.push({ id: 'FDR_' + fCode, type: 'FEEDER', data: net.feeder, user_id: uid });
+                fdrPayload.push({ feeder_code: String(fCode), gss_code: String(net.feeder.parentGss), feeder_name: net.feeder.name, user_id: uid });
             }
             
             const processNode = (p, type) => {
                 if(checkDirty(type, p.id)) {
                     let copy = { ...p };
                     if(copy.photo && copy.photo.startsWith('data:image')) { 
-                        photoPayload.push({ parent_id: p.id, image_data: copy.photo, user_id: uid }); 
+                        photoPayload.push({ parent_id: String(p.id), image_data: copy.photo, user_id: uid }); 
                         copy.hasPhoto = true; 
                     } else { copy.hasPhoto = !!copy.hasPhoto; }
                     delete copy.photo; 
-                    corePayload.push({ id: p.id, type: type, data: copy, user_id: uid }); 
+                    objPayload.push({ id: String(p.id), feeder_code: String(fCode), type: type, data: copy, user_id: uid }); 
                 }
             };
 
@@ -175,19 +173,17 @@ window.syncToSupabase = async function(manual = false) {
             if(Array.isArray(net.consumers)) net.consumers.forEach(c => processNode(c, 'CONSUMER'));
         });
 
-        let safeCorePayload = JSON.parse(JSON.stringify(cleanData(corePayload)));
-        if (safeCorePayload.length > 0) {
-            const { error: coreErr } = await supabaseClient.from('network_elements').upsert(safeCorePayload);
-            if (coreErr) throw coreErr;
-        }
-
-        if (photoPayload.length > 0) {
-            await supabaseClient.from('entity_photos').upsert(photoPayload);
-        }
+        if (gssPayload.length > 0) await supabaseClient.from('gss_records').upsert(cleanData(gssPayload));
+        if (fdrPayload.length > 0) await supabaseClient.from('feeder_records').upsert(cleanData(fdrPayload));
+        if (objPayload.length > 0) await supabaseClient.from('network_objects').upsert(JSON.parse(JSON.stringify(cleanData(objPayload))));
+        if (photoPayload.length > 0) await supabaseClient.from('object_photos').upsert(photoPayload);
 
         if (appState.deletedItems.length > 0) {
-            await supabaseClient.from('network_elements').delete().eq('user_id', uid).in('id', appState.deletedItems);
-            await supabaseClient.from('entity_photos').delete().eq('user_id', uid).in('parent_id', appState.deletedItems);
+            const stringifiedIds = appState.deletedItems.map(String);
+            await supabaseClient.from('gss_records').delete().eq('user_id', uid).in('gss_code', stringifiedIds);
+            await supabaseClient.from('feeder_records').delete().eq('user_id', uid).in('feeder_code', stringifiedIds);
+            await supabaseClient.from('network_objects').delete().eq('user_id', uid).in('id', stringifiedIds);
+            await supabaseClient.from('object_photos').delete().eq('user_id', uid).in('parent_id', stringifiedIds);
             appState.deletedItems = []; 
         }
 
@@ -208,47 +204,51 @@ async function pullFromSupabase(isBackground = false) {
     try {
         const uid = appState.user.id;
         
-        const [coreRes, photoRes] = await Promise.all([
-            supabaseClient.from('network_elements').select('*').eq('user_id', uid),
-            supabaseClient.from('entity_photos').select('parent_id, image_data').eq('user_id', uid)
+        const [gssRes, fdrRes, objRes] = await Promise.all([
+            supabaseClient.from('gss_records').select('*').eq('user_id', uid),
+            supabaseClient.from('feeder_records').select('*').eq('user_id', uid),
+            supabaseClient.from('network_objects').select('*').eq('user_id', uid)
         ]);
 
-        if (coreRes.error) throw coreRes.error;
+        let newGss = {}, newFeeders = {};
+        let needsPush = false;
 
-        let photoDictionary = {};
-        if (photoRes.data) {
-            photoRes.data.forEach(imgRow => { photoDictionary[imgRow.parent_id] = imgRow.image_data; });
+        if (gssRes.data && gssRes.data.length > 0) {
+            gssRes.data.forEach(g => { newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng }; });
         }
 
-        let newGss = {}, newFeeders = {};
-
-        if (coreRes.data && coreRes.data.length > 0) {
-            coreRes.data.forEach(item => {
-                if (item.type === 'GSS' && item.data && item.data.code) newGss[item.data.code] = item.data;
-                if (item.type === 'FEEDER' && item.data && item.data.code) newFeeders[item.data.code] = { feeder: item.data, poles: [], dts: [], lines: [], consumers: [] };
+        if (fdrRes.data && fdrRes.data.length > 0) {
+            fdrRes.data.forEach(f => {
+                newFeeders[f.feeder_code] = { feeder: { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
             });
+        }
 
-            coreRes.data.forEach(item => {
-                const d = item.data;
+        // HIERARCHY RECONSTRUCTION (Forces Object > Feeder mapping)
+        if (objRes.data && objRes.data.length > 0) {
+            objRes.data.forEach(obj => {
+                const fc = String(obj.feeder_code);
+                if(!newFeeders[fc]) {
+                    newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1", subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
+                }
+                
+                let d = obj.data;
                 if(!d) return;
                 
+                d.id = obj.id; // Force attach ID
+                d.feederCode = fc; // Force attach Hierarchy Tag
+
                 try {
-                    let oldNet = appState.feeders[d.feederCode];
+                    let oldNet = appState.feeders[fc];
                     if(oldNet) {
-                        let oldArr = item.type === 'POLE' ? oldNet.poles : item.type === 'DT' ? oldNet.dts : item.type === 'CONSUMER' ? oldNet.consumers : null;
+                        let oldArr = obj.type === 'POLE' ? oldNet.poles : obj.type === 'DT' ? oldNet.dts : obj.type === 'CONSUMER' ? oldNet.consumers : null;
                         if(oldArr) { let localObj = oldArr.find(x => x.id === d.id); if(localObj && localObj.photo) d.photo = localObj.photo; }
                     }
                 } catch(e){}
 
-                if (d.hasPhoto && photoDictionary[item.id]) { d.photo = photoDictionary[item.id]; }
-
-                const fc = d.feederCode || "1"; 
-                if(!newFeeders[fc]) newFeeders[fc] = { feeder: { name: "Feeder "+fc, code: fc, parentGss: "1", subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
-                
-                if (item.type === 'POLE') newFeeders[fc].poles.push(d);
-                if (item.type === 'DT') newFeeders[fc].dts.push(d);
-                if (item.type === 'LINE') newFeeders[fc].lines.push(d);
-                if (item.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
+                if (obj.type === 'POLE') newFeeders[fc].poles.push(d);
+                if (obj.type === 'DT') newFeeders[fc].dts.push(d);
+                if (obj.type === 'LINE') newFeeders[fc].lines.push(d);
+                if (obj.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
             });
         }
 
@@ -266,6 +266,17 @@ async function pullFromSupabase(isBackground = false) {
         if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
         if(!isBackground) centerMapOnGSS(); 
         setSyncStatus('synced'); 
+
+        // Upload unsynced local offline data on fresh login
+        let hasLocalData = false;
+        if(appState.feeders) {
+            Object.keys(appState.feeders).forEach(fCode => {
+                if (appState.feeders[fCode].poles.length > 0 || appState.feeders[fCode].dts.length > 0) hasLocalData = true;
+            });
+        }
+        if(hasLocalData && objRes.data && objRes.data.length === 0) {
+            setTimeout(() => { window.syncToSupabase(false); }, 2000);
+        }
 
     } catch (err) { console.error("Pull error:", err); setSyncStatus('offline'); }
 }
@@ -296,7 +307,6 @@ function applyAuthUIVisuals() {
     if(map) setTimeout(() => { map.invalidateSize(); }, 300);
 }
 
-// ==== 🔥 CROSS-ACCOUNT CONTAMINATION SHIELD 🔥 ====
 window.handleSupabaseAuth = async function(mode) {
     if(!supabaseClient) return alert("Network Error: Supabase connection failed.");
     const email = document.getElementById('authEmail').value.trim(), password = document.getElementById('authPassword').value.trim(), name = document.getElementById('authName').value.trim();
@@ -312,26 +322,16 @@ window.handleSupabaseAuth = async function(mode) {
     if (response.error) {
         alert(response.error.message);
     } else if (response.data.user) {
-        // ANTI-BLEED LOGIC: If a DIFFERENT user logs in, WIPE the local memory completely!
         if (appState.user.id && appState.user.id !== response.data.user.id) {
-            console.log("New user detected. Formatting local cache to prevent data overlap...");
-            appState.gssNodes = {};
-            appState.feeders = {};
-            appState.currentFeederCode = null;
-            appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
-            appState.deletedItems = [];
-            if(typeof localforage !== 'undefined') await localforage.clear();
-            localStorage.removeItem(DB_KEY);
+            appState.gssNodes = {}; appState.feeders = {}; appState.currentFeederCode = null;
+            appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }; appState.deletedItems = [];
+            if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.removeItem(DB_KEY);
         }
 
-        appState.user.isLoggedIn = true; 
-        appState.user.email = response.data.user.email; 
-        appState.user.id = response.data.user.id;
+        appState.user.isLoggedIn = true; appState.user.email = response.data.user.email; appState.user.id = response.data.user.id;
         appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0];
         
-        applyAuthUIVisuals(); 
-        pullFromSupabase(); 
-        showToast("Login Successful!");
+        applyAuthUIVisuals(); pullFromSupabase(); showToast("Login Successful!");
     }
 }
 
@@ -342,12 +342,9 @@ window.changeAdminPassword = async function() {
     if (error) alert("Error updating password: " + error.message); else { alert("Admin password updated successfully!"); document.getElementById('newAdminPassword').value = ''; }
 }
 
-// ==== 🔥 AGGRESSIVE LOGOUT WIPE 🔥 ====
 window.handleSupabaseLogout = async function() { 
     if(supabaseClient) await supabaseClient.auth.signOut(); 
-    if(typeof localforage !== 'undefined') await localforage.clear(); 
-    localStorage.clear(); // Destroy everything to protect data privacy
-    location.reload(); // Force RAM flush
+    if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.clear(); location.reload(); 
 }
 
 let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTileIndex = 0;
@@ -510,7 +507,7 @@ window.openObjectSheet = function(type, id) {
                             <i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem; color:var(--accent); margin-bottom:8px;"></i><br>Loading Photo...
                          </div>`;
                          
-            supabaseClient.from('entity_photos').select('image_data').eq('parent_id', idStr).single().then(({data}) => {
+            supabaseClient.from('object_photos').select('image_data').eq('parent_id', idStr).single().then(({data}) => {
                 if(data && data.image_data) {
                     obj.photo = data.image_data;
                     const imgEl = document.getElementById(`async-photo-${idStr}`);
@@ -565,6 +562,21 @@ function renderEntireNetwork() {
             const kp1p = document.getElementById('kpi1Ph'); if(kp1p) kp1p.innerText = 0;
             const kpc = document.getElementById('kpiCons'); if(kpc) kpc.innerText = 0;
             Object.values(featureGroups).forEach(g => g.clearLayers()); 
+            
+            // Still draw GSS even if no feeder
+            Object.values(appState.gssNodes).forEach(gss => {
+                if (gss && gss.lat != null && gss.lng != null) {
+                    if (!(appState.activeMove && appState.activeMove.id === gss.code)) {
+                        const lat = parseFloat(gss.lat); const lng = parseFloat(gss.lng);
+                        if(isNaN(lat) || isNaN(lng)) return; 
+                        const dynZGss = Math.floor(-lat * 10000);
+                        const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="22" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/><text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text></svg>`;
+                        const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); 
+                        const m = L.marker([lat, lng], { icon: gssIcon, zIndexOffset: 950000 + dynZGss }).addTo(featureGroups.gss);
+                        m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', gss.code); });
+                    }
+                }
+            });
             return; 
         }
 
@@ -1108,6 +1120,117 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
     }
 }
 
+// ==== HIERARCHY FIX: BINDING TO CURRENT FEEDER ====
+window.savePoleData = function(editId) { 
+    window.haptic(30); saveSnapshot(); 
+    const category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value), structure = document.getElementById('inpPoleStruct').value, condition = document.getElementById('inpPoleCond').value, photo = document.getElementById('inpPolePhoto').value;
+    let no = ''; const noElem = document.getElementById('inpPoleNo'); if (noElem) { no = noElem.value.trim(); }
+    
+    const net = getActiveNetwork(); if(!net) return alert("Feeder not found!");
+    const fc = appState.currentFeederCode; // The Master Tag
+
+    if (editId) {
+        if (!no) return alert(t("errReq"));
+        if (net.poles.some(p => p.id !== editId && String(p.poleNo) === no)) return alert(t("alertExists"));
+        let p = net.poles.find(x => x.id === editId); if(!p) return;
+        p.poleNo = no; p.structure = structure; p.condition = condition; p.photo = photo;
+        window.markDirty('POLE', editId);
+    } else {
+        let dtCode = category === 'LT' ? document.getElementById('inpLTPoleDT').value : undefined;
+        if (category === 'LT' && !no) { const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode)); no = `${dtCode}-${existingLTPoles.length + 1}`; }
+        if (!no) return alert(t("errReq"));
+        if (net.poles.some(p => String(p.poleNo) === no)) return alert(t("alertExists"));
+        const newId = 'P_'+Date.now();
+        net.poles.push({ id: newId, feederCode: fc, poleNo: no, lineType: category, structure, condition, photo, dtCode, lat, lng }); 
+        window.markDirty('POLE', newId);
+    }
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
+}
+
+window.saveLineData = function(editId) {
+    window.haptic(30); saveSnapshot(); const from = document.getElementById('inpFromNode').value, to = document.getElementById('inpToNode').value, type = document.getElementById('inpLineType').value, phaseType = document.getElementById('inpLinePhase').value, hasCrossing = document.getElementById('inpLineCrossing').checked, crossingRemark = document.getElementById('inpLineCrossRemark').value.trim();
+    if (from === to) return alert("Cannot connect node to itself!"); if (!to) return alert("Please select a target node!");
+    const net = getActiveNetwork(); if(!net) return alert("Feeder not found!"); 
+    const spec = getLineSpec(type);
+    const fc = appState.currentFeederCode;
+
+    if (phaseType === 'Three Phase' && !String(from).startsWith('GSS')) {
+        const connectedLines = net.lines.filter(l => (l.fromNode === from || l.toNode === from) && l.id !== editId);
+        if (connectedLines.length > 0) {
+            const hasThreePhase = connectedLines.some(l => l.phaseType === 'Three Phase');
+            if (!hasThreePhase) { return alert("Error: Is Pole par peeche se aane wali koi Three Phase line nahi hai. Aap yahan se aage Three Phase line nahi jod sakte!"); }
+        }
+    }
+
+    if(net.lines.find(l => l.id !== editId && ((l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from)))) return alert("A line already exists between these two nodes!");
+    
+    if(editId) {
+        let l = net.lines.find(x => x.id === editId); if(!l) return;
+        l.type = spec.name; l.phaseType = phaseType; l.hasCrossing = hasCrossing; l.crossingRemark = crossingRemark;
+        window.markDirty('LINE', editId);
+    } else {
+        const c1 = getNodeCoords(from), c2 = getNodeCoords(to); if(!c1 || !c2) return alert("Invalid node coordinates!"); const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); 
+        const newId = 'LN_'+Date.now();
+        net.lines.push({ id: newId, feederCode: fc, type: spec.name, phaseType, hasCrossing, crossingRemark, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]] }); 
+        window.markDirty('LINE', newId);
+    }
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
+}
+
+window.saveDTData = function(editId) {
+    window.haptic(30); saveSnapshot(); 
+    const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value, name = document.getElementById('inpDTName').value.trim();
+    const location = name, srNo = document.getElementById('inpDTSrNo').value.trim(), tn = document.getElementById('inpDTTN').value.trim(), mountedOn = document.getElementById('inpDTMount').value, photo = document.getElementById('inpDTPhoto').value;
+    
+    if (!code) return alert(t("errReq")); const net = getActiveNetwork(); if(!net) return alert("Feeder not found!");
+    const fc = appState.currentFeederCode;
+
+    const poleNodeId = 'POLE_' + parentRef;
+    const htLinesOnPole = net.lines.filter(l => (l.fromNode === poleNodeId || l.toNode === poleNodeId) && l.type.includes('11 KV'));
+    if (htLinesOnPole.length > 0) {
+        const hasThreePhaseLine = htLinesOnPole.some(l => l.phaseType === 'Three Phase');
+        if (!hasThreePhaseLine && phase === 'Three Phase') { return alert("Error: Is Pole par sirf Single Phase 11kV line judi hai. Aap yahan par Three Phase DT install nahi kar sakte!"); }
+    }
+    
+    if(editId) {
+        if (net.dts.some(d => d.id !== editId && String(d.code) === code)) return alert(t("alertExists"));
+        let d = net.dts.find(x => x.id === editId); if(!d) return;
+        d.code = code; d.name = name; d.rating = rating; d.phase = phase; d.location = location; d.srNo = srNo; d.tn = tn; d.mountedOn = mountedOn; d.photo = photo;
+        window.markDirty('DT', editId);
+    } else {
+        if (net.dts.some(d => String(d.code) === code)) return alert(t("alertExists"));
+        const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); let lat = net.feeder.lat, lng = net.feeder.lng; if (p) { lat = p.lat; lng = p.lng; }
+        const newId = 'DT_'+Date.now();
+        net.dts.push({ id: newId, feederCode: fc, parentPole: parentRef, code, name, rating, phase, srNo, tn, mountedOn, location, photo, lat, lng });
+        window.markDirty('DT', newId);
+    }
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
+}
+
+window.saveConsumerData = function(editId) {
+    window.haptic(30); saveSnapshot(); const parentRef = document.getElementById('inpConsParent').value, kno = document.getElementById('inpConsKno').value.trim(), acNo = document.getElementById('inpConsAcNo').value.trim(), name = document.getElementById('inpConsName').value.trim(), meterNo = document.getElementById('inpConsMeter').value.trim(), conType = document.getElementById('inpConsType').value, status = document.getElementById('inpConsStatus').value, load = document.getElementById('inpConsLoad').value.trim(), photo = document.getElementById('inpConsPhoto').value;
+    if (!name || !kno || !acNo) return alert(t("errReq")); 
+    if(kno.length !== 12) return alert("K-Number must be exactly 12 digits!"); if(acNo.length !== 8) return alert("A/C No. must be exactly 8 digits!");
+    const net = getActiveNetwork(); if(!net) return alert("Feeder not found!");
+    const fc = appState.currentFeederCode;
+
+    if(editId) {
+        if(net.consumers.some(c => c.id !== editId && String(c.kno) === String(kno))) return alert("K-Number already exists!");
+        let c = net.consumers.find(x => x.id === editId); if(!c) return;
+        c.kno = kno; c.acNo = acNo; c.name = name; c.meterNo = meterNo; c.conType = conType; c.status = status; c.load = load; c.photo = photo;
+        window.markDirty('CONSUMER', editId);
+    } else {
+        if(net.consumers.some(c => String(c.kno) === String(kno))) return alert("K-Number already exists in this feeder!");
+        let parentType = 'POLE'; const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); if (!p) parentType = 'DT';
+        const lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value);
+        const newId = 'CS_'+Date.now();
+        net.consumers.push({ id: newId, feederCode: fc, parentRef, parentType, kno, acNo, meterNo, conType, status, name, load, photo, lat, lng }); 
+        window.markDirty('CONSUMER', newId);
+    }
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast(editId ? "Updated Successfully" : t("toastAdded"));
+}
+
+window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
 window.updateDTRatingDropdowns = function(phaseId, ratingId, existingVal) {
     const phase = document.getElementById(phaseId).value, ratingSel = document.getElementById(ratingId);
     let opts = '';
@@ -1115,7 +1238,6 @@ window.updateDTRatingDropdowns = function(phaseId, ratingId, existingVal) {
     else opts = `<option value="10">10 kVA</option><option value="16">16 kVA</option><option value="25" selected>25 kVA</option><option value="63">63 kVA</option><option value="100">100 kVA</option><option value="160">160 kVA</option><option value="250">250 kVA</option><option value="315">315 kVA</option><option value="500">500 kVA</option>`;
     if(ratingSel){ ratingSel.innerHTML = opts; if(existingVal) ratingSel.value = existingVal; }
 }
-
 window.filterConsumerPoles = function(existingParentRef) {
     const net = getActiveNetwork(); if(!net) return;
     const selectedDT = document.getElementById('inpConsDT').value, centerLat = parseFloat(document.getElementById('inpLat').value), centerLng = parseFloat(document.getElementById('inpLng').value);
@@ -1125,7 +1247,6 @@ window.filterConsumerPoles = function(existingParentRef) {
     const cp = document.getElementById('inpConsParent');
     if(cp) cp.innerHTML = nodes.map(n => `<option value="${n.id}" ${existingParentRef===String(n.id)?'selected':''}>${n.title} (${window.formatDistance(window.calcDistance(centerLat, centerLng, n.lat, n.lng))})</option>`).join('');
 }
-
 window.toggleSearchBox = function() {
     window.haptic(15); const box = document.getElementById('searchBoxOverlay');
     if (box && box.style.display === 'none') { window.safeSetDisplay('searchBoxOverlay', 'flex'); const sb = document.getElementById('appSearchBar'); if(sb) sb.focus(); } else { window.safeSetDisplay('searchBoxOverlay', 'none'); window.clearSearch(); }
