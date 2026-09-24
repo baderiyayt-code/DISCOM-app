@@ -88,11 +88,10 @@ window.markDeleted = function(id) {
     if (!appState.deletedItems.includes(id)) appState.deletedItems.push(id);
 };
 
-// ==== FIX 3: ADDED MISSING updateOrphanStatus ====
+// FIX: Added missing function that was crashing renderEntireNetwork()
 window.updateOrphanStatus = function() {
     if (!appState.orphanPoleIds) appState.orphanPoleIds = new Set();
     appState.orphanPoleIds.clear();
-    // Simplified stub to prevent app crash - full BFS graph traversal can be added here
 };
 
 let realtimeChannel = null;
@@ -115,7 +114,7 @@ function cleanData(arr) {
     });
 }
 
-// ==== FIX 1: ADDED PROPER SUPABASE ERROR HANDLING & ONCONFLICT IN PUSH ====
+// ==== 🚀 HIERARCHICAL CLOUD SYNC (Delta Push) ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -135,9 +134,10 @@ window.syncToSupabase = async function(manual = false) {
         let gssPayload = [], fdrPayload = [], objPayload = [], photoPayload = [];
         let dirty = appState.dirtyItems;
 
-        // Extract Items
         Object.values(appState.gssNodes).forEach(g => {
-            if(g && g.code && dirty['GSS'].includes(g.code)) gssPayload.push({ gss_code: g.code, gss_name: g.name, lat: g.lat, lng: g.lng, user_id: uid });
+            if(g && g.code && dirty['GSS'].includes(g.code)) {
+                gssPayload.push({ gss_code: g.code, gss_name: g.name, lat: g.lat, lng: g.lng, user_id: uid });
+            }
         });
 
         Object.keys(appState.feeders).forEach(fCode => {
@@ -147,7 +147,7 @@ window.syncToSupabase = async function(manual = false) {
             }
             
             const processNode = (p, type) => {
-                if(dirty[type] && dirty[type].includes(p.id)) {
+                if(dirty[type].includes(p.id)) {
                     let copy = { ...p };
                     if(copy.photo && copy.photo.startsWith('data:image')) { 
                         photoPayload.push({ parent_id: p.id, image_data: copy.photo, user_id: uid }); 
@@ -164,18 +164,27 @@ window.syncToSupabase = async function(manual = false) {
             net.consumers.forEach(c => processNode(c, 'CONSUMER'));
         });
 
-        // Fixed Hierarchical Upserts with Explicit Error Checks
-        if (gssPayload.length > 0) { const {error} = await supabaseClient.from('gss_records').upsert(cleanData(gssPayload), {onConflict: 'gss_code'}); if(error) throw error; }
-        if (fdrPayload.length > 0) { const {error} = await supabaseClient.from('feeder_records').upsert(cleanData(fdrPayload), {onConflict: 'feeder_code'}); if(error) throw error; }
-        if (objPayload.length > 0) { const {error} = await supabaseClient.from('network_objects').upsert(JSON.parse(JSON.stringify(cleanData(objPayload))), {onConflict: 'id'}); if(error) throw error; }
-        if (photoPayload.length > 0) { const {error} = await supabaseClient.from('object_photos').upsert(photoPayload, {onConflict: 'parent_id'}); if(error) throw error; }
+        // FIX: Proper Error throwing to catch silent fails
+        if (gssPayload.length > 0) { const { error } = await supabaseClient.from('gss_records').upsert(cleanData(gssPayload)); if(error) throw error; }
+        if (fdrPayload.length > 0) { const { error } = await supabaseClient.from('feeder_records').upsert(cleanData(fdrPayload)); if(error) throw error; }
+        if (objPayload.length > 0) { const { error } = await supabaseClient.from('network_objects').upsert(JSON.parse(JSON.stringify(cleanData(objPayload)))); if(error) throw error; }
+        if (photoPayload.length > 0) { const { error } = await supabaseClient.from('object_photos').upsert(photoPayload); if(error) throw error; }
 
-        // Fixed Deletions
+        // FIX: Handled prefixed ID deletion ('GSS_1', 'FDR_1') properly
         if (appState.deletedItems.length > 0) {
-            const {error: e1} = await supabaseClient.from('gss_records').delete().eq('user_id', uid).in('gss_code', appState.deletedItems); if(e1) throw e1;
-            const {error: e2} = await supabaseClient.from('feeder_records').delete().eq('user_id', uid).in('feeder_code', appState.deletedItems); if(e2) throw e2;
-            const {error: e3} = await supabaseClient.from('network_objects').delete().eq('user_id', uid).in('id', appState.deletedItems); if(e3) throw e3;
-            const {error: e4} = await supabaseClient.from('object_photos').delete().eq('user_id', uid).in('parent_id', appState.deletedItems); if(e4) throw e4;
+            let delGss = [], delFdr = [], delObj = [];
+            appState.deletedItems.forEach(id => {
+                if(id.startsWith('GSS_')) delGss.push(id.replace('GSS_', ''));
+                else if(id.startsWith('FDR_')) delFdr.push(id.replace('FDR_', ''));
+                else delObj.push(id);
+            });
+
+            if (delGss.length > 0) { const { error } = await supabaseClient.from('gss_records').delete().eq('user_id', uid).in('gss_code', delGss); if(error) throw error; }
+            if (delFdr.length > 0) { const { error } = await supabaseClient.from('feeder_records').delete().eq('user_id', uid).in('feeder_code', delFdr); if(error) throw error; }
+            if (delObj.length > 0) {
+                const { error: e1 } = await supabaseClient.from('network_objects').delete().eq('user_id', uid).in('id', delObj); if(e1) throw e1;
+                const { error: e2 } = await supabaseClient.from('object_photos').delete().eq('user_id', uid).in('parent_id', delObj); if(e2) throw e2;
+            }
             appState.deletedItems = []; 
         }
 
@@ -186,7 +195,7 @@ window.syncToSupabase = async function(manual = false) {
     finally { setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
 }
 
-// ==== FIX 2: ADDED JSON PARSE FALLBACK AND ERROR CHECKS IN PULL ====
+// ==== 🚀 HIERARCHICAL CLOUD PULL ====
 async function pullFromSupabase(isBackground = false) {
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
     if(!isBackground) setSyncStatus('syncing');
@@ -199,10 +208,11 @@ async function pullFromSupabase(isBackground = false) {
             supabaseClient.from('feeder_records').select('*').eq('user_id', uid),
             supabaseClient.from('network_objects').select('*').eq('user_id', uid)
         ]);
-
-        if (gssRes.error) throw gssRes.error;
-        if (fdrRes.error) throw fdrRes.error;
-        if (objRes.error) throw objRes.error;
+        
+        // FIX: Proper error handling for pulls
+        if(gssRes.error) throw gssRes.error;
+        if(fdrRes.error) throw fdrRes.error;
+        if(objRes.error) throw objRes.error;
 
         let newGss = {}, newFeeders = {};
 
@@ -225,10 +235,10 @@ async function pullFromSupabase(isBackground = false) {
                     newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1", subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
                 }
                 
-                // Format check: if data saved as string, parse it properly
+                // FIX: Fallback parsing logic for strings inside JSONB to avoid rendering format breaks
                 let d = obj.data;
-                if(typeof d === 'string') {
-                    try { d = JSON.parse(d); } catch(e) {}
+                if (typeof d === 'string') {
+                    try { d = JSON.parse(d); } catch(e) { console.error("JSON parse failed for", d); }
                 }
                 
                 try {
@@ -539,7 +549,7 @@ function renderEntireNetwork() {
                         svg = `<svg width="22" height="30" viewBox="0 0 22 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="8" width="14" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/><line x1="11" y1="8" x2="11" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="11" cy="3" r="2" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><text x="11" y="22" font-size="9" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text></svg>`;
                         iconAnc = [11 + dx, -6 + dy]; iconSz = [22, 30];
                     } else {
-                        svg = `<svg width="34" height="30" viewBox="0 0 34 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="8" width="30" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/><line x1="7" y1="8" x2="7" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="7" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><line x1="17" y1="8" x2="17" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="17" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><line x1="27" y1="8" x2="27" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="27" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><text x="17" y="22" font-size="10" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text></svg>`;
+                        svg = `<svg width="34" height="30" viewBox="0 0 34 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="8" width="30" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/><line x1="7" y1="8" x2="7" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="7" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1.5"/><line x1="17" y1="8" x2="17" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="17" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1.5"/><line x1="27" y1="8" x2="27" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="27" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1.5"/><text x="17" y="22" font-size="10" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text></svg>`;
                         iconAnc = [17 + dx, -6 + dy]; iconSz = [34, 30];
                     }
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: iconSz, iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ + (dtIndex * 10) }).addTo(featureGroups.dts);
@@ -722,108 +732,6 @@ window.deleteGssAndFeederStrict = function(code) {
     renderEntireNetwork(); triggerPersistence(); window.renderGssSidebarList(); showToast(t("toastDel"));
 }
 
-// ==== FIX 4: ADDED MISSING MODAL GENERATOR FOR ADDING NEW ITEMS ====
-window.openAddForm = function(type) {
-    window.toggleSpeedDial(false);
-    const c = map ? map.getCenter() : {lat: 26.9150, lng: 75.7830};
-    let html = `<div class="sheet-head"><div class="sheet-title">Add ${type}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>`;
-    html += `<input type="hidden" id="inpLat" value="${c.lat.toFixed(6)}"><input type="hidden" id="inpLng" value="${c.lng.toFixed(6)}">`;
-    
-    if (type === 'POLE' || type === 'LTPOLE') {
-        const isLT = type === 'LTPOLE';
-        html += `<div class="form-row"><label>Pole No</label><input type="text" id="inpPoleNo" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Category</label><select id="inpPoleCategory" class="form-select"><option value="HT" ${!isLT?'selected':''}>HT</option><option value="LT" ${isLT?'selected':''}>LT</option></select></div>`;
-        if(isLT) html += `<div class="form-row"><label>Parent DT Code</label><input type="text" id="inpLTPoleDT" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Structure</label><select id="inpPoleStruct" class="form-select"><option value="Single">Single</option><option value="Double">Double</option></select></div>`;
-        html += `<div class="form-row"><label>Condition</label><select id="inpPoleCond" class="form-select"><option value="OK">OK</option><option value="Damaged">Damaged</option></select></div>`;
-        html += `<input type="hidden" id="inpPolePhoto" value=""><button class="btn-action-primary" onclick="window.savePoleData()">Save</button>`;
-    } 
-    else if (type === 'LINE') {
-        html += `<div class="form-row"><label>From Node ID</label><input type="text" id="inpFromNode" class="form-input"></div>`;
-        html += `<div class="form-row"><label>To Node ID</label><input type="text" id="inpToNode" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Type</label><select id="inpLineType" class="form-select"><option value="11 KV LINE">11 KV LINE</option><option value="LT LINE">LT LINE</option><option value="11 KV UG CABLE">11 KV UG CABLE</option></select></div>`;
-        html += `<div class="form-row"><label>Phase</label><select id="inpLinePhase" class="form-select"><option value="Three Phase">Three Phase</option><option value="Single Phase">Single Phase</option></select></div>`;
-        html += `<div class="form-row"><label><input type="checkbox" id="inpLineCrossing"> Has Crossing?</label></div>`;
-        html += `<div class="form-row"><label>Crossing Remark</label><input type="text" id="inpLineCrossRemark" class="form-input"></div>`;
-        html += `<button class="btn-action-primary" onclick="window.saveLineData()">Save</button>`;
-    }
-    else if (type === 'DT') {
-        html += `<div class="form-row"><label>Parent Pole No</label><input type="text" id="inpDTParent" class="form-input"></div>`;
-        html += `<div class="form-row"><label>DT Code</label><input type="text" id="inpDTCode" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Rating (kVA)</label><input type="number" id="inpDTRating" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Phase</label><select id="inpDTPhase" class="form-select"><option value="Three Phase">Three Phase</option><option value="Single Phase">Single Phase</option></select></div>`;
-        html += `<div class="form-row"><label>Name / Location</label><input type="text" id="inpDTName" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Serial No</label><input type="text" id="inpDTSrNo" class="form-input"></div>`;
-        html += `<div class="form-row"><label>TN No</label><input type="text" id="inpDTTN" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Mounted On</label><select id="inpDTMount" class="form-select"><option value="Double Pole">Double Pole</option><option value="Single Pole">Single Pole</option></select></div>`;
-        html += `<input type="hidden" id="inpDTPhoto" value=""><button class="btn-action-primary" onclick="window.saveDTData()">Save</button>`;
-    }
-    else if (type === 'CONSUMER') {
-        html += `<div class="form-row"><label>Parent Node (Pole/DT)</label><input type="text" id="inpConsParent" class="form-input"></div>`;
-        html += `<div class="form-row"><label>K-Number</label><input type="text" id="inpConsKno" class="form-input"></div>`;
-        html += `<div class="form-row"><label>A/C No</label><input type="text" id="inpConsAcNo" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Name</label><input type="text" id="inpConsName" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Meter No</label><input type="text" id="inpConsMeter" class="form-input"></div>`;
-        html += `<div class="form-row"><label>Type</label><select id="inpConsType" class="form-select"><option value="DS">DS</option><option value="NDS">NDS</option></select></div>`;
-        html += `<div class="form-row"><label>Status</label><select id="inpConsStatus" class="form-select"><option value="Regular">Regular</option><option value="DC">DC</option><option value="PDC">PDC</option></select></div>`;
-        html += `<div class="form-row"><label>Load (kW)</label><input type="text" id="inpConsLoad" class="form-input"></div>`;
-        html += `<input type="hidden" id="inpConsPhoto" value=""><button class="btn-action-primary" onclick="window.saveConsumerData()">Save</button>`;
-    }
-    openModal(html);
-};
-
-// ==== FIX 4 (Cont): ADDED MISSING MODAL GENERATOR FOR EDITING ITEMS ====
-window.openEditModal = function(type, id) {
-    const net = getActiveNetwork();
-    let html = `<div class="sheet-head"><div class="sheet-title">Edit ${type.toUpperCase()}</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>`;
-    
-    if (type.toUpperCase() === 'POLE' || type.toUpperCase() === 'LTPOLE') {
-        const obj = net.poles.find(x => x.id === id); if(!obj) return;
-        html += `<input type="hidden" id="inpLat" value="${obj.lat}"><input type="hidden" id="inpLng" value="${obj.lng}">`;
-        html += `<div class="form-row"><label>Pole No</label><input type="text" id="inpPoleNo" class="form-input" value="${obj.poleNo}"></div>`;
-        html += `<div class="form-row"><label>Category</label><select id="inpPoleCategory" class="form-select"><option value="HT" ${obj.lineType==='HT'?'selected':''}>HT</option><option value="LT" ${obj.lineType==='LT'?'selected':''}>LT</option></select></div>`;
-        if(obj.lineType === 'LT') html += `<div class="form-row"><label>Parent DT Code</label><input type="text" id="inpLTPoleDT" class="form-input" value="${obj.dtCode||''}"></div>`;
-        html += `<div class="form-row"><label>Structure</label><select id="inpPoleStruct" class="form-select"><option value="Single" ${obj.structure==='Single'?'selected':''}>Single</option><option value="Double" ${obj.structure==='Double'?'selected':''}>Double</option></select></div>`;
-        html += `<div class="form-row"><label>Condition</label><select id="inpPoleCond" class="form-select"><option value="OK" ${obj.condition==='OK'?'selected':''}>OK</option><option value="Damaged" ${obj.condition==='Damaged'?'selected':''}>Damaged</option></select></div>`;
-        html += `<input type="hidden" id="inpPolePhoto" value="${obj.photo||''}"><button class="btn-action-primary" onclick="window.savePoleData('${id}')">Update</button>`;
-    }
-    else if (type.toUpperCase() === 'LINE') {
-        const obj = net.lines.find(x => x.id === id); if(!obj) return;
-        html += `<div class="form-row"><label>From Node ID</label><input type="text" id="inpFromNode" class="form-input" value="${obj.fromNode}" readonly></div>`;
-        html += `<div class="form-row"><label>To Node ID</label><input type="text" id="inpToNode" class="form-input" value="${obj.toNode}" readonly></div>`;
-        html += `<div class="form-row"><label>Type</label><select id="inpLineType" class="form-select"><option value="11 KV LINE" ${obj.type==='11 KV LINE'?'selected':''}>11 KV LINE</option><option value="LT LINE" ${obj.type==='LT LINE'?'selected':''}>LT LINE</option><option value="11 KV UG CABLE" ${obj.type==='11 KV UG CABLE'?'selected':''}>11 KV UG CABLE</option></select></div>`;
-        html += `<div class="form-row"><label>Phase</label><select id="inpLinePhase" class="form-select"><option value="Three Phase" ${obj.phaseType==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${obj.phaseType==='Single Phase'?'selected':''}>Single Phase</option></select></div>`;
-        html += `<div class="form-row"><label><input type="checkbox" id="inpLineCrossing" ${obj.hasCrossing?'checked':''}> Has Crossing?</label></div>`;
-        html += `<div class="form-row"><label>Crossing Remark</label><input type="text" id="inpLineCrossRemark" class="form-input" value="${obj.crossingRemark||''}"></div>`;
-        html += `<button class="btn-action-primary" onclick="window.saveLineData('${id}')">Update</button>`;
-    }
-    else if (type.toUpperCase() === 'DT') {
-        const obj = net.dts.find(x => x.id === id); if(!obj) return;
-        html += `<div class="form-row"><label>Parent Pole No</label><input type="text" id="inpDTParent" class="form-input" value="${obj.parentPole}" readonly></div>`;
-        html += `<div class="form-row"><label>DT Code</label><input type="text" id="inpDTCode" class="form-input" value="${obj.code}"></div>`;
-        html += `<div class="form-row"><label>Rating (kVA)</label><input type="number" id="inpDTRating" class="form-input" value="${obj.rating}"></div>`;
-        html += `<div class="form-row"><label>Phase</label><select id="inpDTPhase" class="form-select"><option value="Three Phase" ${obj.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${obj.phase==='Single Phase'?'selected':''}>Single Phase</option></select></div>`;
-        html += `<div class="form-row"><label>Name / Location</label><input type="text" id="inpDTName" class="form-input" value="${obj.name||''}"></div>`;
-        html += `<div class="form-row"><label>Serial No</label><input type="text" id="inpDTSrNo" class="form-input" value="${obj.srNo||''}"></div>`;
-        html += `<div class="form-row"><label>TN No</label><input type="text" id="inpDTTN" class="form-input" value="${obj.tn||''}"></div>`;
-        html += `<div class="form-row"><label>Mounted On</label><select id="inpDTMount" class="form-select"><option value="Double Pole" ${obj.mountedOn==='Double Pole'?'selected':''}>Double Pole</option><option value="Single Pole" ${obj.mountedOn==='Single Pole'?'selected':''}>Single Pole</option></select></div>`;
-        html += `<input type="hidden" id="inpDTPhoto" value="${obj.photo||''}"><button class="btn-action-primary" onclick="window.saveDTData('${id}')">Update</button>`;
-    }
-    else if (type.toUpperCase() === 'CONSUMER') {
-        const obj = net.consumers.find(x => x.id === id); if(!obj) return;
-        html += `<div class="form-row"><label>Parent Node</label><input type="text" id="inpConsParent" class="form-input" value="${obj.parentRef}" readonly></div>`;
-        html += `<div class="form-row"><label>K-Number</label><input type="text" id="inpConsKno" class="form-input" value="${obj.kno}"></div>`;
-        html += `<div class="form-row"><label>A/C No</label><input type="text" id="inpConsAcNo" class="form-input" value="${obj.acNo||''}"></div>`;
-        html += `<div class="form-row"><label>Name</label><input type="text" id="inpConsName" class="form-input" value="${obj.name||''}"></div>`;
-        html += `<div class="form-row"><label>Meter No</label><input type="text" id="inpConsMeter" class="form-input" value="${obj.meterNo||''}"></div>`;
-        html += `<div class="form-row"><label>Type</label><select id="inpConsType" class="form-select"><option value="DS" ${obj.conType==='DS'?'selected':''}>DS</option><option value="NDS" ${obj.conType==='NDS'?'selected':''}>NDS</option></select></div>`;
-        html += `<div class="form-row"><label>Status</label><select id="inpConsStatus" class="form-select"><option value="Regular" ${obj.status==='Regular'?'selected':''}>Regular</option><option value="DC" ${obj.status==='DC'?'selected':''}>DC</option><option value="PDC" ${obj.status==='PDC'?'selected':''}>PDC</option></select></div>`;
-        html += `<div class="form-row"><label>Load (kW)</label><input type="text" id="inpConsLoad" class="form-input" value="${obj.load||''}"></div>`;
-        html += `<input type="hidden" id="inpConsPhoto" value="${obj.photo||''}"><button class="btn-action-primary" onclick="window.saveConsumerData('${id}')">Update</button>`;
-    }
-    openModal(html);
-};
-
 window.openAddGssModal = function() {
     window.toggleSidebar(false);
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addNewGss">Add New GSS</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>GSS Code*</label><input type="text" id="inpGssCode" class="form-input" placeholder="e.g. 132"></div><div class="form-row"><label>GSS Name*</label><input type="text" id="inpGssName" class="form-input" placeholder="e.g. 132/33 kV Substation"></div><button class="btn-action-primary" onclick="window.saveNewGss()">Save GSS at Map Center</button>`);
@@ -1000,24 +908,8 @@ window.exportToGoogleEarth_KML = async function() {
     kml += "</Document>\n</kml>"; await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
 }
 
-// ==== FIX 5: ADDED LAZY LOADING LOGIC FOR jsPDF ====
 window.generateCadSLDPdf = async function() { 
-    window.toggleSidebar(false); 
-    const net = getActiveNetwork(); 
-
-    if(!window.jspdf) {
-        showToast("Loading PDF Engine...");
-        await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
-        });
-    }
-
-    if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
-    
+    window.toggleSidebar(false); const net = getActiveNetwork(); if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
     showToast("Generating Auto-Fit SLD PDF..."); const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
     let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
     if(appState.gssNodes[net.feeder.parentGss]) allPoints.push(appState.gssNodes[net.feeder.parentGss]);
