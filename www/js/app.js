@@ -11,8 +11,8 @@ let appState = {
     settings: { checkOrphanNode: true, unit: 'm', gpsInterval: 3, gpsAccuracy: 10, language: 'en', darkMode: false },
     user: { isLoggedIn: false, name: "", email: "", id: null },
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
-    currentFeederCode: null, // No default
-    gssNodes: {}, feeders: {}, // Clean slate
+    currentFeederCode: null, 
+    gssNodes: {}, feeders: {}, 
     dirtyItems: { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }, 
     deletedItems: [], 
     orphanPoleIds: new Set(), activeMove: null, placementType: null, unsyncedCount: 0
@@ -54,10 +54,9 @@ const i18n = {
 function t(key) { return (i18n['en'][key] || key); }
 function translateApp() { document.querySelectorAll('[data-i18n]').forEach(el => { const key = el.getAttribute('data-i18n'); if (el.tagName.toLowerCase() === 'input' && el.type === 'text') el.placeholder = t(key); else el.innerHTML = t(key); }); }
 
-// ==== NO DEFAULT INJECTION - STRICT ACTIVE NETWORK ====
 function getActiveNetwork() {
     const fKeys = Object.keys(appState.feeders);
-    if (fKeys.length === 0) return null; // Retuns null if no manual feeder exists
+    if (fKeys.length === 0) return null; 
 
     if (!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode]) {
         appState.currentFeederCode = fKeys[0];
@@ -90,7 +89,6 @@ function setSyncStatus(status) {
     if (status === 'synced') { appState.unsyncedCount = 0; updateSyncUI(); }
 }
 
-// ==== UNIVERSAL TRACKERS ====
 window.markDirty = function(type, id) {
     if (!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
     if (!appState.dirtyItems[type]) appState.dirtyItems[type] = [];
@@ -126,7 +124,7 @@ function cleanData(arr) {
     });
 }
 
-// ==== 🚀 HIERARCHICAL CLOUD SYNC ====
+// ==== HIERARCHICAL CLOUD SYNC ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -136,7 +134,6 @@ window.syncToSupabase = async function(manual = false) {
     
     const isDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
     const isDeleted = appState.deletedItems.length > 0;
-    
     if(!isDirty && !isDeleted) { setSyncStatus('synced'); return; }
 
     window.isSyncingLocal = true; setSyncStatus('syncing');
@@ -204,6 +201,7 @@ async function pullFromSupabase(isBackground = false) {
     
     try {
         const uid = appState.user.id;
+        
         const [gssRes, fdrRes, objRes] = await Promise.all([
             supabaseClient.from('gss_records').select('*').eq('user_id', uid),
             supabaseClient.from('feeder_records').select('*').eq('user_id', uid),
@@ -211,6 +209,7 @@ async function pullFromSupabase(isBackground = false) {
         ]);
 
         let newGss = {}, newFeeders = {};
+        let needsPush = false;
 
         if (gssRes.data && gssRes.data.length > 0) {
             gssRes.data.forEach(g => { newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng }; });
@@ -229,6 +228,7 @@ async function pullFromSupabase(isBackground = false) {
                     newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1", subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
                 }
                 const d = obj.data;
+                
                 try {
                     let oldNet = appState.feeders[fc];
                     if(oldNet) {
@@ -244,7 +244,6 @@ async function pullFromSupabase(isBackground = false) {
             });
         }
 
-        // NO DEFAULT FALLBACKS - Emptiness is preserved accurately
         appState.gssNodes = newGss; appState.feeders = newFeeders;
         
         const validFeeders = Object.keys(newFeeders);
@@ -258,6 +257,8 @@ async function pullFromSupabase(isBackground = false) {
         if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
         if(!isBackground) centerMapOnGSS(); 
         setSyncStatus('synced'); 
+
+        if (needsPush) { setTimeout(() => { window.syncToSupabase(false); }, 2000); }
 
     } catch (err) { console.error("Pull error:", err); setSyncStatus('offline'); }
 }
@@ -365,7 +366,6 @@ function initMapSystem() {
         const c = map.getCenter(); const rc = document.getElementById('reticle-coordinates'); if(rc) rc.innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
         const pin = document.getElementById('center-placement-pin');
         
-        // Safety check to update Distance Meter only if network exists
         if (pin && pin.style.display === 'block') {
             const net = getActiveNetwork();
             if(net) {
@@ -373,7 +373,12 @@ function initMapSystem() {
                 if(net.feeder && net.feeder.parentGss && appState.gssNodes[net.feeder.parentGss]) nodes.push(appState.gssNodes[net.feeder.parentGss]);
                 if(nodes.length > 0) {
                     let nearest = nodes[0]; let minDist = window.calcDistance(c.lat, c.lng, nearest.lat, nearest.lng);
-                    for(let n of nodes) { let d = window.calcDistance(c.lat, c.lng, n.lat, n.lng); if(d < minDist) { minDist = d; nearest = n; } }
+                    for(let n of nodes) { 
+                        if(n.lat && n.lng) {
+                            let d = window.calcDistance(c.lat, c.lng, n.lat, n.lng); 
+                            if(d < minDist) { minDist = d; nearest = n; }
+                        }
+                    }
                     const distEl = document.getElementById('live-distance-meter'); 
                     if(distEl) { distEl.innerText = `Nearest Node: ${window.formatDistance(minDist)}`; distEl.style.display = 'block'; }
                 }
@@ -495,76 +500,97 @@ function calculateParallelCoords(p1, p2, offsetMeters) {
     return [ [p1.lat + dLat, p1.lng + dLng], [p2.lat + dLat, p2.lng + dLng] ];
 }
 
-// ==== STRICT RENDERER (HANDLES NULL NETWORKS SAFELY) ====
+// ==== 🔥 CRASH-PROOF RENDERING ENGINE 🔥 ====
 function renderEntireNetwork() {
     if(!map) return;
     try {
-        Object.values(featureGroups).forEach(g => g.clearLayers()); 
-        
-        // 1. ALWAYS DRAW GSS (Independent of Feeders)
-        Object.values(appState.gssNodes).forEach(gss => {
-            if (gss && gss.lat != null && gss.lng != null) {
-                if (!(appState.activeMove && appState.activeMove.id === gss.code)) {
-                    const lat = parseFloat(gss.lat); const lng = parseFloat(gss.lng);
-                    if(isNaN(lat) || isNaN(lng)) return;
-                    const dynZGss = Math.floor(-lat * 10000);
-                    const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="22" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/><text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text></svg>`;
-                    const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); 
-                    const m = L.marker([lat, lng], { icon: gssIcon, zIndexOffset: 950000 + dynZGss }).addTo(featureGroups.gss);
-                    m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', gss.code); });
-                }
+        // 1. UPDATE DROPDOWN IMMEDIATELY (Prevents blank dropdowns if map rendering fails)
+        const fSelect = document.getElementById('feederSelectHeader');
+        if (fSelect) {
+            if (Object.keys(appState.feeders).length > 0) {
+                fSelect.innerHTML = Object.keys(appState.feeders).map(code => {
+                    const name = appState.feeders[code]?.feeder?.name || `Feeder ${code}`;
+                    return `<option value="${code}" ${code === appState.currentFeederCode ? 'selected':''}>${name}</option>`;
+                }).join('');
+            } else {
+                fSelect.innerHTML = '<option value="">No Feeder Available</option>';
             }
-        });
+        }
 
         const net = getActiveNetwork();
-        const fSelect = document.getElementById('feederSelectHeader');
         
+        // Return gracefully if no network exists to prevent crashes
         if (!net) {
-            if (fSelect) fSelect.innerHTML = '<option value="">No Feeder Available</option>';
             const kp11 = document.getElementById('kpi11'); if(kp11) kp11.innerText = window.formatDistance(0);
             const kpLT = document.getElementById('kpiLT'); if(kpLT) kpLT.innerText = window.formatDistance(0);
             const kp3p = document.getElementById('kpi3Ph'); if(kp3p) kp3p.innerText = 0; 
             const kp1p = document.getElementById('kpi1Ph'); if(kp1p) kp1p.innerText = 0;
             const kpc = document.getElementById('kpiCons'); if(kpc) kpc.innerText = 0;
+            Object.values(featureGroups).forEach(g => g.clearLayers()); 
             return; 
         }
 
         updateOrphanStatus(); 
-        const f = appState.filters;
+        Object.values(featureGroups).forEach(g => g.clearLayers()); 
+        const f = appState.filters || { lines11: true, linesLT: true, poles: true, dts: true, consumers: true };
 
+        // 2. SAFE GSS RENDERER
+        Object.values(appState.gssNodes).forEach(gss => {
+            try {
+                if (gss && gss.lat != null && gss.lng != null) {
+                    if (!(appState.activeMove && appState.activeMove.id === gss.code)) {
+                        const lat = parseFloat(gss.lat); const lng = parseFloat(gss.lng);
+                        if(isNaN(lat) || isNaN(lng)) return; // SKIPS CORRUPT DATA
+                        const dynZGss = Math.floor(-lat * 10000);
+                        const htmlIcon = `<svg width="44" height="48" viewBox="0 0 44 48" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="22" cy="44" rx="16" ry="4" fill="rgba(0,0,0,0.4)"/><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><rect x="6" y="10" width="32" height="16" rx="6" fill="#ef4444" opacity="0.4"/><text x="22" y="30" font-size="12" font-weight="900" font-family="Inter" fill="#fff" text-anchor="middle">GSS</text></svg>`;
+                        const gssIcon = L.divIcon({ className: 'svg-marker-wrapper', html: htmlIcon, iconSize: [44,48], iconAnchor: [22,16] }); 
+                        const m = L.marker([lat, lng], { icon: gssIcon, zIndexOffset: 950000 + dynZGss }).addTo(featureGroups.gss);
+                        m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('GSS', gss.code); });
+                    }
+                }
+            } catch(e) { console.warn("Failed to render GSS", e); }
+        });
+
+        // 3. SAFE POLE RENDERER
         if (f.poles && Array.isArray(net.poles)) {
             net.poles.forEach(p => {
-                const isOrphan = appState.orphanPoleIds.has(p.id), isLT = p.lineType === 'LT';
-                if (appState.activeMove && appState.activeMove.id === p.id) return;
-                let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
+                try {
+                    const lat = parseFloat(p.lat); const lng = parseFloat(p.lng);
+                    if(isNaN(lat) || isNaN(lng)) return; // SKIPS CORRUPT POLE
 
-                const color = isLT ? '#10b981' : '#fde047'; const isAlert = (p.condition === 'Tilted' || p.condition === 'Damaged'); const strokeColor = isAlert ? '#ef4444' : '#0f172a';
-                const dynZ = Math.floor(-p.lat * 10000); const zOff = (isLT ? 100000 : 200000) + dynZ;
-                let svg = ''; let w = 34, h = 48, ax = 17, ay = 12; 
-                const alertBadge = isAlert ? `<circle cx="${w-5}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-5}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
-                const gradientDef = `<defs><linearGradient id="grad${p.id}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#fff" stop-opacity="0.8"/><stop offset="100%" stop-color="${color}"/></linearGradient></defs>`;
-                const groundShadow = `<ellipse cx="${ax}" cy="${h-3}" rx="${(w/2)-2}" ry="3" fill="rgba(0,0,0,0.4)"/>`;
+                    const isOrphan = appState.orphanPoleIds.has(p.id), isLT = p.lineType === 'LT';
+                    if (appState.activeMove && appState.activeMove.id === p.id) return;
+                    let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
-                if (p.structure === 'Double') {
-                    w = 40; ax = 20; ay = 12;
-                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">${gradientDef}<ellipse cx="${ax}" cy="${h-3}" rx="14" ry="3.5" fill="rgba(0,0,0,0.4)"/><rect x="10" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/><rect x="24" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/><rect x="6" y="24" width="28" height="4" fill="#cbd5e1" stroke="${strokeColor}" stroke-width="1" rx="1"/><rect x="5" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="20" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>${alertBadge}</svg>`;
-                } else if (p.structure === 'Lattice Tower') {
-                    w = 40; h = 48; ax = 20; ay = 12;
-                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${ax}" cy="${h-3}" rx="15" ry="4" fill="rgba(0,0,0,0.4)"/><path d="M 16 16 L 8 48 M 24 16 L 32 48" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/><path d="M 16 16 L 8 48 M 24 16 L 32 48" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/><path d="M 14 26 L 26 26 M 11 36 L 29 36" stroke="${strokeColor}" stroke-width="1.5"/><path d="M 16 16 L 26 26 M 24 16 L 14 26 M 14 26 L 29 36 M 26 26 L 11 36 M 11 36 L 32 48 M 29 36 L 8 48" stroke="${strokeColor}" stroke-width="1" opacity="0.6"/><rect x="5" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="20" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>${alertBadge}</svg>`;
-                } else if (p.structure === 'Rail Pole') {
-                    w = 34; h = 48; ax = 17; ay = 12;
-                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${ax}" cy="${h-3}" rx="12" ry="3.5" fill="rgba(0,0,0,0.4)"/><path d="M 14 16 L 14 48 M 20 16 L 20 48" stroke="${strokeColor}" stroke-width="2.5"/><path d="M 14 16 L 14 48 M 20 16 L 20 48" stroke="${color}" stroke-width="1"/><path d="M 11 20 L 23 20 M 11 28 L 23 28 M 11 36 L 23 36 M 11 44 L 23 44" stroke="${strokeColor}" stroke-width="1.5"/><rect x="2" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="17" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>${alertBadge}</svg>`;
-                } else {
-                    w = 34; h = 48; ax = 17; ay = 12;
-                    svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">${gradientDef}${groundShadow}<rect x="14" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/><rect x="6" y="22" width="22" height="3" fill="#cbd5e1" stroke="${strokeColor}" stroke-width="1" rx="1"/><circle cx="8" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/><circle cx="17" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/><circle cx="26" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/><rect x="2" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="17" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>${alertBadge}</svg>`;
-                }
+                    const color = isLT ? '#10b981' : '#fde047'; const isAlert = (p.condition === 'Tilted' || p.condition === 'Damaged'); const strokeColor = isAlert ? '#ef4444' : '#0f172a';
+                    const dynZ = Math.floor(-lat * 10000); const zOff = (isLT ? 100000 : 200000) + dynZ;
+                    let svg = ''; let w = 34, h = 48, ax = 17, ay = 12; 
+                    const alertBadge = isAlert ? `<circle cx="${w-5}" cy="14" r="5" fill="#ef4444" stroke="#fff" stroke-width="1.5"/><text x="${w-5}" y="17.5" font-size="9" fill="#fff" font-weight="900" font-family="sans-serif" text-anchor="middle">!</text>` : '';
+                    const gradientDef = `<defs><linearGradient id="grad${p.id}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#fff" stop-opacity="0.8"/><stop offset="100%" stop-color="${color}"/></linearGradient></defs>`;
+                    const groundShadow = `<ellipse cx="${ax}" cy="${h-3}" rx="${(w/2)-2}" ry="3" fill="rgba(0,0,0,0.4)"/>`;
 
-                const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [w, h], iconAnchor: [ax, ay] }), zIndexOffset: zOff }).addTo(targetGrp);
-                m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('POLE', p.id); });
+                    if (p.structure === 'Double') {
+                        w = 40; ax = 20; ay = 12;
+                        svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">${gradientDef}<ellipse cx="${ax}" cy="${h-3}" rx="14" ry="3.5" fill="rgba(0,0,0,0.4)"/><rect x="10" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/><rect x="24" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/><rect x="6" y="24" width="28" height="4" fill="#cbd5e1" stroke="${strokeColor}" stroke-width="1" rx="1"/><rect x="5" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="20" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>${alertBadge}</svg>`;
+                    } else if (p.structure === 'Lattice Tower') {
+                        w = 40; h = 48; ax = 20; ay = 12;
+                        svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${ax}" cy="${h-3}" rx="15" ry="4" fill="rgba(0,0,0,0.4)"/><path d="M 16 16 L 8 48 M 24 16 L 32 48" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/><path d="M 16 16 L 8 48 M 24 16 L 32 48" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/><path d="M 14 26 L 26 26 M 11 36 L 29 36" stroke="${strokeColor}" stroke-width="1.5"/><path d="M 16 16 L 26 26 M 24 16 L 14 26 M 14 26 L 29 36 M 26 26 L 11 36 M 11 36 L 32 48 M 29 36 L 8 48" stroke="${strokeColor}" stroke-width="1" opacity="0.6"/><rect x="5" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="20" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>${alertBadge}</svg>`;
+                    } else if (p.structure === 'Rail Pole') {
+                        w = 34; h = 48; ax = 17; ay = 12;
+                        svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${ax}" cy="${h-3}" rx="12" ry="3.5" fill="rgba(0,0,0,0.4)"/><path d="M 14 16 L 14 48 M 20 16 L 20 48" stroke="${strokeColor}" stroke-width="2.5"/><path d="M 14 16 L 14 48 M 20 16 L 20 48" stroke="${color}" stroke-width="1"/><path d="M 11 20 L 23 20 M 11 28 L 23 28 M 11 36 L 23 36 M 11 44 L 23 44" stroke="${strokeColor}" stroke-width="1.5"/><rect x="2" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="17" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>${alertBadge}</svg>`;
+                    } else {
+                        w = 34; h = 48; ax = 17; ay = 12;
+                        svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="isometric-marker" xmlns="http://www.w3.org/2000/svg">${gradientDef}${groundShadow}<rect x="14" y="16" width="6" height="${h-16}" fill="url(#grad${p.id})" stroke="${strokeColor}" stroke-width="1.5" rx="2"/><rect x="6" y="22" width="22" height="3" fill="#cbd5e1" stroke="${strokeColor}" stroke-width="1" rx="1"/><circle cx="8" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/><circle cx="17" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/><circle cx="26" cy="20" r="2" fill="#fff" stroke="${strokeColor}"/><rect x="2" y="0" width="30" height="14" rx="4" fill="${color}" stroke="${strokeColor}" stroke-width="1.5"/><text x="17" y="10" font-size="9" font-weight="900" font-family="Inter" fill="#0f172a" text-anchor="middle">${displayNo}</text>${alertBadge}</svg>`;
+                    }
+
+                    const targetGrp = isLT ? featureGroups.ltPoles : featureGroups.htPoles;
+                    const m = L.marker([lat, lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: [w, h], iconAnchor: [ax, ay] }), zIndexOffset: zOff }).addTo(targetGrp);
+                    m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('POLE', p.id); });
+                } catch(e) { console.warn("Failed to render POLE", e); }
             });
         }
 
+        // 4. SAFE DT RENDERER
         if (f.dts && Array.isArray(net.dts)) {
             let dtGroups = {};
             net.dts.forEach(d => {
@@ -573,9 +599,12 @@ function renderEntireNetwork() {
             });
 
             net.dts.forEach(d => {
-                if (d.lat && d.lng) {
+                try {
+                    const lat = parseFloat(d.lat); const lng = parseFloat(d.lng);
+                    if(isNaN(lat) || isNaN(lng)) return; 
+
                     const isOrphan = appState.orphanPoleIds.has(d.id); const numRating = String(d.rating).replace(/[^0-9]/g, '');
-                    const dynZ = Math.floor(-d.lat * 10000); let key = `${d.lat}_${d.lng}`; let dtIndex = dtGroups[key].indexOf(d.id);
+                    const dynZ = Math.floor(-lat * 10000); let key = `${d.lat}_${d.lng}`; let dtIndex = dtGroups[key].indexOf(d.id);
                     let dx = 0, dy = 0;
                     if (dtIndex === 1) { dx = -22; dy = 14; } else if (dtIndex === 2) { dx = 22; dy = 14; } else if (dtIndex >= 3) { dx = 0; dy = 28 + ((dtIndex-3)*14); }
                     
@@ -587,64 +616,79 @@ function renderEntireNetwork() {
                         svg = `<svg width="34" height="30" viewBox="0 0 34 30" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="8" width="30" height="20" rx="3" fill="#f59e0b" stroke="#0f172a" stroke-width="1.5"/><line x1="7" y1="8" x2="7" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="7" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><line x1="17" y1="8" x2="17" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="17" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><line x1="27" y1="8" x2="27" y2="3" stroke="#0f172a" stroke-width="1.5"/><circle cx="27" cy="3" r="1.5" fill="#ef4444" stroke="#0f172a" stroke-width="1"/><text x="17" y="22" font-size="10" font-weight="900" font-family="Inter" fill="#fff" stroke="#000" stroke-width="0.5" text-anchor="middle">${numRating}</text></svg>`;
                         iconAnc = [17 + dx, -6 + dy]; iconSz = [34, 30];
                     }
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: iconSz, iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ + (dtIndex * 10) }).addTo(featureGroups.dts);
+                    const m = L.marker([lat, lng], { icon: L.divIcon({ className: 'svg-marker-wrapper' + (isOrphan ? ' orphan-pulse' : ''), html: svg, iconSize: iconSz, iconAnchor: iconAnc }), zIndexOffset: 900000 + dynZ + (dtIndex * 10) }).addTo(featureGroups.dts);
                     m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('DT', d.id); });
-                }
+                } catch(e) { console.warn("Failed to render DT", e); }
             });
         }
 
+        // 5. SAFE LINE RENDERER
         if (Array.isArray(net.lines)) {
             net.lines.forEach(line => {
-                const c1 = getNodeCoords(line.fromNode), c2 = getNodeCoords(line.toNode); 
-                if (c1 && c2) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
-                const spec = getLineSpec(line.type); if (!f[spec.filterKey]) return;
-                const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
-                let linesToDraw = [];
-                
-                if(line.phaseType === 'Three Phase' && !line.type.includes('UG CABLE') && !line.type.includes('LT')) {
-                    linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, -1.5), color: '#ef4444' }); 
-                    linesToDraw.push({ coords: line.coords, color: '#eab308' }); 
-                    linesToDraw.push({ coords: calculateParallelCoords({lat:c1.lat, lng:c1.lng}, {lat:c2.lat, lng:c2.lng}, 1.5), color: '#3b82f6' }); 
-                } else { linesToDraw.push({ coords: line.coords, color: spec.color }); }
+                try {
+                    const c1 = getNodeCoords(line.fromNode), c2 = getNodeCoords(line.toNode); 
+                    if (!c1 || !c2) return; 
+                    
+                    const lat1 = parseFloat(c1.lat), lng1 = parseFloat(c1.lng);
+                    const lat2 = parseFloat(c2.lat), lng2 = parseFloat(c2.lng);
+                    if(isNaN(lat1) || isNaN(lng1) || isNaN(lat2) || isNaN(lng2)) return;
 
-                linesToDraw.forEach(ld => {
-                    const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
-                    L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
-                    hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
-                });
+                    line.coords = [[lat1, lng1], [lat2, lng2]]; 
+                    line.distanceMeters = window.calcDistance(lat1, lng1, lat2, lng2); 
+                    
+                    const spec = getLineSpec(line.type); if (!f[spec.filterKey]) return;
+                    const lineGrp = spec.name.includes('LT') ? featureGroups.ltLines : featureGroups.htLines;
+                    let linesToDraw = [];
+                    
+                    if(line.phaseType === 'Three Phase' && !line.type.includes('UG CABLE') && !line.type.includes('LT')) {
+                        linesToDraw.push({ coords: calculateParallelCoords({lat:lat1, lng:lng1}, {lat:lat2, lng:lng2}, -1.5), color: '#ef4444' }); 
+                        linesToDraw.push({ coords: line.coords, color: '#eab308' }); 
+                        linesToDraw.push({ coords: calculateParallelCoords({lat:lat1, lng:lng1}, {lat:lat2, lng:lng2}, 1.5), color: '#3b82f6' }); 
+                    } else { linesToDraw.push({ coords: line.coords, color: spec.color }); }
 
-                if(line.hasCrossing) {
-                    const midLat = (c1.lat + c2.lat) / 2, midLng = (c1.lng + c2.lng) / 2;
-                    const crossSvg = `<svg width="16" height="16" viewBox="0 0 16 16" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="2" x2="14" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/><line x1="14" y1="2" x2="2" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>`;
-                    L.marker([midLat, midLng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: crossSvg, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 2500 }).addTo(lineGrp);
-                }
+                    linesToDraw.forEach(ld => {
+                        const hitPoly = L.polyline(ld.coords, { color: 'transparent', weight: 20 }).addTo(lineGrp);
+                        L.polyline(ld.coords, { color: ld.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(lineGrp);
+                        hitPoly.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('LINE', line.id); });
+                    });
+
+                    if(line.hasCrossing) {
+                        const midLat = (lat1 + lat2) / 2, midLng = (lng1 + lng2) / 2;
+                        const crossSvg = `<svg width="16" height="16" viewBox="0 0 16 16" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="2" x2="14" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/><line x1="14" y1="2" x2="2" y2="14" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>`;
+                        L.marker([midLat, midLng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: crossSvg, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 2500 }).addTo(lineGrp);
+                    }
+                } catch(e) { console.warn("Failed to render LINE", e); }
             });
         }
 
+        // 6. SAFE CONSUMER RENDERER
         if (f.consumers && Array.isArray(net.consumers)) {
             net.consumers.forEach(c => {
-                if (appState.activeMove && appState.activeMove.id === c.id) return; 
-                const dynZ = Math.floor(-c.lat * 10000); let bgColor = '#10b981'; 
-                if(c.status === 'DC') bgColor = '#facc15'; else if(c.status === 'PDC') bgColor = '#ef4444'; else if(c.conType === 'NDS') bgColor = '#3b82f6';
-                let faIcon = '&#xf015;'; if(c.conType === 'NDS') faIcon = '&#xf1ad;'; else if(c.conType === 'AG') faIcon = '&#xf4d8;'; else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; else if(c.conType === 'PHED') faIcon = '&#xf043;'; 
+                try {
+                    const lat = parseFloat(c.lat); const lng = parseFloat(c.lng);
+                    if(isNaN(lat) || isNaN(lng)) return;
 
-                const svg = `<svg width="26" height="34" viewBox="0 0 26 34" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="13" cy="30" rx="9" ry="3.5" fill="rgba(0,0,0,0.4)"/><path d="M13 22 L13 30" stroke="#0f172a" stroke-width="2"/><circle cx="13" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><text x="13" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text></svg>`;
-                const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [26,34], iconAnchor: [13,11] }), zIndexOffset: 300000 + dynZ }).addTo(featureGroups.consumers);
-                m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('CONSUMER', c.id); });
+                    if (appState.activeMove && appState.activeMove.id === c.id) return; 
+                    const dynZ = Math.floor(-lat * 10000); let bgColor = '#10b981'; 
+                    if(c.status === 'DC') bgColor = '#facc15'; else if(c.status === 'PDC') bgColor = '#ef4444'; else if(c.conType === 'NDS') bgColor = '#3b82f6';
+                    let faIcon = '&#xf015;'; if(c.conType === 'NDS') faIcon = '&#xf1ad;'; else if(c.conType === 'AG') faIcon = '&#xf4d8;'; else if(c.conType === 'SIP/MIP') faIcon = '&#xf275;'; else if(c.conType === 'PHED') faIcon = '&#xf043;'; 
 
-                let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
-                if (pCoords) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
+                    const svg = `<svg width="26" height="34" viewBox="0 0 26 34" class="isometric-marker" xmlns="http://www.w3.org/2000/svg"><ellipse cx="13" cy="30" rx="9" ry="3.5" fill="rgba(0,0,0,0.4)"/><path d="M13 22 L13 30" stroke="#0f172a" stroke-width="2"/><circle cx="13" cy="11" r="10" fill="${bgColor}" stroke="white" stroke-width="1.5"/><text x="13" y="15" font-size="10" font-weight="900" font-family="'Font Awesome 6 Free', sans-serif" fill="white" text-anchor="middle" class="fa-svg-icon">${faIcon}</text></svg>`;
+                    const m = L.marker([lat, lng], { icon: L.divIcon({ className: 'svg-marker-wrapper', html: svg, iconSize: [26,34], iconAnchor: [13,11] }), zIndexOffset: 300000 + dynZ }).addTo(featureGroups.consumers);
+                    m.on('click', (e) => { L.DomEvent.stopPropagation(e); window.openObjectSheet('CONSUMER', c.id); });
+
+                    let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
+                    if (pCoords) {
+                        const pLat = parseFloat(pCoords.lat); const pLng = parseFloat(pCoords.lng);
+                        if(!isNaN(pLat) && !isNaN(pLng)) L.polyline([[lat, lng], [pLat, pLng]], { color: '#000000', weight: 1.2, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
+                    }
+                } catch(e) { console.warn("Failed to render CONSUMER", e); }
             });
         }
 
         map.fire('zoomend');
-        
-        if (fSelect) {
-            fSelect.innerHTML = Object.keys(appState.feeders).map(code => 
-                `<option value="${code}" ${code === appState.currentFeederCode ? 'selected':''}>${appState.feeders[code].feeder.name}</option>`
-            ).join('');
-        }
 
+        // 7. Update KPIs
         let t11 = 0, tLT = 0, dt3ph = 0, dt1ph = 0; 
         if (Array.isArray(net.lines)) net.lines.forEach(l => { if (getLineSpec(l.type).name.includes('LT')) tLT += (l.distanceMeters || 0); else t11 += (l.distanceMeters || 0); });
         if (Array.isArray(net.dts)) net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
@@ -655,7 +699,7 @@ function renderEntireNetwork() {
         const kp1p = document.getElementById('kpi1Ph'); if(kp1p) kp1p.innerText = dt1ph;
         const kpc = document.getElementById('kpiCons'); if(kpc) kpc.innerText = Array.isArray(net.consumers) ? net.consumers.length : 0;
         
-    } catch(err) { console.error("Rendering error:", err); }
+    } catch(err) { console.error("FATAL Rendering error:", err); }
 }
 
 function saveSnapshot() {
@@ -736,6 +780,60 @@ function getNodeCoords(nodeId) {
     if (appState.gssNodes[idStr]) return { lat: appState.gssNodes[idStr].lat, lng: appState.gssNodes[idStr].lng };
     if (idStr === 'GSS' || idStr === net.feeder.code) { const g = appState.gssNodes[net.feeder.parentGss]; if(g) return { lat: g.lat, lng: g.lng }; }
     return null; 
+}
+
+function updateOrphanStatus() {
+    appState.orphanPoleIds.clear(); 
+    const net = getActiveNetwork(); 
+    if(!net || !net.feeder) return;
+    
+    try {
+        const adj = {};
+        const gssCode = net.feeder.parentGss;
+        const gssId = 'GSS_' + gssCode;
+        adj[gssId] = [];
+
+        if(Array.isArray(net.poles)) net.poles.forEach(p => adj['POLE_' + p.poleNo] = []);
+        if(Array.isArray(net.dts)) net.dts.forEach(d => adj['DT_' + d.code] = []);
+
+        if(Array.isArray(net.dts)) net.dts.forEach(d => {
+            if(d.parentPole) {
+                const pId = 'POLE_' + d.parentPole;
+                if (!adj[pId]) adj[pId] = [];
+                adj[pId].push('DT_' + d.code);
+                if (!adj['DT_' + d.code]) adj['DT_' + d.code] = [];
+                adj['DT_' + d.code].push(pId);
+            }
+        });
+
+        if(Array.isArray(net.lines)) net.lines.forEach(l => {
+            const u = String(l.fromNode), v = String(l.toNode);
+            if (!adj[u]) adj[u] = [];
+            if (!adj[v]) adj[v] = [];
+            adj[u].push(v);
+            adj[v].push(u);
+        });
+
+        const visited = new Set([gssId]);
+        const queue = [gssId];
+
+        while (queue.length > 0) {
+            const curr = queue.shift();
+            (adj[curr] || []).forEach(neighbor => {
+                if (!visited.has(neighbor)) {
+                    visited.add(neighbor);
+                    queue.push(neighbor);
+                }
+            });
+        }
+
+        if(Array.isArray(net.poles)) net.poles.forEach(p => {
+            if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id);
+        });
+        if(Array.isArray(net.dts)) net.dts.forEach(d => {
+            if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id);
+        });
+    } catch(e) { console.warn("Orphan logic bypassed temporarily", e); }
 }
 
 window.runOrphanNodeChecker = function() {
@@ -986,9 +1084,22 @@ window.saveEditedGss = function(code) {
 
 window.savePoleData = function(editId) { 
     window.haptic(30); saveSnapshot(); 
-    const category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value), structure = document.getElementById('inpPoleStruct').value, condition = document.getElementById('inpPoleCond').value, photo = document.getElementById('inpPolePhoto').value;
+    const category = document.getElementById('inpPoleCategory').value;
+    const latInp = document.getElementById('inpLat').value;
+    const lngInp = document.getElementById('inpLng').value;
+    
+    // STRICT FIX: Coordinate validation prevents map crashes
+    const lat = parseFloat(latInp);
+    const lng = parseFloat(lngInp);
+    if(isNaN(lat) || isNaN(lng)) return alert("Location Error: Try placing the pin again!");
+
+    const structure = document.getElementById('inpPoleStruct').value;
+    const condition = document.getElementById('inpPoleCond').value;
+    const photo = document.getElementById('inpPolePhoto').value;
     let no = ''; const noElem = document.getElementById('inpPoleNo'); if (noElem) { no = noElem.value.trim(); }
+    
     const net = getActiveNetwork(); if(!net) return alert("Feeder not found!");
+    
     if (editId) {
         if (!no) return alert(t("errReq"));
         if (net.poles.some(p => p.id !== editId && String(p.poleNo) === no)) return alert(t("alertExists"));
@@ -1093,22 +1204,25 @@ window.updateDTRatingDropdowns = function(phaseId, ratingId, existingVal) {
     let opts = '';
     if(phase === 'Single Phase') opts = `<option value="5">5 kVA</option><option value="10">10 kVA</option><option value="16" selected>16 kVA</option><option value="25">25 kVA</option>`;
     else opts = `<option value="10">10 kVA</option><option value="16">16 kVA</option><option value="25" selected>25 kVA</option><option value="63">63 kVA</option><option value="100">100 kVA</option><option value="160">160 kVA</option><option value="250">250 kVA</option><option value="315">315 kVA</option><option value="500">500 kVA</option>`;
-    ratingSel.innerHTML = opts; if(existingVal) ratingSel.value = existingVal;
+    if(ratingSel){ ratingSel.innerHTML = opts; if(existingVal) ratingSel.value = existingVal; }
 }
 window.filterConsumerPoles = function(existingParentRef) {
-    const net = getActiveNetwork(), selectedDT = document.getElementById('inpConsDT').value, centerLat = parseFloat(document.getElementById('inpLat').value), centerLng = parseFloat(document.getElementById('inpLng').value);
-    if(!net) return;
+    const net = getActiveNetwork(); if(!net) return;
+    const selectedDT = document.getElementById('inpConsDT').value, centerLat = parseFloat(document.getElementById('inpLat').value), centerLng = parseFloat(document.getElementById('inpLng').value);
     let nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(selectedDT)).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: p.poleNo}));
     const dtObj = net.dts.find(d => String(d.code) === String(selectedDT)); if(dtObj) nodes.push({id: selectedDT, title: 'Direct to DT: '+selectedDT, lat: dtObj.lat, lng: dtObj.lng});
     nodes = window.sortByDistance(nodes, centerLat, centerLng); 
-    document.getElementById('inpConsParent').innerHTML = nodes.map(n => `<option value="${n.id}" ${existingParentRef===String(n.id)?'selected':''}>${n.title} (${window.formatDistance(window.calcDistance(centerLat, centerLng, n.lat, n.lng))})</option>`).join('');
+    const cp = document.getElementById('inpConsParent');
+    if(cp) cp.innerHTML = nodes.map(n => `<option value="${n.id}" ${existingParentRef===String(n.id)?'selected':''}>${n.title} (${window.formatDistance(window.calcDistance(centerLat, centerLng, n.lat, n.lng))})</option>`).join('');
 }
+
 window.toggleSearchBox = function() {
     window.haptic(15); const box = document.getElementById('searchBoxOverlay');
-    if (box.style.display === 'none') { window.safeSetDisplay('searchBoxOverlay', 'flex'); const sb = document.getElementById('appSearchBar'); if(sb) sb.focus(); } else { window.safeSetDisplay('searchBoxOverlay', 'none'); window.clearSearch(); }
+    if (box && box.style.display === 'none') { window.safeSetDisplay('searchBoxOverlay', 'flex'); const sb = document.getElementById('appSearchBar'); if(sb) sb.focus(); } else { window.safeSetDisplay('searchBoxOverlay', 'none'); window.clearSearch(); }
 }
 window.handleSearch = function(e) {
     const query = e.target.value.toLowerCase().trim(), suggPanel = document.getElementById('searchSuggestions');
+    if(!suggPanel) return;
     if(query.length === 0) { suggPanel.classList.remove('active'); return; }
     const net = getActiveNetwork(); if(!net) return; let results = [];
     net.consumers.forEach(c => { if (String(c.kno).toLowerCase().includes(query) || (c.name && c.name.toLowerCase().includes(query))) results.push({ type: 'CONSUMER', id: c.id, title: c.name, desc: `K-No: ${c.kno} | Connected to: ${c.parentRef}` }); });
