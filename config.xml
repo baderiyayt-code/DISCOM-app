@@ -13,6 +13,15 @@
     <allow-intent href="mailto:*" />
     <allow-intent href="geo:*" />
     
+    <!-- FIX FOR LOCALHOST SERVER CONNECTION ERROR -->
+    <preference name="scheme" value="https" />
+    <preference name="hostname" value="localhost" />
+    <allow-navigation href="https://localhost/*" />
+    <preference name="loadUrlTimeoutValue" value="70000" />
+    
+    <!-- BACKUP FIX: Agar naya HTTPS scheme device par support na kare, toh upar ki 4 lines hatakar niche wali line ko uncomment (enable) kar dein -->
+    <!-- <preference name="AndroidInsecureFileModeEnabled" value="true" /> -->
+    
     <!-- HARDWARE ACCELERATION ENABLED -->
     <preference name="AndroidXEnabled" value="true" />
     <preference name="android-hwaccel" value="true" />
