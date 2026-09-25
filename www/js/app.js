@@ -21,6 +21,7 @@ let appState = {
 let historyStack = []; let map = null;
 window.haptic = function(pattern) { if (window.cordova && navigator.vibrate) navigator.vibrate(pattern); };
 
+// ==== 🚀 LOADER & UI HELPERS ====
 window.showLoader = function(text = "Syncing Data...") {
     let loader = document.getElementById('discom-global-loader');
     if (!loader) {
@@ -62,12 +63,8 @@ window.safeSetDisplay = function(elementId, displayValue) {
 
 window.calculateUnsynced = function() {
     let count = 0;
-    if(appState.dirtyItems) {
-        Object.values(appState.dirtyItems).forEach(arr => count += arr.length);
-    }
-    if(appState.deletedItems) {
-        Object.values(appState.deletedItems).forEach(arr => count += arr.length);
-    }
+    if(appState.dirtyItems) Object.values(appState.dirtyItems).forEach(arr => count += arr.length);
+    if(appState.deletedItems) Object.values(appState.deletedItems).forEach(arr => count += arr.length);
     appState.unsyncedCount = count;
     updateSyncUI();
 };
@@ -90,17 +87,6 @@ const i18n = {
         toastSettings: "Settings Saved!", toastDel: "Deleted Successfully!", toastImport: "Imported Successfully!",
         addFeeder: "Add Feeder", saveFeeder: "Save Feeder", searchObj: "Search K-No, Name, DT Code...",
         htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer", logout: "Logout Securely"
-    },
-    hi: {
-        line11: "11 केवी लाइन", lineLT: "एलटी लाइन", dt3ph: "3-फेज डीटी", dt1ph: "1-फेज डीटी", totalCons: "उपभोक्ता",
-        gssMgmt: "जीएसएस प्रबंधन", addNewGss: "नया जीएसएस जोड़ें", manageFdr: "फीडर सेटिंग्स", 
-        export: "डेटा एक्सपोर्ट", exportPdf: "PDF एक्सपोर्ट", exportDxf: "DXF एक्सपोर्ट", exportKml: "KML एक्सपोर्ट", exportCsv: "CSV एक्सपोर्ट", 
-        importLabel: "बैकअप और रिस्टोर", exportJson: "बैकअप बनाएं", importJson: "बैकअप डालें", system: "सिस्टम", settings: "सेटिंग्स", about: "ऐप के बारे में",
-        appLanguage: "ऐप की भाषा", distUnit: "दूरी इकाई", gpsInterval: "GPS अंतराल", gpsAcc: "GPS सटीकता", resetData: "डेटा रीसेट करें",
-        confirmLoc: "लोकेशन सेट करें", confirmHere: "कन्फर्म करें", cancel: "रद्द", setNewLoc: "नया लोकेशन सेट करें", target: "लक्ष्य",
-        toastSettings: "सेटिंग्स सेव हो गईं!", toastDel: "सफलतापूर्वक डिलीट हुआ!", toastImport: "सफलतापूर्वक इम्पोर्ट हुआ!",
-        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सेव करें", searchObj: "सर्च करें (K-No, नाम, DT)...",
-        htPole: "HT पोल", ltPole: "LT पोल", line: "लाइन", dt: "ट्रांसफार्मर", consumer: "उपभोक्ता", logout: "लॉगआउट करें"
     }
 };
 
@@ -165,32 +151,23 @@ window.setupRealtimeSync = function() {
 };
 
 window.addEventListener('online', async () => {
-    setSyncStatus('syncing');
-    showToast("Internet Connected! Auto-syncing...");
+    setSyncStatus('syncing'); showToast("Internet Connected! Auto-syncing...");
     const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
     const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
     if (hasDirty || hasDeleted) {
         await window.syncToSupabase(false);
         setTimeout(() => { pullFromSupabase(true); }, 3000); 
-    } else {
-        pullFromSupabase(true);
-    }
+    } else { pullFromSupabase(true); }
 });
-window.addEventListener('offline', () => {
-    setSyncStatus('offline');
-    showToast("Offline Mode Active. Data saved locally.");
-});
+window.addEventListener('offline', () => { setSyncStatus('offline'); showToast("Offline Mode Active. Data saved locally."); });
 
-function cleanData(arr) {
-    return arr.map(obj => { let cleaned = {}; for(let key in obj) { if(obj[key] !== undefined && obj[key] !== null) cleaned[key] = obj[key]; } return cleaned; });
-}
+function cleanData(arr) { return arr.map(obj => { let cleaned = {}; for(let key in obj) { if(obj[key] !== undefined && obj[key] !== null) cleaned[key] = obj[key]; } return cleaned; }); }
 
-// ==== 🚀 UNIVERSAL SYNC DELETION & UPSERT ====
+// ==== 🚀 SYNC TO SUPABASE (UPSERT & DELETE) ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     if (!navigator.onLine) { setSyncStatus('offline'); if(manual) showToast("Saved Locally! Will sync when online."); return; }
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
-    
     if(!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
     if(!appState.deletedItems) appState.deletedItems = { gss: [], feeders: [], objects: [] };
     
@@ -206,26 +183,18 @@ window.syncToSupabase = async function(manual = false) {
         let gssPayload = [], fdrPayload = [], objPayload = [], photoPayload = [];
 
         Object.values(appState.gssNodes).forEach(g => {
-            if(g && g.code && checkDirty('GSS', g.code)) { 
-                gssPayload.push({ gss_code: String(g.code), gss_name: g.name, lat: g.lat, lng: g.lng, user_id: uid }); 
-            }
+            if(g && g.code && checkDirty('GSS', g.code)) { gssPayload.push({ gss_code: String(g.code), gss_name: g.name, lat: g.lat, lng: g.lng, user_id: uid, updated_at: new Date(g.updatedAt||Date.now()).toISOString() }); }
         });
 
         Object.keys(appState.feeders).forEach(fCode => {
             const net = appState.feeders[fCode];
-            if(net && net.feeder && net.feeder.code && checkDirty('FEEDER', fCode)) { 
-                fdrPayload.push({ feeder_code: String(fCode), gss_code: String(net.feeder.parentGss), feeder_name: net.feeder.name, user_id: uid }); 
-            }
+            if(net && net.feeder && net.feeder.code && checkDirty('FEEDER', fCode)) { fdrPayload.push({ feeder_code: String(fCode), gss_code: String(net.feeder.parentGss), feeder_name: net.feeder.name, user_id: uid, updated_at: new Date(net.feeder.updatedAt||Date.now()).toISOString() }); }
             
             const processNode = (p, type) => {
                 if(checkDirty(type, p.id)) {
                     let copy = { ...p };
-                    if(copy.photo && copy.photo.startsWith('data:image')) { 
-                        photoPayload.push({ parent_id: String(p.id), image_data: copy.photo, user_id: uid }); 
-                        copy.hasPhoto = true; 
-                    } else { copy.hasPhoto = !!copy.hasPhoto; }
-                    delete copy.photo; 
-                    objPayload.push({ id: String(p.id), feeder_code: String(fCode), type: type, data: copy, user_id: uid }); 
+                    if(copy.photo && copy.photo.startsWith('data:image')) { photoPayload.push({ parent_id: String(p.id), image_data: copy.photo, user_id: uid }); copy.hasPhoto = true; } else { copy.hasPhoto = !!copy.hasPhoto; }
+                    delete copy.photo; objPayload.push({ id: String(p.id), feeder_code: String(fCode), type: type, data: copy, user_id: uid }); 
                 }
             };
             if(Array.isArray(net.poles)) net.poles.forEach(p => processNode(p, 'POLE'));
@@ -239,7 +208,6 @@ window.syncToSupabase = async function(manual = false) {
         if (objPayload.length > 0) await supabaseClient.from('network_objects').upsert(JSON.parse(JSON.stringify(cleanData(objPayload))));
         if (photoPayload.length > 0) await supabaseClient.from('object_photos').upsert(photoPayload);
 
-        // TRUE UNIVERSAL CLOUD DELETION
         if (appState.deletedItems.gss && appState.deletedItems.gss.length > 0) await supabaseClient.from('gss_records').delete().eq('user_id', uid).in('gss_code', appState.deletedItems.gss.map(String));
         if (appState.deletedItems.feeders && appState.deletedItems.feeders.length > 0) await supabaseClient.from('feeder_records').delete().eq('user_id', uid).in('feeder_code', appState.deletedItems.feeders.map(String));
         if (appState.deletedItems.objects && appState.deletedItems.objects.length > 0) {
@@ -251,14 +219,13 @@ window.syncToSupabase = async function(manual = false) {
         appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
         appState.deletedItems = { gss: [], feeders: [], objects: [] };
         window.calculateUnsynced();
-        
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
         setSyncStatus('synced');
     } catch (err) { console.error("Sync Error:", err); setSyncStatus('offline'); } 
     finally { if(manual) window.hideLoader(); setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
 }
 
-// ==== 🚀 TRUE OFFLINE-FIRST MERGE ("LATEST DATA WINS") ====
+// ==== 🚀 TRUE LATEST-DATA-WINS PULL ====
 async function pullFromSupabase(isBackground = true) {
     if (!navigator.onLine) { setSyncStatus('offline'); return; }
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
@@ -272,23 +239,42 @@ async function pullFromSupabase(isBackground = true) {
             supabaseClient.from('network_objects').select('*').eq('user_id', uid)
         ]);
 
+        const isCloudEmpty = (!gssRes.data || gssRes.data.length === 0) && (!objRes.data || objRes.data.length === 0);
+        let hasLocalData = false;
+        if(appState.feeders) { Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].poles.length > 0 || appState.feeders[fCode].dts.length > 0) hasLocalData = true; }); }
+
+        if (isCloudEmpty && hasLocalData) {
+            window.hideLoader();
+            setTimeout(() => { window.syncToSupabase(false); }, 1500);
+            return;
+        }
+
         let newGss = {}, newFeeders = {};
         const oldFeeders = appState.feeders; 
 
         if (gssRes.data) {
             gssRes.data.forEach(g => {
-                // Keep local GSS if it's dirty (not yet synced)
-                if (!checkDirty('GSS', g.gss_code)) {
-                    newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng };
-                }
+                const localG = appState.gssNodes[g.gss_code];
+                const cloudTime = new Date(g.updated_at).getTime() || 0;
+                const localTime = localG ? (localG.updatedAt || 0) : 0;
+                if (!localG || cloudTime >= localTime) {
+                    newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng, updatedAt: cloudTime };
+                } else { newGss[g.gss_code] = localG; }
             });
         }
 
         if (fdrRes.data) {
             fdrRes.data.forEach(f => {
-                if (!checkDirty('FEEDER', f.feeder_code)) {
-                    if(!newFeeders[f.feeder_code]) newFeeders[f.feeder_code] = { feeder: {}, poles: [], dts: [], lines: [], consumers: [] };
-                    newFeeders[f.feeder_code].feeder = { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" };
+                const localF = appState.feeders[f.feeder_code];
+                const cloudTime = new Date(f.updated_at).getTime() || 0;
+                const localTime = localF && localF.feeder ? (localF.feeder.updatedAt || 0) : 0;
+                
+                if (!newFeeders[f.feeder_code]) newFeeders[f.feeder_code] = { feeder: {}, poles: [], dts: [], lines: [], consumers: [] };
+                
+                if (!localF || cloudTime >= localTime) {
+                    newFeeders[f.feeder_code].feeder = { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01", updatedAt: cloudTime };
+                } else {
+                    newFeeders[f.feeder_code].feeder = localF.feeder;
                 }
             });
         }
@@ -314,7 +300,7 @@ async function pullFromSupabase(isBackground = true) {
         };
         injectDirty('POLE', 'poles'); injectDirty('DT', 'dts'); injectDirty('LINE', 'lines'); injectDirty('CONSUMER', 'consumers');
 
-        // 2. CLOUD TIMESTAMP COMPARISON (LATEST WINS)
+        // 2. CLOUD TIMESTAMP COMPARISON
         if (objRes.data) {
             objRes.data.forEach(obj => {
                 const fc = String(obj.feeder_code);
@@ -333,22 +319,16 @@ async function pullFromSupabase(isBackground = true) {
                 const cloudTime = d.updatedAt || 0;
                 const localTime = localObj ? (localObj.updatedAt || 0) : 0;
 
-                // "LATEST DATA WINS" Logic Check
                 if (localObj && localTime > cloudTime) {
                     window.markDirty(obj.type, d.id);
-                    d = localObj; // Reject cloud, keep local
+                    d = localObj; 
                 } else if (localObj && localObj.photo && !d.hasPhoto) {
-                    d.photo = localObj.photo; // Save local photo cache if cloud is newer but lacks photo
+                    d.photo = localObj.photo; 
                 }
 
-                // Push winning data
-                const existsInNew = newFeeders[fc][obj.type === 'POLE' ? 'poles' : obj.type === 'DT' ? 'dts' : obj.type === 'LINE' ? 'lines' : 'consumers'].some(x => x.id === d.id);
-                if(!existsInNew) {
-                    if (obj.type === 'POLE') newFeeders[fc].poles.push(d);
-                    if (obj.type === 'DT') newFeeders[fc].dts.push(d);
-                    if (obj.type === 'LINE') newFeeders[fc].lines.push(d);
-                    if (obj.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
-                }
+                const arrName = obj.type === 'POLE' ? 'poles' : obj.type === 'DT' ? 'dts' : obj.type === 'LINE' ? 'lines' : 'consumers';
+                newFeeders[fc][arrName] = newFeeders[fc][arrName].filter(x => x.id !== d.id);
+                newFeeders[fc][arrName].push(d);
             });
         }
 
@@ -391,6 +371,7 @@ function triggerPersistence(incrementSync = true) {
     }
 }
 
+// ==== 🚀 AUTHENTICATION ====
 let authMode = 'login';
 window.toggleAuthMode = function() {
     authMode = authMode === 'login' ? 'signup' : 'login';
@@ -456,6 +437,7 @@ window.handleSupabaseLogout = async function() {
     if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.clear(); location.reload(); 
 }
 
+// ==== MAP & GPS SYSTEM ====
 let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTileIndex = 0;
 window.followLiveLocation = false;
 
@@ -512,7 +494,6 @@ function initMapSystem() {
     map.on('move', () => { 
         const c = map.getCenter(); const rc = document.getElementById('reticle-coordinates'); if(rc) rc.innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
         const pin = document.getElementById('center-placement-pin');
-        
         if (pin && pin.style.display === 'block') {
             const net = getActiveNetwork();
             if(net) {
@@ -520,14 +501,8 @@ function initMapSystem() {
                 if(net.feeder && net.feeder.parentGss && appState.gssNodes[net.feeder.parentGss]) nodes.push(appState.gssNodes[net.feeder.parentGss]);
                 if(nodes.length > 0) {
                     let nearest = nodes[0]; let minDist = window.calcDistance(c.lat, c.lng, nearest.lat, nearest.lng);
-                    for(let n of nodes) { 
-                        if(n.lat && n.lng) {
-                            let d = window.calcDistance(c.lat, c.lng, n.lat, n.lng); 
-                            if(d < minDist) { minDist = d; nearest = n; }
-                        }
-                    }
-                    const distEl = document.getElementById('live-distance-meter'); 
-                    if(distEl) { distEl.innerText = `Nearest Node: ${window.formatDistance(minDist)}`; distEl.style.display = 'block'; }
+                    for(let n of nodes) { if(n.lat && n.lng) { let d = window.calcDistance(c.lat, c.lng, n.lat, n.lng); if(d < minDist) { minDist = d; nearest = n; } } }
+                    const distEl = document.getElementById('live-distance-meter'); if(distEl) { distEl.innerText = `Nearest Node: ${window.formatDistance(minDist)}`; distEl.style.display = 'block'; }
                 }
             }
         } else { window.safeSetDisplay('live-distance-meter', 'none'); }
@@ -537,17 +512,10 @@ function initMapSystem() {
 
 function centerMapOnGSS() {
     if(!map) return; 
-    let targetGss = null;
-    const net = getActiveNetwork();
-    if (net && net.feeder && appState.gssNodes[net.feeder.parentGss]) {
-        targetGss = appState.gssNodes[net.feeder.parentGss];
-    } else if (Object.keys(appState.gssNodes).length > 0) {
-        targetGss = appState.gssNodes[Object.keys(appState.gssNodes)[0]];
-    }
-    
-    if (targetGss && typeof targetGss.lat !== 'undefined') {
-        setTimeout(() => { map.invalidateSize(); map.setView([parseFloat(targetGss.lat), parseFloat(targetGss.lng)], 16); }, 200);
-    }
+    let targetGss = null; const net = getActiveNetwork();
+    if (net && net.feeder && appState.gssNodes[net.feeder.parentGss]) { targetGss = appState.gssNodes[net.feeder.parentGss]; } 
+    else if (Object.keys(appState.gssNodes).length > 0) { targetGss = appState.gssNodes[Object.keys(appState.gssNodes)[0]]; }
+    if (targetGss && typeof targetGss.lat !== 'undefined') { setTimeout(() => { map.invalidateSize(); map.setView([parseFloat(targetGss.lat), parseFloat(targetGss.lng)], 16); }, 200); }
 }
 
 window.liveTrackingId = null; window.liveUserMarker = null;
@@ -568,6 +536,7 @@ window.toggleLiveTracking = function() {
     }
 }
 
+// ==== BOTTOM SHEET & RENDERING ENGINE ====
 window.openObjectSheet = function(type, id) {
     window.haptic(15); const net = getActiveNetwork(); if(!net && type !== 'GSS') return;
     let obj = null, title = '', subtitle = '', details = '', actions = '';
@@ -1087,35 +1056,6 @@ window.deleteGssAndFeederStrict = function(code) {
     renderEntireNetwork(); triggerPersistence(false); window.renderGssSidebarList(); showToast(t("toastDel"));
 }
 
-// ==== 🚀 MANDATORY INITIAL SETUP FOR NEW USERS ====
-window.openAddForm = function(type) {
-    window.toggleSpeedDial(false); 
-    
-    const gssCount = Object.keys(appState.gssNodes).length;
-    const feederCount = Object.keys(appState.feeders).length;
-
-    // Strict Logical Gates
-    if (type !== 'GSS' && gssCount === 0) {
-        alert("Mandatory Setup: Pehle ek GSS (Substation) add karein!");
-        window.openAddGssModal();
-        return;
-    }
-    if (type !== 'GSS' && type !== 'FEEDER' && feederCount === 0) {
-        alert("Mandatory Setup: Pehle kam se kam ek Feeder add karein!");
-        window.openAddNewFeederModal();
-        return;
-    }
-
-    if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { 
-        appState.placementType = type; 
-        window.safeSetDisplay('center-placement-pin', 'block'); 
-        window.safeSetDisplay('bottom-single-action', 'none'); 
-        window.safeSetDisplay('placement-confirm-bar', 'flex'); 
-    } else {
-        window.showFormModal(type, null, null);
-    }
-}
-
 window.openAddGssModal = function() {
     window.toggleSidebar(false);
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addNewGss">Add New GSS</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>GSS Code*</label><input type="text" id="inpGssCode" class="form-input" placeholder="e.g. 132"></div><div class="form-row"><label>GSS Name*</label><input type="text" id="inpGssName" class="form-input" placeholder="e.g. 132/33 kV Substation"></div><button class="btn-action-primary" onclick="window.saveNewGss()">Save GSS at Map Center</button>`);
@@ -1152,6 +1092,34 @@ window.saveFeederConfiguration = function() {
     net.feeder.parentGss = document.getElementById('cfgParentGss').value; 
     net.feeder.updatedAt = Date.now();
     window.markDirty('FEEDER', net.feeder.code); window.closeModal(); renderEntireNetwork(); triggerPersistence(false); showToast(t("toastSettings"));
+}
+
+// ==== 🚀 MANDATORY INITIAL SETUP FOR NEW USERS ====
+window.openAddForm = function(type) {
+    window.toggleSpeedDial(false); 
+    
+    const gssCount = Object.keys(appState.gssNodes).length;
+    const feederCount = Object.keys(appState.feeders).length;
+
+    if (type !== 'GSS' && gssCount === 0) {
+        alert("Mandatory Setup: Pehle ek GSS (Substation) add karein!");
+        window.openAddGssModal();
+        return;
+    }
+    if (type !== 'GSS' && type !== 'FEEDER' && feederCount === 0) {
+        alert("Mandatory Setup: Pehle kam se kam ek Feeder add karein!");
+        window.openAddNewFeederModal();
+        return;
+    }
+
+    if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { 
+        appState.placementType = type; 
+        window.safeSetDisplay('center-placement-pin', 'block'); 
+        window.safeSetDisplay('bottom-single-action', 'none'); 
+        window.safeSetDisplay('placement-confirm-bar', 'flex'); 
+    } else {
+        window.showFormModal(type, null, null);
+    }
 }
 
 window.confirmPlacement = function() { 
@@ -1453,33 +1421,75 @@ window.saveConsumerData = function(editId) {
     window.closeModal(); renderEntireNetwork(); triggerPersistence(false); showToast(editId ? "Updated Successfully" : t("toastAdded"));
 }
 
-window.confirmObjectMove = function() {
-    window.haptic(30); if (!appState.activeMove) return; saveSnapshot(); const c = map.getCenter(); const lat = parseFloat(c.lat.toFixed(6)), lng = parseFloat(c.lng.toFixed(6)), net = getActiveNetwork(); 
-    if (appState.activeMove.type === 'GSS') {
-        const gss = appState.gssNodes[appState.activeMove.id];
-        if(gss) { 
-            gss.lat = lat; gss.lng = lng; gss.updatedAt = Date.now(); window.markDirty('GSS', gss.code);
-            net.lines.forEach(l => { 
-                if (String(l.fromNode) === 'GSS_' + gss.code || String(l.toNode) === 'GSS_' + gss.code) { 
-                    l.updatedAt = Date.now(); window.markDirty('LINE', l.id); 
-                } 
-            }); 
+window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
+window.updateDTRatingDropdowns = function(phaseId, ratingId, existingVal) {
+    const phase = document.getElementById(phaseId).value, ratingSel = document.getElementById(ratingId);
+    let opts = '';
+    if(phase === 'Single Phase') opts = `<option value="5">5 kVA</option><option value="10">10 kVA</option><option value="16" selected>16 kVA</option><option value="25">25 kVA</option>`;
+    else opts = `<option value="10">10 kVA</option><option value="16">16 kVA</option><option value="25" selected>25 kVA</option><option value="40">40 kVA</option><option value="63">63 kVA</option><option value="100">100 kVA</option><option value="160">160 kVA</option><option value="250">250 kVA</option><option value="315">315 kVA</option><option value="500">500 kVA</option>`;
+    if(ratingSel){ ratingSel.innerHTML = opts; if(existingVal) ratingSel.value = existingVal; }
+}
+
+window.filterConsumerPoles = function(existingParentRef) {
+    const net = getActiveNetwork(); if(!net) return;
+    const selectedDT = document.getElementById('inpConsDT').value;
+    const {lat, lng} = getSafeCoords();
+    let nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(selectedDT)).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: p.poleNo}));
+    const dtObj = net.dts.find(d => String(d.code) === String(selectedDT)); if(dtObj) nodes.push({id: selectedDT, title: 'Direct to DT: '+selectedDT, lat: dtObj.lat, lng: dtObj.lng});
+    nodes = window.sortByDistance(nodes, lat, lng); 
+    const cp = document.getElementById('inpConsParent');
+    if(cp) cp.innerHTML = nodes.map(n => `<option value="${n.id}" ${existingParentRef===String(n.id)?'selected':''}>${n.title} (${window.formatDistance(window.calcDistance(lat, lng, n.lat, n.lng))})</option>`).join('');
+}
+
+window.toggleSearchBox = function() {
+    window.haptic(15); const box = document.getElementById('searchBoxOverlay');
+    if (box && box.style.display === 'none') { window.safeSetDisplay('searchBoxOverlay', 'flex'); const sb = document.getElementById('appSearchBar'); if(sb) sb.focus(); } else { window.safeSetDisplay('searchBoxOverlay', 'none'); window.clearSearch(); }
+}
+window.handleSearch = function(e) {
+    try {
+        const query = e.target.value.toLowerCase().trim();
+        const suggPanel = document.getElementById('searchSuggestions');
+        if(!suggPanel) return;
+        if(query.length === 0) { suggPanel.classList.remove('active'); suggPanel.style.display = 'none'; return; }
+        
+        const net = getActiveNetwork(); if(!net) return; let results = [];
+        
+        if(Array.isArray(net.consumers)) {
+            net.consumers.forEach(c => { 
+                if (String(c.kno).toLowerCase().includes(query) || (c.name && c.name.toLowerCase().includes(query))) 
+                    results.push({ type: 'CONSUMER', id: c.id, title: c.name, desc: `K-No: ${c.kno} | Connected to: ${c.parentRef}`, lat: parseFloat(c.lat), lng: parseFloat(c.lng) }); 
+            });
         }
-    } else {
-        if (appState.activeMove.type === 'POLE') {
-            const p = net.poles.find(x => x.id === appState.activeMove.id);
-            if (p) { 
-                p.lat = lat; p.lng = lng; p.updatedAt = Date.now(); window.markDirty('POLE', p.id);
-                net.dts.forEach(d => { if (String(d.parentPole) === String(p.poleNo)) { d.lat = lat; d.lng = lng; d.updatedAt = Date.now(); window.markDirty('DT', d.id); } }); 
-                net.lines.forEach(l => { 
-                    if (String(l.fromNode) === 'POLE_' + p.poleNo || String(l.toNode) === 'POLE_' + p.poleNo) { 
-                        l.updatedAt = Date.now(); window.markDirty('LINE', l.id); 
-                    } 
-                }); 
-            }
-        } else if (appState.activeMove.type === 'CONSUMER') { const cons = net.consumers.find(x => x.id === appState.activeMove.id); if (cons) { cons.lat = lat; cons.lng = lng; cons.updatedAt = Date.now(); window.markDirty('CONSUMER', cons.id); } }
+        if(Array.isArray(net.dts)) {
+            net.dts.forEach(d => { 
+                if (String(d.code).toLowerCase().includes(query) || String(d.rating).includes(query) || (d.location && d.location.toLowerCase().includes(query)) || (d.name && d.name.toLowerCase().includes(query))) 
+                    results.push({ type: 'DT', id: d.id, title: d.name ? d.name : `DT Code: ${d.code}`, desc: `Rating: ${d.rating} kVA | Loc: ${d.location || 'N/A'}`, lat: parseFloat(d.lat), lng: parseFloat(d.lng) }); 
+            });
+        }
+        
+        if (results.length > 0) {
+            suggPanel.innerHTML = results.slice(0, 15).map(r => `<div class="suggestion-item" onclick="window.selectSearchResult('${r.type}', '${r.id}', ${r.lat}, ${r.lng})" style="padding:10px; border-bottom:1px solid #eee; cursor:pointer; background:#fff;"><div class="sugg-title" style="font-weight:bold; color:#0f172a;"><span>${r.type === 'CONSUMER' ? '<i class="fa-solid fa-house" style="color:#3b82f6;"></i>' : '<i class="fa-solid fa-bolt" style="color:#f59e0b;"></i>'} ${r.title}</span></div><div class="sugg-desc" style="font-size:0.8rem; color:#64748b;">${r.desc}</div></div>`).join('');
+            suggPanel.classList.add('active');
+            suggPanel.style.display = 'block';
+        } else { 
+            suggPanel.innerHTML = `<div style="padding:10px 12px; font-size:0.8rem; color:#64748b; background:#fff;">No results found</div>`; 
+            suggPanel.classList.add('active'); 
+            suggPanel.style.display = 'block';
+        }
+    } catch(err) { console.error("Search failed:", err); }
+}
+
+window.clearSearch = function() { 
+    const sb = document.getElementById('appSearchBar'); if(sb) sb.value = ''; 
+    const ss = document.getElementById('searchSuggestions'); if(ss) { ss.classList.remove('active'); ss.style.display = 'none'; } 
+}
+
+window.selectSearchResult = function(type, id, lat, lng) {
+    if(!isNaN(lat) && !isNaN(lng) && map) { 
+        window.clearSearch(); window.toggleSearchBox();
+        map.flyTo([lat, lng], 19, { duration: 1 }); 
+        setTimeout(() => { window.openObjectSheet(type, id); }, 1200);
     }
-    window.cancelObjectMove(); triggerPersistence(false); showToast("Location Updated!");
 }
 
 let appInitialized = false;
