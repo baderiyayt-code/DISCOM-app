@@ -299,6 +299,38 @@ body { background: var(--bg-base); color: var(--text-main); overflow: hidden; wi
 /* CAMERA BUTTON */
 .btn-camera { background:rgba(59,130,246,0.1); color:var(--accent); border:2px dashed var(--accent); padding:12px; width:100%; min-height:48px; border-radius:var(--radius-md); font-weight:700; cursor:pointer; }
 .photo-preview { width:100%; height:150px; object-fit:cover; border-radius:var(--radius-md); margin-top:10px; }
+/* ==== 🔥 PREMIUM AUTH SCREEN (Fixed UI) 🔥 ==== */
+#auth-screen {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    display: flex; align-items: center; justify-content: center; z-index: 9999;
+}
+.auth-card {
+    background: #ffffff;
+    padding: 40px 30px; border-radius: 24px; 
+    width: 90%; max-width: 400px; text-align: center; 
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+.auth-logo { font-size: 3.5rem; color: #2563eb; margin-bottom: 15px; }
+.auth-card h2 { margin-bottom: 5px; font-weight: 800; color: #0f172a; font-size: 1.5rem; }
+.auth-card p { color: #64748b; margin-bottom: 30px; font-size: 0.95rem; font-weight: 600; }
 
-/* Global Loader Extension */
-#discom-global-loader { background: var(--bg-base) !important; }
+.form-group { position: relative; margin-bottom: 16px; text-align: left; }
+.form-group i { position: absolute; left: 16px; top: 16px; color: #94a3b8; font-size: 1.1rem; z-index: 2; }
+.form-group .form-input { 
+    width: 100%; min-height: 48px; border-radius: 12px; 
+    border: 1.5px solid #cbd5e1; padding: 0 15px 0 45px !important; /* Perfect Icon Spacing */
+    font-size: 1rem; color: #0f172a; background: #f8fafc;
+    transition: all 0.2s ease-in-out;
+}
+.form-group .form-input:focus { border-color: #2563eb; background: #ffffff; box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1); outline: none; }
+
+.btn-auth {
+    width: 100%; min-height: 48px; background: #2563eb; color: white;
+    border: none; border-radius: 12px; font-size: 1rem; font-weight: 700;
+    cursor: pointer; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); transition: 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 20px;
+}
+.btn-auth:active { transform: scale(0.98); background: #1d4ed8; }
+
+.auth-toggle { margin-top: 25px; font-size: 0.9rem; font-weight: 700; color: #2563eb; cursor: pointer; }
