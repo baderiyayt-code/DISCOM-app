@@ -108,6 +108,17 @@ const i18n = {
         toastSettings: "Settings Saved!", toastDel: "Deleted Successfully!", toastImport: "Imported Successfully!",
         addFeeder: "Add Feeder", saveFeeder: "Save Feeder", searchObj: "Search K-No, Name, DT Code...",
         htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer", logout: "Logout Securely"
+    },
+    hi: {
+        line11: "11 केवी लाइन", lineLT: "एलटी लाइन", dt3ph: "3-फेज डीटी", dt1ph: "1-फेज डीटी", totalCons: "उपभोक्ता",
+        gssMgmt: "जीएसएस प्रबंधन", addNewGss: "नया जीएसएस जोड़ें", manageFdr: "फीडर सेटिंग्स", 
+        export: "डेटा एक्सपोर्ट", exportPdf: "PDF एक्सपोर्ट", exportDxf: "DXF एक्सपोर्ट", exportKml: "KML एक्सपोर्ट", exportCsv: "CSV एक्सपोर्ट", 
+        importLabel: "बैकअप और रिस्टोर", exportJson: "बैकअप बनाएं", importJson: "बैकअप डालें", system: "सिस्टम", settings: "सेटिंग्स", about: "ऐप के बारे में",
+        appLanguage: "ऐप की भाषा", distUnit: "दूरी इकाई", gpsInterval: "GPS अंतराल", gpsAcc: "GPS सटीकता", resetData: "डेटा रीसेट करें",
+        confirmLoc: "लोकेशन सेट करें", confirmHere: "कन्फर्म करें", cancel: "रद्द", setNewLoc: "नया लोकेशन सेट करें", target: "लक्ष्य",
+        toastSettings: "सेटिंग्स सेव हो गईं!", toastDel: "सफलतापूर्वक डिलीट हुआ!", toastImport: "सफलतापूर्वक इम्पोर्ट हुआ!",
+        addFeeder: "फीडर जोड़ें", saveFeeder: "फीडर सेव करें", searchObj: "सर्च करें (K-No, नाम, DT)...",
+        htPole: "HT पोल", ltPole: "LT पोल", line: "लाइन", dt: "ट्रांसफार्मर", consumer: "उपभोक्ता", logout: "लॉगआउट करें"
     }
 };
 
@@ -933,112 +944,6 @@ window.openSettingsPage = function() {
 window.closeSettingsPage = function() { const sp = document.getElementById('settings-page'); if(sp) sp.classList.remove('open'); }
 window.switchFeeder = function(code) { if (appState.feeders[code]) { appState.currentFeederCode = code; renderEntireNetwork(); triggerPersistence(false); centerMapOnGSS(); } }
 
-window.calcDistance = function(lat1, lon1, lat2, lon2) {
-    const R = 6371e3, p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180, dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-window.formatDistance = function(m) { return (appState.settings.unit === 'km') ? (m / 1000).toFixed(3) + ' KM' : m.toFixed(1) + ' M'; }
-window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a, b) => window.calcDistance(lat, lng, a.lat, a.lng) - window.calcDistance(lat, lng, b.lat, b.lng)); }
-
-function getLineSpec(type) {
-    const t = (type || '').toUpperCase();
-    if (t.includes('UG CABLE')) return { name: '11 KV UG CABLE', color: '#000000', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'ug-cable-line' };
-    if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 2.2, dash: undefined, filterKey: 'linesLT', lineClass: 'isometric-line' };
-    return { name: '11 KV LINE', color: '#2563eb', weight: 3.5, dash: undefined, filterKey: 'lines11', lineClass: 'isometric-line' };
-}
-
-function getNodeCoords(nodeId) { 
-    const net = getActiveNetwork(); if(!net) return null;
-    const idStr = String(nodeId);
-    if (idStr.startsWith('GSS_')) { const code = idStr.replace('GSS_', ''); if (appState.gssNodes[code]) return { lat: appState.gssNodes[code].lat, lng: appState.gssNodes[code].lng }; }
-    if (idStr.startsWith('DT_')) { const code = idStr.replace('DT_', ''), d = net.dts.find(x => String(x.code) === code); if (d) return { lat: d.lat, lng: d.lng }; }
-    if (idStr.startsWith('POLE_')) { const code = idStr.replace('POLE_', ''), p = net.poles.find(x => String(x.poleNo) === code); if (p) return { lat: p.lat, lng: p.lng }; }
-    const p = net.poles.find(x => String(x.poleNo) === idStr); if (p) return { lat: p.lat, lng: p.lng };
-    const d = net.dts.find(x => String(x.code) === idStr); if (d) return { lat: d.lat, lng: d.lng };
-    if (appState.gssNodes[idStr]) return { lat: appState.gssNodes[idStr].lat, lng: appState.gssNodes[idStr].lng };
-    if (idStr === 'GSS' || idStr === net.feeder.code) { const g = appState.gssNodes[net.feeder.parentGss]; if(g) return { lat: g.lat, lng: g.lng }; }
-    return null; 
-}
-
-function updateOrphanStatus() {
-    appState.orphanPoleIds.clear(); 
-    const net = getActiveNetwork(); 
-    if(!net || !net.feeder) return;
-    
-    try {
-        const adj = {};
-        const gssCode = net.feeder.parentGss;
-        const gssId = 'GSS_' + gssCode;
-        adj[gssId] = [];
-
-        if(Array.isArray(net.poles)) net.poles.forEach(p => adj['POLE_' + p.poleNo] = []);
-        if(Array.isArray(net.dts)) net.dts.forEach(d => adj['DT_' + d.code] = []);
-
-        if(Array.isArray(net.dts)) net.dts.forEach(d => {
-            if(d.parentPole) {
-                const pId = 'POLE_' + d.parentPole;
-                if (!adj[pId]) adj[pId] = [];
-                adj[pId].push('DT_' + d.code);
-                if (!adj['DT_' + d.code]) adj['DT_' + d.code] = [];
-                adj['DT_' + d.code].push(pId);
-            }
-        });
-
-        if(Array.isArray(net.lines)) net.lines.forEach(l => {
-            const u = String(l.fromNode), v = String(l.toNode);
-            if (!adj[u]) adj[u] = [];
-            if (!adj[v]) adj[v] = [];
-            adj[u].push(v);
-            adj[v].push(u);
-        });
-
-        const visited = new Set([gssId]);
-        const queue = [gssId];
-
-        while (queue.length > 0) {
-            const curr = queue.shift();
-            (adj[curr] || []).forEach(neighbor => {
-                if (!visited.has(neighbor)) {
-                    visited.add(neighbor);
-                    queue.push(neighbor);
-                }
-            });
-        }
-
-        if(Array.isArray(net.poles)) net.poles.forEach(p => {
-            if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id);
-        });
-        if(Array.isArray(net.dts)) net.dts.forEach(d => {
-            if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id);
-        });
-    } catch(e) { console.warn("Orphan logic bypassed temporarily", e); }
-}
-
-window.runOrphanNodeChecker = function() {
-    updateOrphanStatus(); const net = getActiveNetwork(); if(!net) return;
-    const orphanCount = appState.orphanPoleIds.size;
-    if (orphanCount === 0) return showToast("No orphan poles or nodes found! Network is fully connected.");
-    let html = `<div class="sheet-head"><div class="sheet-title" style="color:#d97706;"><i class="fa-solid fa-network-wired"></i> Orphan Nodes Found (${orphanCount})</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>`;
-    html += `<div style="max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">`;
-    net.poles.forEach(p => { if (appState.orphanPoleIds.has(p.id)) { html += `<div style="display:flex; justify-content:space-between; align-items:center; background:#fef3c7; padding:10px; border-radius:8px;"><div><b>Pole: ${p.poleNo}</b><br><small>Type: ${p.lineType || 'HT'}</small></div><button class="action-btn-sm bg" onclick="window.zoomToEntity('${p.lat}', '${p.lng}')">Zoom</button></div>`; } }); html += `</div>`; openModal(html);
-};
-
-window.zoomToEntity = function(lat, lng) { window.closeModal(); map.flyTo([parseFloat(lat), parseFloat(lng)], 19, { duration: 1 }); };
-
-window.toggleGssFolder = function() {
-    window.haptic(15); const content = document.getElementById('gssFolderContent'), icon = document.getElementById('gssFolderIcon');
-    if (!content || !icon) return; const isHidden = content.style.display === 'none'; window.safeSetDisplay('gssFolderContent', isHidden ? 'block' : 'none'); 
-    icon.className = isHidden ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'; if (isHidden) window.renderGssSidebarList();
-};
-
-window.renderGssSidebarList = function() {
-    const container = document.getElementById('gssListContainer'); if (!container) return; let html = '';
-    Object.values(appState.gssNodes).forEach(gss => {
-        html += `<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-base); padding:8px; border-radius:6px; margin-top:6px; border:1px solid var(--border-glass);"><div><b style="font-size:0.85rem;">${gss.name}</b><br><small style="color:var(--text-sub);">Code: ${gss.code}</small></div><div style="display:flex; gap:4px;"><button class="action-btn-sm bg" onclick="window.relocateGss('${gss.code}')" title="Relocate GSS"><i class="fa-solid fa-location-crosshairs"></i></button><button class="action-btn-sm bg" style="color:var(--danger);" onclick="window.deleteGssAndFeederStrict('${gss.code}')" title="Strict Delete"><i class="fa-solid fa-trash"></i></button></div></div>`;
-    }); container.innerHTML = html;
-};
-
 // ==== EXPORT SYSTEM ====
 function getFormattedDateTime() { const d = new Date(); const pad = (n) => n.toString().padStart(2, '0'); return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; }
 
@@ -1057,9 +962,7 @@ async function smartExportFile(filename, dataBlobOrText, mimeType) {
         showToast("File Downloaded!");
     } catch (err) { 
         console.error("Export Error: ", err); alert("Export failed: " + err.message); 
-    } finally {
-        window.hideLoader();
-    }
+    } finally { window.hideLoader(); }
 }
 
 window.exportFullJSONBackup = async function() { window.toggleSidebar(false); const backupData = JSON.stringify(appState); await smartExportFile(`DISCOM_Backup_${getFormattedDateTime()}.json`, backupData, "application/json"); }
@@ -1119,11 +1022,7 @@ window.generateCadSLDPdf = async function() {
             script.onload = resolve;
             script.onerror = () => reject(new Error("Failed to load jsPDF library. Check internet connection."));
             document.head.appendChild(script);
-        }).catch(err => {
-            window.hideLoader();
-            alert(err.message);
-            return;
-        });
+        }).catch(err => { window.hideLoader(); alert(err.message); return; });
         window.hideLoader();
     }
 
@@ -1175,10 +1074,7 @@ window.generateCadSLDPdf = async function() {
         
         doc.setFont("helvetica", "normal"); doc.setFillColor(255, 255, 255); doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); doc.rect(1189 - 160, 841 - 70, 150, 60, 'FD'); doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.text("DISCOM SLD REPORT", 1189 - 155, 841 - 55); doc.setFontSize(12); doc.text(`Feeder: ${net.feeder.name} (${net.feeder.code})`, 1189 - 155, 841 - 45); 
         await smartExportFile(`SLD_Feeder_${net.feeder.code}_${getFormattedDateTime()}.pdf`, doc.output('blob'), "application/pdf");
-    } catch(e) {
-        alert("PDF Generation Failed: " + e.message);
-        window.hideLoader();
-    }
+    } catch(e) { alert("PDF Generation Failed: " + e.message); window.hideLoader(); }
 }
 
 let appInitialized = false;
