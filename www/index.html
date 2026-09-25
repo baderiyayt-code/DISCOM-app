@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- Security Policy for Cordova to allow external fonts and scripts -->
+    <!-- Security Policy -->
     <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; font-src * data:; style-src * 'unsafe-inline';">
     <title>DISCOM Survey Pro</title>
     
@@ -16,8 +16,8 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-    <!-- Custom CSS (यह फाइल उसी फोल्डर में होनी चाहिए) -->
-    <link rel="stylesheet" href="style.css">
+    <!-- ✅ CORRECTED CUSTOM CSS PATH -->
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
@@ -79,7 +79,6 @@
                 </select>
             </div>
             <button class="icon-btn" onclick="toggleSearchBox()"><i class="fa-solid fa-magnifying-glass"></i></button>
-            <!-- Sleek Sync Dot -->
             <div id="sync-dot-container" class="sync-dot-wrapper" onclick="showSyncDetails()">
                 <div id="sync-status-dot" class="status-dot success-dot"></div>
             </div>
@@ -228,6 +227,8 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    <script src="app.js"></script>
+    
+    <!-- ✅ CORRECTED CUSTOM JS PATH -->
+    <script src="js/app.js"></script>
 </body>
 </html>
