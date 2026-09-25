@@ -21,7 +21,7 @@ let appState = {
 let historyStack = []; let map = null;
 window.haptic = function(pattern) { if (window.cordova && navigator.vibrate) navigator.vibrate(pattern); };
 
-// ==== 🚀 BEAUTIFUL DOMAIN-SPECIFIC LOADER ====
+// ==== 🚀 BEAUTIFUL DOMAIN-SPECIFIC LOADER (POLE TO POLE WIRE) ====
 window.showLoader = function(text = "Syncing Data...") {
     let loader = document.getElementById('discom-global-loader');
     if (!loader) {
@@ -30,16 +30,13 @@ window.showLoader = function(text = "Syncing Data...") {
         loader.innerHTML = `
             <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.85); backdrop-filter:blur(4px); z-index:999999; display:flex; flex-direction:column; justify-content:center; align-items:center;">
                 <svg width="200" height="100" viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
-                    <!-- 4 Poles -->
                     <rect x="20" y="30" width="6" height="50" rx="2" fill="#94a3b8" />
                     <rect x="70" y="30" width="6" height="50" rx="2" fill="#94a3b8" />
                     <rect x="120" y="30" width="6" height="50" rx="2" fill="#94a3b8" />
                     <rect x="170" y="30" width="6" height="50" rx="2" fill="#94a3b8" />
-                    <!-- Animated Wire Drawing from Pole to Pole -->
                     <path d="M 23 30 Q 45 55 73 30 Q 95 55 123 30 Q 145 55 173 30" fill="none" stroke="#eab308" stroke-width="3" stroke-linecap="round" stroke-dasharray="250" stroke-dashoffset="250">
                         <animate attributeName="stroke-dashoffset" values="250;0" dur="1.5s" repeatCount="indefinite" />
                     </path>
-                    <!-- Pulsing Power Nodes -->
                     <circle cx="23" cy="30" r="4" fill="#ef4444"><animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite" begin="0s"/></circle>
                     <circle cx="73" cy="30" r="4" fill="#ef4444"><animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite" begin="0.4s"/></circle>
                     <circle cx="123" cy="30" r="4" fill="#ef4444"><animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite" begin="0.8s"/></circle>
@@ -151,18 +148,32 @@ window.setupRealtimeSync = function() {
     }).subscribe();
 };
 
+// ==== 🚀 BACKGROUND NETWORK WATCHER (AUTO-SYNC) ====
+window.addEventListener('online', () => {
+    setSyncStatus('syncing');
+    showToast("Internet Connected! Auto-syncing...");
+    if (appState.unsyncedCount > 0) {
+        window.syncToSupabase(false).then(() => { pullFromSupabase(true); });
+    } else {
+        pullFromSupabase(true);
+    }
+});
+window.addEventListener('offline', () => {
+    setSyncStatus('offline');
+    showToast("Offline Mode Active. Data saved locally.");
+});
+
 function cleanData(arr) {
     return arr.map(obj => { let cleaned = {}; for(let key in obj) { if(obj[key] !== undefined && obj[key] !== null) cleaned[key] = obj[key]; } return cleaned; });
 }
 
-// ==== 🚀 CRASH-PROOF & OFFLINE-SAFE SYNC ====
+// ==== 🚀 OFFLINE-SAFE SYNC ENGINE ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     
-    // FIX 2: Offline Safety Bypass - App will never hang if no internet
     if (!navigator.onLine) {
         setSyncStatus('offline');
-        if(manual) showToast("Saved Locally! App will sync when online.");
+        if(manual) showToast("Saved Locally! Will sync when online.");
         return; 
     }
 
@@ -174,7 +185,8 @@ window.syncToSupabase = async function(manual = false) {
     const isDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
     if(!isDirty && !isDeleted) { setSyncStatus('synced'); return; }
 
-    window.isSyncingLocal = true; setSyncStatus('syncing'); window.showLoader("Syncing to Cloud...");
+    window.isSyncingLocal = true; setSyncStatus('syncing'); 
+    if(manual) window.showLoader("Syncing to Cloud...");
 
     try {
         const uid = appState.user.id;
@@ -240,13 +252,13 @@ async function pullFromSupabase(isBackground = false) {
         if(appState.feeders) { Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].poles.length > 0 || appState.feeders[fCode].dts.length > 0) hasLocalData = true; }); }
 
         if (isCloudEmpty && hasLocalData) {
-            console.log("Cloud Empty, Local Data exists. Auto-Healing...");
             window.hideLoader();
             setTimeout(() => { window.syncToSupabase(false); }, 1500);
             return;
         }
 
         let newGss = {}, newFeeders = {};
+        const oldFeeders = appState.feeders; // Save to prevent offline data wipe
 
         if (gssRes.data && gssRes.data.length > 0) gssRes.data.forEach(g => { newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng }; });
         if (fdrRes.data && fdrRes.data.length > 0) fdrRes.data.forEach(f => { newFeeders[f.feeder_code] = { feeder: { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] }; });
@@ -257,9 +269,8 @@ async function pullFromSupabase(isBackground = false) {
                 if(!newFeeders[fc]) newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1", subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
                 let d = obj.data; if(!d) return; d.id = obj.id; d.feederCode = fc; 
                 try {
-                    let oldNet = appState.feeders[fc];
-                    if(oldNet) {
-                        let oldArr = obj.type === 'POLE' ? oldNet.poles : obj.type === 'DT' ? oldNet.dts : obj.type === 'CONSUMER' ? oldNet.consumers : null;
+                    if(oldFeeders[fc]) {
+                        let oldArr = obj.type === 'POLE' ? oldFeeders[fc].poles : obj.type === 'DT' ? oldFeeders[fc].dts : obj.type === 'CONSUMER' ? oldFeeders[fc].consumers : null;
                         if(oldArr) { let localObj = oldArr.find(x => x.id === d.id); if(localObj && localObj.photo) d.photo = localObj.photo; }
                     }
                 } catch(e){}
@@ -271,10 +282,29 @@ async function pullFromSupabase(isBackground = false) {
             });
         }
 
-        appState.gssNodes = newGss; appState.feeders = newFeeders;
+        // ==== 🚀 PREVENT OFFLINE DATA LOSS ====
+        // Inject dirty (unsynced) items into the new state before replacing it
+        const injectDirty = (type, arrName) => {
+            if(appState.dirtyItems && appState.dirtyItems[type]) {
+                appState.dirtyItems[type].forEach(id => {
+                    Object.keys(oldFeeders).forEach(fCode => {
+                        let item = oldFeeders[fCode][arrName].find(x => x.id === id);
+                        if(item) {
+                            if(!newFeeders[fCode]) newFeeders[fCode] = { feeder: { code: fCode, name: "Feeder "+fCode, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+                            newFeeders[fCode][arrName] = newFeeders[fCode][arrName].filter(x => x.id !== id);
+                            newFeeders[fCode][arrName].push(item);
+                        }
+                    });
+                });
+            }
+        };
+        injectDirty('POLE', 'poles'); injectDirty('DT', 'dts'); injectDirty('LINE', 'lines'); injectDirty('CONSUMER', 'consumers');
+
+        appState.gssNodes = { ...newGss, ...appState.gssNodes }; // Keep local dirty GSS
+        appState.feeders = newFeeders;
+        
         const validFeeders = Object.keys(newFeeders);
         if(validFeeders.length === 0) appState.currentFeederCode = null; else if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = validFeeders[0];
-        appState.unsyncedCount = 0;
         
         getActiveNetwork(); 
         if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
@@ -985,198 +1015,6 @@ window.deleteGssAndFeederStrict = function(code) {
     renderEntireNetwork(); triggerPersistence(); window.renderGssSidebarList(); showToast(t("toastDel"));
 }
 
-// ==== PERFECT OBJECT MOVER ENGINE ====
-window.startObjectMove = function(type, id, title) {
-    window.haptic(15); window.closeObjectSheet(); appState.activeMove = { type, id }; 
-    window.safeSetDisplay('bottom-single-action', 'none'); window.safeSetDisplay('move-confirm-bar', 'flex'); 
-    const mt = document.getElementById('moveTargetTitle'); if(mt) mt.innerText = `Move: ${title}`;
-    let target = null; let htmlContent = '';
-    if(type === 'GSS') { target = appState.gssNodes[id]; htmlContent = `<svg width="44" height="48" viewBox="0 0 44 48" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="10" width="32" height="32" rx="6" fill="#b91c1c" stroke="#fff" stroke-width="2"/><text x="22" y="30" font-size="12" font-weight="900" fill="#fff" text-anchor="middle">GSS</text></svg>`; } 
-    else {
-        const net = getActiveNetwork(); 
-        if (type === 'POLE') { 
-            target = net.poles.find(x => x.id === id); const isLT = target.lineType === 'LT'; let displayNo = target.poleNo; if (isLT && String(target.poleNo).includes('-')) displayNo = String(target.poleNo).split('-')[1]; 
-            const color = isLT ? '#10b981' : '#fde047';
-            htmlContent = `<svg width="30" height="44" viewBox="0 0 30 44" xmlns="http://www.w3.org/2000/svg"><path d="M 15 16 L 15 44" stroke="#0f172a" stroke-width="4"/><path d="M 15 16 L 15 44" stroke="${color}" stroke-width="2"/><rect x="0" y="0" width="30" height="14" rx="4" fill="${color}" stroke="#0f172a" stroke-width="1.5"/><text x="15" y="10" font-size="9" font-weight="900" fill="#0f172a" text-anchor="middle">${displayNo}</text></svg>`; 
-        } 
-        else if (type === 'CONSUMER') { target = net.consumers.find(x => x.id === id); htmlContent = `<svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg"><circle cx="13" cy="11" r="10" fill="#10b981" stroke="white" stroke-width="1.5"/></svg>`; }
-    }
-    if (target && target.lat && map) { map.panTo([target.lat, target.lng]); const lic = document.getElementById('live-move-icon'); if(lic){ lic.innerHTML = htmlContent; lic.style.display = 'block';} renderEntireNetwork(); }
-}
-
-window.confirmObjectMove = function() {
-    window.haptic(30); if (!appState.activeMove) return; saveSnapshot(); const c = map.getCenter(); const lat = parseFloat(c.lat.toFixed(6)), lng = parseFloat(c.lng.toFixed(6)), net = getActiveNetwork(); 
-    if (appState.activeMove.type === 'GSS') {
-        const gss = appState.gssNodes[appState.activeMove.id];
-        if(gss) { 
-            gss.lat = lat; gss.lng = lng; window.markDirty('GSS', gss.code);
-            net.lines.forEach(l => { 
-                if (String(l.fromNode) === 'GSS_' + gss.code || String(l.toNode) === 'GSS_' + gss.code) { 
-                    window.markDirty('LINE', l.id); 
-                } 
-            }); 
-        }
-    } else {
-        if (appState.activeMove.type === 'POLE') {
-            const p = net.poles.find(x => x.id === appState.activeMove.id);
-            if (p) { 
-                p.lat = lat; p.lng = lng; window.markDirty('POLE', p.id);
-                net.dts.forEach(d => { if (String(d.parentPole) === String(p.poleNo)) { d.lat = lat; d.lng = lng; window.markDirty('DT', d.id); } }); 
-                net.lines.forEach(l => { 
-                    if (String(l.fromNode) === 'POLE_' + p.poleNo || String(l.toNode) === 'POLE_' + p.poleNo) { 
-                        window.markDirty('LINE', l.id); 
-                    } 
-                }); 
-            }
-        } else if (appState.activeMove.type === 'CONSUMER') { const cons = net.consumers.find(x => x.id === appState.activeMove.id); if (cons) { cons.lat = lat; cons.lng = lng; window.markDirty('CONSUMER', cons.id); } }
-    }
-    window.cancelObjectMove(); triggerPersistence(); showToast("Location Updated!");
-}
-
-window.cancelObjectMove = function() { window.haptic(15); appState.activeMove = null; window.safeSetDisplay('live-move-icon', 'none'); window.safeSetDisplay('move-confirm-bar', 'none'); window.safeSetDisplay('bottom-single-action', 'block'); renderEntireNetwork(); }
-
-// ==== 🚀 UNIVERSAL HTML5 EXPORT ENGINE (No File Plugin Crashes) ====
-function getFormattedDateTime() { const d = new Date(); const pad = (n) => n.toString().padStart(2, '0'); return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; }
-
-async function smartExportFile(filename, dataBlobOrText, mimeType) {
-    try {
-        window.showLoader("Generating File..."); 
-        const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
-        const url = URL.createObjectURL(blob); 
-        const a = document.createElement("a"); 
-        a.style.display = 'none'; 
-        a.href = url; 
-        a.download = filename; 
-        document.body.appendChild(a); 
-        a.click(); 
-        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500); 
-        showToast("File Downloaded!");
-    } catch (err) { 
-        console.error("Export Error: ", err); alert("Export failed: " + err.message); 
-    } finally {
-        window.hideLoader();
-    }
-}
-
-window.exportFullJSONBackup = async function() { window.toggleSidebar(false); const backupData = JSON.stringify(appState); await smartExportFile(`DISCOM_Backup_${getFormattedDateTime()}.json`, backupData, "application/json"); }
-window.handleImportChoice = function(e) {
-    const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
-    reader.onload = async function(event) {
-        try { const content = event.target.result; const importedData = JSON.parse(content); if (importedData.feeders && importedData.gssNodes) { appState = importedData; triggerPersistence(); renderEntireNetwork(); showToast("Data Imported Successfully!"); } else alert("Invalid Backup Format! File missing core node structures."); } catch (err) { alert("Error parsing file."); }
-    };
-    reader.readAsText(file); e.target.value = ''; window.toggleSidebar(false);
-}
-
-window.getCSVString = function() {
-    const net = getActiveNetwork(); let csv = "\uFEFFWKT,Name,Type,ParentNode,Details\n"; 
-    Object.values(appState.gssNodes).forEach(g => csv += `"POINT (${g.lng} ${g.lat})","${g.name}","GSS","","Code: ${g.code}"\n`);
-    net.poles.forEach(p => csv += `"POINT (${p.lng} ${p.lat})","Pole ${p.poleNo}","POLE","${p.dtCode||p.poleNo}","Type: ${p.lineType}"\n`);
-    net.dts.forEach(d => csv += `"POINT (${d.lng} ${d.lat})","DT ${d.code}","DT","${d.parentPole}","Rating: ${d.rating}kVA"\n`);
-    net.consumers.forEach(c => csv += `"POINT (${c.lng} ${c.lat})","${c.name}","CONSUMER","${c.parentRef}","KNo: ${c.kno}"\n`);
-    net.lines.forEach(l => { 
-        const c1 = getNodeCoords(l.fromNode), c2 = getNodeCoords(l.toNode);
-        if (c1 && c2) csv += `"LINESTRING (${c1.lng} ${c1.lat}, ${c2.lng} ${c2.lat})","${l.type}","LINE","${l.fromNode} ➔ ${l.toNode}","Dist: ${(l.distanceMeters||0).toFixed(1)}m"\n`; 
-    });
-    return csv;
-}
-window.exportDataToCSV = async function() { window.toggleSidebar(false); await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
-
-window.exportToAutoCAD_DXF = async function() { 
-    window.toggleSidebar(false); let dxf = "0\nSECTION\n2\nENTITIES\n"; 
-    getActiveNetwork().lines.forEach(l => { 
-        const c1 = getNodeCoords(l.fromNode), c2 = getNodeCoords(l.toNode);
-        if (c1 && c2) dxf += `0\nLINE\n8\n${l.type.replace(/\s+/g,'_')}\n10\n${c1.lng}\n20\n${c1.lat}\n30\n0\n11\n${c2.lng}\n21\n${c2.lat}\n31\n0\n`; 
-    }); dxf += "0\nENDSEC\n0\nEOF\n"; 
-    await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.dxf`, dxf, "application/dxf"); 
-}
-
-window.exportToGoogleEarth_KML = async function() { 
-    window.toggleSidebar(false); const esc = u => u.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
-    const feederName = esc(getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; 
-    getActiveNetwork().lines.forEach(l => { 
-        const c1 = getNodeCoords(l.fromNode), c2 = getNodeCoords(l.toNode);
-        if (c1 && c2) kml += `<Placemark><LineString><coordinates>${c1.lng},${c1.lat},0 ${c2.lng},${c2.lat},0</coordinates></LineString></Placemark>\n`; 
-    }); 
-    getActiveNetwork().dts.forEach(d => { if (d.lat) kml += `<Placemark><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>\n`; });
-    kml += "</Document>\n</kml>"; await smartExportFile(`Feeder_${getActiveNetwork().feeder.code}_${getFormattedDateTime()}.kml`, kml, "application/vnd.google-earth.kml+xml"); 
-}
-
-// ==== 🚀 AUTO-DOWNLOADING PDF ENGINE ====
-window.generateCadSLDPdf = async function() { 
-    window.toggleSidebar(false); 
-    const net = getActiveNetwork(); 
-    if(!net) return alert("No Network found!");
-
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-        window.showLoader("Loading PDF Engine...");
-        await new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-            script.onload = resolve;
-            script.onerror = () => reject(new Error("Failed to load jsPDF library. Check internet connection."));
-            document.head.appendChild(script);
-        }).catch(err => {
-            window.hideLoader();
-            alert(err.message);
-            return;
-        });
-        window.hideLoader();
-    }
-
-    try {
-        window.showLoader("Drawing Map to PDF...");
-        const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
-        let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
-        if(appState.gssNodes[net.feeder.parentGss]) allPoints.push(appState.gssNodes[net.feeder.parentGss]);
-        net.dts.forEach(d => allPoints.push(d)); 
-        if(allPoints.length === 0) { window.hideLoader(); return alert("No DT or GSS nodes found to plot!"); }
-        
-        allPoints.forEach(p => { 
-            let lat = parseFloat(p.lat); let lng = parseFloat(p.lng);
-            if(isNaN(lat) || isNaN(lng)) return;
-            if(lat < minLat) minLat = lat; if(lat > maxLat) maxLat = lat; if(lng < minLng) minLng = lng; if(lng > maxLng) maxLng = lng; 
-        });
-        
-        const latBuffer = (maxLat - minLat) * 0.20 || 0.001; const lngBuffer = (maxLng - minLng) * 0.20 || 0.001; minLat -= latBuffer; maxLat += latBuffer; minLng -= lngBuffer; maxLng += lngBuffer;
-        const margin = 60; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2); const latDiff = maxLat - minLat || 0.0001; const lngDiff = maxLng - minLng || 0.0001;
-        const needsRotation = latDiff > lngDiff; let scale, offsetX, offsetY;
-        if (needsRotation) { const scaleX = pdfW / latDiff; const scaleY = pdfH / lngDiff; scale = Math.min(scaleX, scaleY) * 0.80; offsetX = margin + (pdfW - (latDiff * scale)) / 2; offsetY = margin + (pdfH - (lngDiff * scale)) / 2; } 
-        else { const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; scale = Math.min(scaleX, scaleY) * 0.80; offsetX = margin + (pdfW - (lngDiff * scale)) / 2; offsetY = margin + (pdfH - (latDiff * scale)) / 2; }
-        
-        function getPt(lat, lng) { if (needsRotation) { return { x: offsetX + (lat - minLat) * scale, y: offsetY + (lng - minLng) * scale }; } else { return { x: offsetX + (lng - minLng) * scale, y: 841 - (offsetY + (lat - minLat) * scale) }; } }
-
-        doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
-        net.lines.forEach(l => {
-            if(l.type.includes('LT')) return; 
-            const c1 = getNodeCoords(l.fromNode), c2 = getNodeCoords(l.toNode);
-            if(c1 && c2) {
-                const pt1 = getPt(parseFloat(c1.lat), parseFloat(c1.lng)), pt2 = getPt(parseFloat(c2.lat), parseFloat(c2.lng));
-                if (l.phaseType === 'Three Phase' && !l.type.includes('UG CABLE')) {
-                    const dx = pt2.x - pt1.x; const dy = pt2.y - pt1.y; const len = Math.sqrt(dx*dx + dy*dy) || 0.001; const nx = -dy/len; const ny = dx/len; const off = 1.5; 
-                    doc.setDrawColor(239, 68, 68); doc.setLineWidth(1.5); doc.line(pt1.x + nx*off, pt1.y + ny*off, pt2.x + nx*off, pt2.y + ny*off); doc.setDrawColor(234, 179, 8); doc.line(pt1.x, pt1.y, pt2.x, pt2.y); doc.setDrawColor(59, 130, 246); doc.line(pt1.x - nx*off, pt1.y - ny*off, pt2.x - nx*off, pt2.y - ny*off);
-                } else if (l.type.includes('UG CABLE')) { doc.setDrawColor(0, 0, 0); doc.setLineWidth(1.5); doc.line(pt1.x, pt1.y, pt2.x, pt2.y); } 
-                else { doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5); doc.line(pt1.x, pt1.y, pt2.x, pt2.y); }
-            }
-        });
-
-        allPoints.forEach(p => {
-            const pt = getPt(parseFloat(p.lat), parseFloat(p.lng));
-            if(p.code && p.name && p.name.includes("Substation")) { doc.setFillColor(185, 28, 28); doc.rect(pt.x - 7, pt.y - 7, 14, 14, 'FD'); doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.text("GSS", pt.x, pt.y + 2.5, {align:'center'}); } 
-            else if(p.rating) { 
-                const numOnly = String(p.rating).replace(/[^0-9]/g, '');
-                if(p.phase === 'Single Phase') { doc.setFillColor(245, 158, 11); doc.triangle(pt.x, pt.y - 6, pt.x - 6, pt.y + 4, pt.x + 6, pt.y + 4, 'FD'); doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.text(numOnly, pt.x, pt.y + 2.5, {align:'center'}); } 
-                else { doc.setFillColor(245, 158, 11); doc.rect(pt.x - 4.5, pt.y - 4.5, 9, 9, 'FD'); doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.text(numOnly, pt.x, pt.y + 2.2, {align:'center'}); }
-            }
-        });
-        
-        doc.setFont("helvetica", "normal"); doc.setFillColor(255, 255, 255); doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); doc.rect(1189 - 160, 841 - 70, 150, 60, 'FD'); doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.text("DISCOM SLD REPORT", 1189 - 155, 841 - 55); doc.setFontSize(12); doc.text(`Feeder: ${net.feeder.name} (${net.feeder.code})`, 1189 - 155, 841 - 45); 
-        await smartExportFile(`SLD_Feeder_${net.feeder.code}_${getFormattedDateTime()}.pdf`, doc.output('blob'), "application/pdf");
-    } catch(e) {
-        alert("PDF Generation Failed: " + e.message);
-        window.hideLoader();
-    }
-}
-
 window.openAddGssModal = function() {
     window.toggleSidebar(false);
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> <span data-i18n="addNewGss">Add New GSS</span></div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>GSS Code*</label><input type="text" id="inpGssCode" class="form-input" placeholder="e.g. 132"></div><div class="form-row"><label>GSS Name*</label><input type="text" id="inpGssName" class="form-input" placeholder="e.g. 132/33 kV Substation"></div><button class="btn-action-primary" onclick="window.saveNewGss()">Save GSS at Map Center</button>`);
@@ -1213,6 +1051,7 @@ window.saveFeederConfiguration = function() {
 
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
+    if(!navigator.onLine) return alert("Offline Mode: Naya Object banane ke liye pehle internet connection check karein."); // Strict offline creation block
     if (type !== 'GSS' && type !== 'FEEDER') {
         const net = getActiveNetwork();
         if (!net) return alert("Please create a GSS and Feeder first!");
@@ -1224,10 +1063,13 @@ window.openAddForm = function(type) {
 window.confirmPlacement = function() { window.haptic(30); window.safeSetDisplay('center-placement-pin', 'none'); window.safeSetDisplay('placement-confirm-bar', 'none'); window.safeSetDisplay('bottom-single-action', 'block'); const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); }
 window.cancelPlacement = function() { window.haptic(15); window.safeSetDisplay('center-placement-pin', 'none'); window.safeSetDisplay('placement-confirm-bar', 'none'); window.safeSetDisplay('bottom-single-action', 'block'); }
 
-// ==== 🔥 LOCATION ERROR FALLBACK & TRANSLATION REFRESH ====
+// ==== 🔥 FALLBACK COORDINATES ENHANCEMENT ====
 window.showFormModal = function(type, snapLat, snapLng, editId = null) {
     if(map) map.closePopup();
-    const net = getActiveNetwork(); const center = map.getCenter(); 
+    const net = getActiveNetwork(); 
+    let center = { lat: 26.9150, lng: 75.7830 };
+    if(map) center = map.getCenter(); 
+    
     snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
     
     let isEdit = editId !== null; let existingObj = {};
@@ -1238,8 +1080,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         else if(type === 'CONSUMER') existingObj = net.consumers.find(x => x.id === editId) || {};
     }
 
-    const formLat = isEdit ? (existingObj.lat || snapLat) : snapLat; 
-    const formLng = isEdit ? (existingObj.lng || snapLng) : snapLng;
+    const formLat = isEdit ? (existingObj.lat || snapLat) : snapLat; const formLng = isEdit ? (existingObj.lng || snapLng) : snapLng;
 
     if (type === 'GSS') {
         const g = appState.gssNodes[editId]; if (!g) return;
@@ -1287,7 +1128,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         
         window.filterLineNodes = function() {
             const type = document.getElementById('inpLineType').value, n = getActiveNetwork(), fromSel = document.getElementById('inpFromNode'), dtSelectorBox = document.getElementById('ltLineDTSelector');
-            let defaultFrom = isEdit ? existingObj.fromNode : String(document.getElementById('inpDefaultFrom').value); const ctr = map.getCenter(); let nodes = [];
+            let defaultFrom = isEdit ? existingObj.fromNode : String(document.getElementById('inpDefaultFrom').value); const ctr = map ? map.getCenter() : {lat:26.9, lng:75.7}; let nodes = [];
             if (type.includes('LT')) {
                 dtSelectorBox.style.display = 'block'; const targetDTElem = document.getElementById('inpTargetDT'), selectedDT = targetDTElem ? targetDTElem.value : ''; if(!selectedDT) return;
                 nodes = n.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(selectedDT)).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: 'POLE_' + p.poleNo}));
@@ -1303,7 +1144,7 @@ window.showFormModal = function(type, snapLat, snapLng, editId = null) {
         };
         window.syncLineToSelect = function() {
             const type = document.getElementById('inpLineType').value, fromSel = document.getElementById('inpFromNode'), fromVal = fromSel && fromSel.options.length > 0 ? String(fromSel.value) : '';
-            const toSel = document.getElementById('inpToNode'), n = getActiveNetwork(), ctr = map.getCenter(); let nodes = [];
+            const toSel = document.getElementById('inpToNode'), n = getActiveNetwork(), ctr = map ? map.getCenter() : {lat:26.9, lng:75.7}; let nodes = [];
             if (type.includes('LT')) {
                 const targetDTElem = document.getElementById('inpTargetDT'), selectedDT = targetDTElem ? String(targetDTElem.value) : '';
                 nodes = n.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === selectedDT && ('POLE_'+p.poleNo) !== fromVal).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: 'POLE_' + p.poleNo}));
@@ -1384,17 +1225,21 @@ window.saveEditedGss = function(code) {
     window.markDirty('GSS', code); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("GSS Updated"); 
 }
 
-// ==== 🚀 SAFE LOCATION PARSER & AUTO FALLBACK ====
-window.savePoleData = function(editId) { 
-    window.haptic(30); saveSnapshot(); 
-    const category = document.getElementById('inpPoleCategory').value;
-    
+// ==== BUG FIX: BETTER FALLBACK IF GPS/MAP FAILS ====
+function getSafeCoords() {
     let lat = parseFloat(document.getElementById('inpLat').value);
     let lng = parseFloat(document.getElementById('inpLng').value);
     if(isNaN(lat) || isNaN(lng)) {
         if(map) { const c = map.getCenter(); lat = parseFloat(c.lat.toFixed(6)); lng = parseFloat(c.lng.toFixed(6)); }
-        else return alert("Location Error: Failed to acquire coordinates.");
+        else { lat = 26.9150; lng = 75.7830; } // Fallback to safe area instead of crash
     }
+    return {lat, lng};
+}
+
+window.savePoleData = function(editId) { 
+    window.haptic(30); saveSnapshot(); 
+    const category = document.getElementById('inpPoleCategory').value;
+    const {lat, lng} = getSafeCoords();
 
     const structure = document.getElementById('inpPoleStruct').value, condition = document.getElementById('inpPoleCond').value, photo = document.getElementById('inpPolePhoto').value;
     let no = ''; const noElem = document.getElementById('inpPoleNo'); if (noElem) { no = noElem.value.trim(); }
@@ -1474,7 +1319,7 @@ window.saveDTData = function(editId) {
         const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); 
         let lat = net.feeder.lat, lng = net.feeder.lng; 
         if (p) { lat = parseFloat(p.lat); lng = parseFloat(p.lng); }
-        if(isNaN(lat) || isNaN(lng)) { if(map) { const c = map.getCenter(); lat = parseFloat(c.lat.toFixed(6)); lng = parseFloat(c.lng.toFixed(6)); } }
+        if(isNaN(lat) || isNaN(lng)) { const sc = getSafeCoords(); lat = sc.lat; lng = sc.lng; }
         
         const newId = 'DT_'+Date.now();
         net.dts.push({ id: newId, feederCode: fc, parentPole: parentRef, code, name, rating, phase, srNo, tn, mountedOn, location, photo, lat, lng });
@@ -1498,10 +1343,7 @@ window.saveConsumerData = function(editId) {
     } else {
         if(net.consumers.some(c => String(c.kno) === String(kno))) return alert("K-Number already exists in this feeder!");
         let parentType = 'POLE'; const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); if (!p) parentType = 'DT';
-        
-        let lat = parseFloat(document.getElementById('inpLat').value);
-        let lng = parseFloat(document.getElementById('inpLng').value);
-        if(isNaN(lat) || isNaN(lng)) { if(map) { const center = map.getCenter(); lat = parseFloat(center.lat.toFixed(6)); lng = parseFloat(center.lng.toFixed(6)); } }
+        const {lat, lng} = getSafeCoords();
 
         const newId = 'CS_'+Date.now();
         net.consumers.push({ id: newId, feederCode: fc, parentRef, parentType, kno, acNo, meterNo, conType, status, name, load, photo, lat, lng }); 
@@ -1523,15 +1365,15 @@ window.updateDTRatingDropdowns = function(phaseId, ratingId, existingVal) {
 
 window.filterConsumerPoles = function(existingParentRef) {
     const net = getActiveNetwork(); if(!net) return;
-    const selectedDT = document.getElementById('inpConsDT').value, centerLat = parseFloat(document.getElementById('inpLat').value), centerLng = parseFloat(document.getElementById('inpLng').value);
+    const selectedDT = document.getElementById('inpConsDT').value;
+    const {lat, lng} = getSafeCoords();
     let nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(selectedDT)).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: p.poleNo}));
     const dtObj = net.dts.find(d => String(d.code) === String(selectedDT)); if(dtObj) nodes.push({id: selectedDT, title: 'Direct to DT: '+selectedDT, lat: dtObj.lat, lng: dtObj.lng});
-    nodes = window.sortByDistance(nodes, centerLat, centerLng); 
+    nodes = window.sortByDistance(nodes, lat, lng); 
     const cp = document.getElementById('inpConsParent');
-    if(cp) cp.innerHTML = nodes.map(n => `<option value="${n.id}" ${existingParentRef===String(n.id)?'selected':''}>${n.title} (${window.formatDistance(window.calcDistance(centerLat, centerLng, n.lat, n.lng))})</option>`).join('');
+    if(cp) cp.innerHTML = nodes.map(n => `<option value="${n.id}" ${existingParentRef===String(n.id)?'selected':''}>${n.title} (${window.formatDistance(window.calcDistance(lat, lng, n.lat, n.lng))})</option>`).join('');
 }
 
-// ==== 🚀 SAFE LIVE SEARCH ====
 window.toggleSearchBox = function() {
     window.haptic(15); const box = document.getElementById('searchBoxOverlay');
     if (box && box.style.display === 'none') { window.safeSetDisplay('searchBoxOverlay', 'flex'); const sb = document.getElementById('appSearchBar'); if(sb) sb.focus(); } else { window.safeSetDisplay('searchBoxOverlay', 'none'); window.clearSearch(); }
@@ -1542,7 +1384,7 @@ window.handleSearch = function(e) {
         const query = e.target.value.toLowerCase().trim();
         const suggPanel = document.getElementById('searchSuggestions');
         if(!suggPanel) return;
-        if(query.length === 0) { suggPanel.classList.remove('active'); return; }
+        if(query.length === 0) { suggPanel.classList.remove('active'); suggPanel.style.display = 'none'; return; }
         
         const net = getActiveNetwork(); if(!net) return; let results = [];
         
@@ -1560,11 +1402,11 @@ window.handleSearch = function(e) {
         }
         
         if (results.length > 0) {
-            suggPanel.innerHTML = results.slice(0, 15).map(r => `<div class="suggestion-item" onclick="window.selectSearchResult('${r.type}', '${r.id}', ${r.lat}, ${r.lng})" style="padding:10px; border-bottom:1px solid #eee; cursor:pointer;"><div class="sugg-title" style="font-weight:bold; color:#0f172a;"><span>${r.type === 'CONSUMER' ? '<i class="fa-solid fa-house" style="color:#3b82f6;"></i>' : '<i class="fa-solid fa-bolt" style="color:#f59e0b;"></i>'} ${r.title}</span></div><div class="sugg-desc" style="font-size:0.8rem; color:#64748b;">${r.desc}</div></div>`).join('');
+            suggPanel.innerHTML = results.slice(0, 15).map(r => `<div class="suggestion-item" onclick="window.selectSearchResult('${r.type}', '${r.id}', ${r.lat}, ${r.lng})" style="padding:10px; border-bottom:1px solid #eee; cursor:pointer; background:#fff;"><div class="sugg-title" style="font-weight:bold; color:#0f172a;"><span>${r.type === 'CONSUMER' ? '<i class="fa-solid fa-house" style="color:#3b82f6;"></i>' : '<i class="fa-solid fa-bolt" style="color:#f59e0b;"></i>'} ${r.title}</span></div><div class="sugg-desc" style="font-size:0.8rem; color:#64748b;">${r.desc}</div></div>`).join('');
             suggPanel.classList.add('active');
             suggPanel.style.display = 'block';
         } else { 
-            suggPanel.innerHTML = `<div style="padding:10px 12px; font-size:0.8rem; color:#64748b;">No results found</div>`; 
+            suggPanel.innerHTML = `<div style="padding:10px 12px; font-size:0.8rem; color:#64748b; background:#fff;">No results found</div>`; 
             suggPanel.classList.add('active'); 
             suggPanel.style.display = 'block';
         }
