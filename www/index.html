@@ -6,223 +6,182 @@
     <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; font-src * data:; style-src * 'unsafe-inline';">
     <title>DISCOM Survey Pro</title>
     
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
-    <!-- Correct CSS Path -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-    <!-- 🔐 PREMIUM AUTHENTICATION SCREEN -->
+    <!-- 🔐 SIMPLE & STABLE AUTH SCREEN -->
     <div id="auth-screen">
-        <div class="auth-card">
-            <div class="auth-logo"><i class="fa-solid fa-bolt-lightning"></i></div>
-            <h2>DISCOM Survey Pro</h2>
-            <p>Enterprise GIS Mapping</p>
-            
-            <div id="signupNameField" style="display:none;" class="form-group">
-                <i class="fa-solid fa-user"></i>
+        <div class="auth-box">
+            <h2 style="color:#2563eb; margin-bottom: 20px;"><i class="fa-solid fa-bolt"></i> DISCOM Pro</h2>
+            <div id="signupNameField" style="display:none; margin-bottom: 10px;">
                 <input type="text" id="authName" class="form-input" placeholder="Full Name">
             </div>
-            <div class="form-group">
-                <i class="fa-solid fa-envelope"></i>
+            <div style="margin-bottom: 10px;">
                 <input type="email" id="authEmail" class="form-input" placeholder="Email Address">
             </div>
-            <div class="form-group">
-                <i class="fa-solid fa-lock"></i>
+            <div style="margin-bottom: 15px;">
                 <input type="password" id="authPassword" class="form-input" placeholder="Password">
             </div>
-
-            <button class="btn-auth" id="loginBtn" onclick="window.handleSupabaseAuth('login')">
-                <i class="fa-solid fa-right-to-bracket"></i> Login Securely
-            </button>
-            <button class="btn-auth" id="signupBtn" style="display:none;" onclick="window.handleSupabaseAuth('signup')">
-                <i class="fa-solid fa-user-plus"></i> Create Account
-            </button>
-            
-            <div class="auth-toggle" onclick="window.toggleAuthMode()" id="authToggleText">Need an account? Sign Up</div>
+            <button class="btn-primary" id="loginBtn" onclick="window.handleSupabaseAuth('login')">Login</button>
+            <button class="btn-primary" id="signupBtn" style="display:none;" onclick="window.handleSupabaseAuth('signup')">Sign Up</button>
+            <div class="auth-toggle" onclick="window.toggleAuthMode()" id="authToggleText" style="margin-top: 15px; color: #2563eb; cursor: pointer;">Need an account? Sign Up</div>
         </div>
     </div>
 
     <!-- 🌍 MAIN APP CONTAINER -->
     <div id="app-container" style="display:none;">
-        
-        <!-- 🗺️ Map Container -->
         <div id="map"></div>
 
-        <!-- 🚫 EMPTY STATE SCREEN (Fixed Click Issue) -->
-        <div id="empty-state-screen" class="empty-state-overlay" style="display:none;">
-            <div class="empty-state-card">
-                <div class="empty-icon"><i class="fa-solid fa-network-wired"></i></div>
-                <h3>Welcome! Let's build your network.</h3>
-                <p>Start by adding a Substation (GSS) to begin drawing your layout.</p>
-                <button class="btn-primary pulse-btn" onclick="window.openAddGssModal()">
-                    <i class="fa-solid fa-plus-circle"></i> Add First GSS
-                </button>
+        <!-- 🚫 EMPTY STATE -->
+        <div id="empty-state-screen" class="overlay-center" style="display:none;">
+            <div class="solid-card" style="text-align: center;">
+                <i class="fa-solid fa-network-wired" style="font-size: 3rem; color: #2563eb;"></i>
+                <h3 style="margin: 10px 0;">Database is Empty</h3>
+                <p style="margin-bottom: 15px; color: #64748b;">Add a Substation to start mapping.</p>
+                <button class="btn-primary" onclick="window.openAddGssModal()">Add First GSS</button>
             </div>
         </div>
 
-        <!-- 🏷️ Top Navigation Bar -->
-        <div class="top-glass-bar" id="main-top-bar">
+        <!-- TOP BAR -->
+        <div class="top-bar">
             <button class="icon-btn" onclick="window.toggleSidebar(true)"><i class="fa-solid fa-bars"></i></button>
-            <div class="feeder-selector">
-                <select id="feederSelectHeader" onchange="window.switchFeeder(this.value)">
-                    <option value="">Loading Feeders...</option>
-                </select>
-            </div>
-            <button class="icon-btn" onclick="window.toggleSearchBox()"><i class="fa-solid fa-magnifying-glass"></i></button>
-            <div id="sync-dot-container" class="sync-dot-wrapper" onclick="window.showSyncDetails()">
+            <select id="feederSelectHeader" class="header-select" onchange="window.switchFeeder(this.value)">
+                <option value="">Loading...</option>
+            </select>
+            <button class="icon-btn" onclick="window.toggleSearchBox()"><i class="fa-solid fa-search"></i></button>
+            <div class="sync-indicator" onclick="window.showSyncDetails()">
                 <div id="sync-status-dot" class="status-dot success-dot"></div>
             </div>
         </div>
 
-        <!-- 🔍 Search Overlay -->
+        <!-- SEARCH BOX -->
         <div id="searchBoxOverlay" class="search-overlay" style="display:none;">
-            <div class="search-glass-box">
-                <i class="fa-solid fa-magnifying-glass"></i>
-                <input type="text" id="appSearchBar" class="form-input" placeholder="Search K-No, DT Code, Name..." onkeyup="window.handleSearch(event)">
+            <div class="search-box">
+                <input type="text" id="appSearchBar" class="form-input" placeholder="Search..." onkeyup="window.handleSearch(event)">
                 <button class="icon-btn" onclick="window.toggleSearchBox()"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div id="searchSuggestions" class="search-suggestions"></div>
+            <div id="searchSuggestions" class="search-results"></div>
         </div>
 
-        <!-- 🎯 Center Placement Reticle -->
+        <!-- RETICLE -->
         <div id="center-placement-pin" style="display:none;">
-            <div class="crosshair-target"></div>
-            <div class="reticle-info" id="reticle-coordinates">26.9150, 75.7830</div>
-            <div class="reticle-info distance-meter" id="live-distance-meter" style="display:none;">Nearest: 0m</div>
+            <div class="reticle-target"></div>
+            <div class="reticle-badge" id="reticle-coordinates">0.00, 0.00</div>
+            <div class="reticle-badge bg-blue" id="live-distance-meter" style="display:none;">Nearest: 0m</div>
         </div>
 
-        <!-- 📊 KPI Dashboard -->
-        <div class="kpi-glass-board" id="main-kpi-board">
-            <div class="kpi-item"><span class="kpi-val" id="kpi11">0</span><span class="kpi-label">11KV (km)</span></div>
-            <div class="kpi-item"><span class="kpi-val" id="kpiLT">0</span><span class="kpi-label">LT (km)</span></div>
-            <div class="kpi-item"><span class="kpi-val" id="kpi3Ph">0</span><span class="kpi-label">3-Ph DT</span></div>
-            <div class="kpi-item"><span class="kpi-val" id="kpi1Ph">0</span><span class="kpi-label">1-Ph DT</span></div>
-            <div class="kpi-item"><span class="kpi-val" id="kpiCons">0</span><span class="kpi-label">Cons</span></div>
+        <!-- KPI BOARD -->
+        <div class="bottom-kpi" id="main-kpi-board">
+            <div class="kpi-box"><b>11KV</b><span id="kpi11">0</span></div>
+            <div class="kpi-box"><b>LT</b><span id="kpiLT">0</span></div>
+            <div class="kpi-box"><b>3-Ph</b><span id="kpi3Ph">0</span></div>
+            <div class="kpi-box"><b>1-Ph</b><span id="kpi1Ph">0</span></div>
+            <div class="kpi-box"><b>Cons</b><span id="kpiCons">0</span></div>
         </div>
 
-        <!-- ➕ Floating Action Button (FAB) -->
+        <!-- FLOATING BUTTONS -->
         <div id="bottom-single-action">
-            <div class="fab-container">
-                <button id="mainFabBtn" class="fab-main" onclick="window.toggleSpeedDial()">
-                    <i class="fa-solid fa-plus"></i>
-                </button>
-                <div id="speed-dial-menu" class="speed-dial-menu">
-                    <button class="fab-item" onclick="window.openAddForm('CONSUMER')"><i class="fa-solid fa-house"></i> Consumer</button>
-                    <button class="fab-item" onclick="window.openAddForm('DT')"><i class="fa-solid fa-transformer"></i> Transformer (DT)</button>
-                    <button class="fab-item" onclick="window.openAddForm('LTPOLE')"><i class="fa-solid fa-lightbulb"></i> LT Pole</button>
-                    <button class="fab-item" onclick="window.openAddForm('POLE')"><i class="fa-solid fa-bolt"></i> 11kV Pole</button>
-                    <button class="fab-item" onclick="window.openAddForm('LINE')"><i class="fa-solid fa-route"></i> Line Route</button>
+            <div class="fab-wrapper">
+                <button id="mainFabBtn" class="fab" onclick="window.toggleSpeedDial()"><i class="fa-solid fa-plus"></i></button>
+                <div id="speed-dial-menu" class="fab-menu">
+                    <button onclick="window.openAddForm('CONSUMER')"><i class="fa-solid fa-house"></i> Consumer</button>
+                    <button onclick="window.openAddForm('DT')"><i class="fa-solid fa-transformer"></i> DT</button>
+                    <button onclick="window.openAddForm('LTPOLE')"><i class="fa-solid fa-lightbulb"></i> LT Pole</button>
+                    <button onclick="window.openAddForm('POLE')"><i class="fa-solid fa-bolt"></i> 11kV Pole</button>
+                    <button onclick="window.openAddForm('LINE')"><i class="fa-solid fa-route"></i> Line</button>
                 </div>
             </div>
-            
-            <div class="map-controls">
-                <button class="map-ctrl-btn" onclick="window.toggleMapLayer()"><i class="fa-solid fa-layer-group"></i></button>
-                <button class="map-ctrl-btn" id="liveTrackBtn" onclick="window.toggleLiveTracking()"><i class="fa-solid fa-location-arrow"></i></button>
-                <button class="map-ctrl-btn" onclick="window.openFilterModal()"><i class="fa-solid fa-filter"></i></button>
+            <div class="left-controls">
+                <button class="small-fab" onclick="window.toggleMapLayer()"><i class="fa-solid fa-layer-group"></i></button>
+                <button class="small-fab" id="liveTrackBtn" onclick="window.toggleLiveTracking()"><i class="fa-solid fa-location-arrow"></i></button>
+                <button class="small-fab" onclick="window.openFilterModal()"><i class="fa-solid fa-filter"></i></button>
             </div>
         </div>
 
-        <!-- ✅ Placement & Move Confirmation Bars -->
-        <div id="placement-confirm-bar" class="action-bar-glass" style="display:none;">
-            <p>Move map to set exact location</p>
-            <div class="btn-group">
-                <button class="btn-outline" onclick="window.cancelPlacement()">Cancel</button>
-                <button class="btn-primary" onclick="window.confirmPlacement()">Confirm Here</button>
+        <!-- CONFIRM BARS -->
+        <div id="placement-confirm-bar" class="bottom-action-bar" style="display:none;">
+            <p style="margin-bottom:10px;">Set exact location</p>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-outline" style="flex:1;" onclick="window.cancelPlacement()">Cancel</button>
+                <button class="btn-primary" style="flex:1;" onclick="window.confirmPlacement()">Confirm Here</button>
             </div>
         </div>
-        <div id="move-confirm-bar" class="action-bar-glass" style="display:none;">
-            <p id="moveTargetTitle">Move Object</p>
-            <div id="live-move-icon" style="display:none; margin:10px auto;"></div>
-            <div class="btn-group">
-                <button class="btn-outline" onclick="window.cancelObjectMove()">Cancel</button>
-                <button class="btn-primary" onclick="window.confirmObjectMove()">Save Location</button>
+        <div id="move-confirm-bar" class="bottom-action-bar" style="display:none;">
+            <p id="moveTargetTitle" style="margin-bottom:10px;">Move Object</p>
+            <div style="display:flex; gap:10px;">
+                <button class="btn-outline" style="flex:1;" onclick="window.cancelObjectMove()">Cancel</button>
+                <button class="btn-primary" style="flex:1;" onclick="window.confirmObjectMove()">Save Location</button>
             </div>
         </div>
 
-        <!-- 📄 Bottom Info Sheet -->
-        <div id="bottom-info-sheet" class="bottom-sheet glass-panel">
-            <div class="sheet-drag-handle"></div>
-            <div id="obj-sheet-content" class="sheet-content-scroll"></div>
+        <!-- INFO SHEET -->
+        <div id="bottom-info-sheet" class="bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div id="obj-sheet-content"></div>
         </div>
 
-        <!-- 📋 Forms & Modals Overlay -->
+        <!-- MODAL OVERLAY -->
         <div id="formModalOverlay" class="modal-overlay">
-            <div class="modal-glass-sheet">
+            <div class="modal-content">
                 <div id="modalSheetContent"></div>
             </div>
         </div>
 
-        <!-- 🗄️ Sidebar Drawer -->
+        <!-- SIDEBAR -->
         <div id="sidebarBackdrop" class="sidebar-backdrop" onclick="window.toggleSidebar(false)"></div>
-        <div id="sidebar-drawer" class="sidebar-glass">
-            <div class="sidebar-profile">
-                <div class="avatar"><i class="fa-solid fa-user-tie"></i></div>
-                <div>
-                    <h3 id="userNameDisplay">User Name</h3>
-                    <p id="userEmailDisplay">user@email.com</p>
-                </div>
+        <div id="sidebar-drawer" class="sidebar">
+            <div style="padding: 20px; background: #2563eb; color: white;">
+                <h3 id="userNameDisplay">Name</h3>
+                <small id="userEmailDisplay">email@domain.com</small>
             </div>
-            <div class="sidebar-menu">
-                <button onclick="window.openAddGssModal()"><i class="fa-solid fa-building-shield"></i> Add Substation (GSS)</button>
-                <button onclick="window.openAddNewFeederModal()"><i class="fa-solid fa-code-branch"></i> Add New Feeder</button>
-                <button onclick="window.openFeederConfigModal()"><i class="fa-solid fa-sliders"></i> Feeder Settings</button>
-                
-                <div class="menu-divider"></div>
-                <button class="folder-toggle" onclick="window.toggleGssFolder()">
-                    <span><i class="fa-solid fa-sitemap"></i> Manage GSS & Feeders</span>
-                    <i id="gssFolderIcon" class="fa-solid fa-chevron-down"></i>
-                </button>
-                <div id="gssFolderContent" class="folder-content" style="display:none;">
+            <div class="sidebar-links">
+                <button onclick="window.openAddGssModal()"><i class="fa-solid fa-building"></i> Add GSS</button>
+                <button onclick="window.openAddNewFeederModal()"><i class="fa-solid fa-code-branch"></i> Add Feeder</button>
+                <button onclick="window.openFeederConfigModal()"><i class="fa-solid fa-gear"></i> Feeder Settings</button>
+                <hr>
+                <button onclick="window.toggleGssFolder()"><i class="fa-solid fa-sitemap"></i> Manage GSS/Feeders</button>
+                <div id="gssFolderContent" style="display:none; padding: 10px; background: #f1f5f9;">
                     <div id="gssListContainer"></div>
                 </div>
-
-                <div class="menu-divider"></div>
+                <hr>
                 <button onclick="window.runOrphanNodeChecker()"><i class="fa-solid fa-link-slash"></i> Find Orphan Nodes</button>
                 <button onclick="window.exportDataToCSV()"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
                 <button onclick="window.generateCadSLDPdf()"><i class="fa-solid fa-file-pdf"></i> Export SLD (PDF)</button>
-                <button onclick="window.exportFullJSONBackup()"><i class="fa-solid fa-download"></i> Backup Data</button>
-                <label class="btn-import">
-                    <i class="fa-solid fa-upload"></i> Restore Data
-                    <input type="file" style="display:none;" accept=".json" onchange="window.handleImportChoice(event)">
-                </label>
-                
-                <div class="menu-divider"></div>
-                <button onclick="window.openSettingsPage()"><i class="fa-solid fa-gear"></i> App Settings</button>
-                <button class="text-danger" onclick="window.handleSupabaseLogout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button>
+                <button onclick="window.exportFullJSONBackup()"><i class="fa-solid fa-download"></i> Backup DB</button>
+                <label style="display:block; padding:15px; cursor:pointer;"><i class="fa-solid fa-upload"></i> Restore DB<input type="file" style="display:none;" accept=".json" onchange="window.handleImportChoice(event)"></label>
+                <hr>
+                <button onclick="window.openSettingsPage()"><i class="fa-solid fa-sliders"></i> Settings</button>
+                <button style="color:red;" onclick="window.handleSupabaseLogout()"><i class="fa-solid fa-power-off"></i> Logout</button>
             </div>
         </div>
 
-        <!-- ⚙️ Settings Page -->
-        <div id="settings-page" class="full-page-glass">
-            <div class="page-header">
+        <!-- SETTINGS PAGE -->
+        <div id="settings-page" class="full-page">
+            <div style="padding: 15px; background: #fff; border-bottom: 1px solid #ccc; display:flex; align-items:center;">
                 <button class="icon-btn" onclick="window.closeSettingsPage()"><i class="fa-solid fa-arrow-left"></i></button>
-                <h2>Settings</h2>
+                <h3 style="margin-left: 10px;">Settings</h3>
             </div>
-            <div class="page-content">
+            <div style="padding: 20px;">
                 <div class="form-row"><label>Distance Unit</label><select id="setUnit" class="form-select"><option value="m">Meters (m)</option><option value="km">Kilometers (km)</option></select></div>
                 <div class="form-row"><label>GPS Interval (sec)</label><input type="number" id="setGpsInterval" class="form-input"></div>
                 <div class="form-row"><label>GPS Accuracy (m)</label><input type="number" id="setGpsAccuracy" class="form-input"></div>
                 <div class="form-row"><label>App Language</label><select id="setLanguage" class="form-select"><option value="en">English</option><option value="hi">हिन्दी</option></select></div>
-                <div class="form-row"><label>App Theme</label><select id="setTheme" class="form-select"><option value="light">Light Mode</option><option value="dark">Dark Mode</option></select></div>
-                <button class="btn-primary" onclick="window.autoSaveSettings()" style="margin-top:20px;">Save Settings</button>
-                <button class="btn-outline text-danger" onclick="window.openResetConfirmationModal()" style="margin-top:20px; width:100%; border-color:var(--danger);">Danger: Reset App Data</button>
+                <div class="form-row"><label>Theme</label><select id="setTheme" class="form-select"><option value="light">Light</option><option value="dark">Dark</option></select></div>
+                <button class="btn-primary" onclick="window.autoSaveSettings()" style="width:100%; margin-top:20px;">Save Settings</button>
             </div>
         </div>
     </div>
 
-    <!-- 🍞 Toast Notification -->
-    <div id="app-toast" class="toast-glass"><span id="toast-msg"></span></div>
+    <div id="app-toast" class="toast"><span id="toast-msg"></span></div>
 
     <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    
-    <!-- Correct JS Path -->
     <script src="js/app.js"></script>
 </body>
 </html>
