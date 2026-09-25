@@ -60,7 +60,6 @@ window.safeSetDisplay = function(elementId, displayValue) {
     if (el) el.style.display = displayValue;
 };
 
-// ==== 🚀 SMART EMPTY STATE CHECKER ====
 window.checkEmptyState = function() {
     const gssCount = Object.keys(appState.gssNodes).length;
     if(gssCount === 0) {
@@ -93,7 +92,7 @@ function updateSyncUI() {
     const dot = document.getElementById('sync-status-dot');
     if (!dot) return;
     
-    dot.className = 'status-dot'; // reset
+    dot.className = 'status-dot'; 
     if(!navigator.onLine) {
         dot.classList.add('error-dot');
     } else if (appState.unsyncedCount > 0) {
@@ -134,9 +133,7 @@ function showToast(msg) {
     if (!toast || !msgElem) return; msgElem.innerText = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
 }
 
-function setSyncStatus(status) {
-    updateSyncUI(); // Uses the new DOT UI
-}
+function setSyncStatus(status) { updateSyncUI(); }
 
 window.markDirty = function(type, id) {
     if (!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
@@ -173,10 +170,8 @@ window.setupRealtimeSync = function() {
 window.addEventListener('online', async () => {
     setSyncStatus('syncing');
     showToast("Internet Connected! Auto-syncing...");
-    
     const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
     const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
-    
     if (hasDirty || hasDeleted) {
         await window.syncToSupabase(false);
         setTimeout(() => { pullFromSupabase(true); }, 3000); 
@@ -404,11 +399,12 @@ function triggerPersistence(incrementSync = true) {
     }
 }
 
+// ==== 🔥 CRASH-PROOF AUTHENTICATION ENGINE 🔥 ====
 let authMode = 'login';
 window.toggleAuthMode = function() {
     authMode = authMode === 'login' ? 'signup' : 'login';
-    window.safeSetDisplay('loginBtn', authMode === 'login' ? 'inline-block' : 'none');
-    window.safeSetDisplay('signupBtn', authMode === 'signup' ? 'inline-block' : 'none');
+    window.safeSetDisplay('loginBtn', authMode === 'login' ? 'flex' : 'none');
+    window.safeSetDisplay('signupBtn', authMode === 'signup' ? 'flex' : 'none');
     window.safeSetDisplay('signupNameField', authMode === 'signup' ? 'block' : 'none');
     const toggleTxt = document.getElementById('authToggleText');
     if (toggleTxt) toggleTxt.innerText = authMode === 'login' ? "Need an account? Sign Up" : "Already have an account? Login";
@@ -416,45 +412,71 @@ window.toggleAuthMode = function() {
 
 function applyAuthUIVisuals() {
     window.safeSetDisplay('auth-screen', 'none');
-    window.safeSetDisplay('app-container', 'flex');
+    window.safeSetDisplay('app-container', 'block'); // Changed to block for proper map rendering
     const uName = document.getElementById('userNameDisplay'); if(uName) uName.innerText = appState.user.name; 
     const uEmail = document.getElementById('userEmailDisplay'); if(uEmail) uEmail.innerText = appState.user.email;
     window.safeSetDisplay('adminPasswordCard', (appState.user.email === ADMIN_EMAIL) ? 'block' : 'none');
     window.setupRealtimeSync();
-    if(map) setTimeout(() => { map.invalidateSize(); }, 300);
+    if(map) { setTimeout(() => { map.invalidateSize(); }, 500); } // 500ms ensures map canvas is painted
 }
 
 window.handleSupabaseAuth = async function(mode) {
-    if(!navigator.onLine) return alert("You need internet connection to Login/Signup.");
+    if(!navigator.onLine) return alert("Internet connection is required to login.");
     if(!supabaseClient) return alert("Network Error: Supabase connection failed.");
-    const email = document.getElementById('authEmail').value.trim(), password = document.getElementById('authPassword').value.trim(), name = document.getElementById('authName').value.trim();
-    if(!email || !password) return alert("Email and Password required"); showToast("Processing..."); window.showLoader("Authenticating..."); let response;
+    
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value.trim();
+    let name = '';
+    const nameEl = document.getElementById('authName');
+    if(nameEl) name = nameEl.value.trim();
+
+    if(!email || !password) return alert("Please enter both Email and Password.");
     
     try {
+        window.showLoader("Authenticating..."); 
+        let response;
+        
         if (mode === 'signup') { 
-            if(!name) return alert("Enter Full Name"); 
+            if(!name) { window.hideLoader(); return alert("Enter Full Name"); }
             response = await supabaseClient.auth.signUp({ email, password, options: { data: { full_name: name } } }); 
         } else {
             response = await supabaseClient.auth.signInWithPassword({ email, password });
         }
 
-        if (response.error) { alert(response.error.message); } 
-        else if (response.data.user) {
+        if (response.error) { 
+            window.hideLoader();
+            alert("Login Error: " + response.error.message); 
+            return;
+        } 
+        
+        if (response.data && response.data.user) {
+            // Memory Wipe if different user
             if (appState.user.id && appState.user.id !== response.data.user.id) {
                 appState.gssNodes = {}; appState.feeders = {}; appState.currentFeederCode = null;
                 appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] }; 
                 appState.deletedItems = { gss: [], feeders: [], objects: [] };
-                if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.removeItem(DB_KEY);
+                try { if(typeof localforage !== 'undefined') await localforage.clear(); } catch(e){}
+                localStorage.removeItem(DB_KEY);
             }
-            appState.user.isLoggedIn = true; appState.user.email = response.data.user.email; appState.user.id = response.data.user.id;
+
+            appState.user.isLoggedIn = true; 
+            appState.user.email = response.data.user.email; 
+            appState.user.id = response.data.user.id;
             appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0];
             
             applyAuthUIVisuals(); 
+            
+            // Sync strictly in sequence
             await window.syncToSupabase(false); 
-            setTimeout(() => { pullFromSupabase(false); }, 3000);
+            await pullFromSupabase(false); // Await ensures map loads ONLY after data is fetched
+
+            window.hideLoader();
             showToast("Login Successful!");
         }
-    } finally { window.hideLoader(); }
+    } catch (err) { 
+        window.hideLoader();
+        alert("App Error: " + err.message); 
+    }
 }
 
 window.changeAdminPassword = async function() {
@@ -469,6 +491,7 @@ window.handleSupabaseLogout = async function() {
     if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.clear(); location.reload(); 
 }
 
+// ==== MAP & GPS ====
 let featureGroups = {}; let tileLayers = {}; let layerKeys = []; let currentTileIndex = 0;
 window.followLiveLocation = false;
 
@@ -858,7 +881,7 @@ function renderEntireNetwork() {
 
         map.fire('zoomend');
         translateApp(); 
-        window.checkEmptyState(); // Check if empty state overlay is needed
+        window.checkEmptyState();
 
         let t11 = 0, tLT = 0, dt3ph = 0, dt1ph = 0; 
         if (Array.isArray(net.lines)) net.lines.forEach(l => { if (getLineSpec(l.type).name.includes('LT')) tLT += (l.distanceMeters || 0); else t11 += (l.distanceMeters || 0); });
@@ -960,6 +983,154 @@ function getNodeCoords(nodeId) {
     if (appState.gssNodes[idStr]) return { lat: appState.gssNodes[idStr].lat, lng: appState.gssNodes[idStr].lng };
     if (idStr === 'GSS' || idStr === net.feeder.code) { const g = appState.gssNodes[net.feeder.parentGss]; if(g) return { lat: g.lat, lng: g.lng }; }
     return null; 
+}
+
+function updateOrphanStatus() {
+    appState.orphanPoleIds.clear(); 
+    const net = getActiveNetwork(); 
+    if(!net || !net.feeder) return;
+    
+    try {
+        const adj = {};
+        const gssCode = net.feeder.parentGss;
+        const gssId = 'GSS_' + gssCode;
+        adj[gssId] = [];
+
+        if(Array.isArray(net.poles)) net.poles.forEach(p => adj['POLE_' + p.poleNo] = []);
+        if(Array.isArray(net.dts)) net.dts.forEach(d => adj['DT_' + d.code] = []);
+
+        if(Array.isArray(net.dts)) net.dts.forEach(d => {
+            if(d.parentPole) {
+                const pId = 'POLE_' + d.parentPole;
+                if (!adj[pId]) adj[pId] = [];
+                adj[pId].push('DT_' + d.code);
+                if (!adj['DT_' + d.code]) adj['DT_' + d.code] = [];
+                adj['DT_' + d.code].push(pId);
+            }
+        });
+
+        if(Array.isArray(net.lines)) net.lines.forEach(l => {
+            const u = String(l.fromNode), v = String(l.toNode);
+            if (!adj[u]) adj[u] = [];
+            if (!adj[v]) adj[v] = [];
+            adj[u].push(v);
+            adj[v].push(u);
+        });
+
+        const visited = new Set([gssId]);
+        const queue = [gssId];
+
+        while (queue.length > 0) {
+            const curr = queue.shift();
+            (adj[curr] || []).forEach(neighbor => {
+                if (!visited.has(neighbor)) {
+                    visited.add(neighbor);
+                    queue.push(neighbor);
+                }
+            });
+        }
+
+        if(Array.isArray(net.poles)) net.poles.forEach(p => {
+            if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id);
+        });
+        if(Array.isArray(net.dts)) net.dts.forEach(d => {
+            if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id);
+        });
+    } catch(e) { console.warn("Orphan logic bypassed temporarily", e); }
+}
+
+window.runOrphanNodeChecker = function() {
+    updateOrphanStatus(); const net = getActiveNetwork(); if(!net) return;
+    const orphanCount = appState.orphanPoleIds.size;
+    if (orphanCount === 0) return showToast("No orphan poles or nodes found! Network is fully connected.");
+    let html = `<div class="sheet-head"><div class="sheet-title" style="color:#d97706;"><i class="fa-solid fa-network-wired"></i> Orphan Nodes Found (${orphanCount})</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>`;
+    html += `<div style="max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;">`;
+    net.poles.forEach(p => { if (appState.orphanPoleIds.has(p.id)) { html += `<div style="display:flex; justify-content:space-between; align-items:center; background:#fef3c7; padding:10px; border-radius:8px;"><div><b>Pole: ${p.poleNo}</b><br><small>Type: ${p.lineType || 'HT'}</small></div><button class="action-btn-sm bg" onclick="window.zoomToEntity('${p.lat}', '${p.lng}')">Zoom</button></div>`; } }); html += `</div>`; openModal(html);
+};
+
+window.zoomToEntity = function(lat, lng) { window.closeModal(); map.flyTo([parseFloat(lat), parseFloat(lng)], 19, { duration: 1 }); };
+
+window.toggleGssFolder = function() {
+    window.haptic(15); const content = document.getElementById('gssFolderContent'), icon = document.getElementById('gssFolderIcon');
+    if (!content || !icon) return; const isHidden = content.style.display === 'none'; window.safeSetDisplay('gssFolderContent', isHidden ? 'block' : 'none'); 
+    icon.className = isHidden ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'; if (isHidden) window.renderGssSidebarList();
+};
+
+window.renderGssSidebarList = function() {
+    const container = document.getElementById('gssListContainer'); if (!container) return; let html = '';
+    Object.values(appState.gssNodes).forEach(gss => {
+        html += `<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-base); padding:8px; border-radius:6px; margin-top:6px; border:1px solid var(--border-glass);"><div><b style="font-size:0.85rem;">${gss.name}</b><br><small style="color:var(--text-sub);">Code: ${gss.code}</small></div><div style="display:flex; gap:4px;"><button class="action-btn-sm bg" onclick="window.relocateGss('${gss.code}')" title="Relocate GSS"><i class="fa-solid fa-location-crosshairs"></i></button><button class="action-btn-sm bg" style="color:var(--danger);" onclick="window.deleteGssAndFeederStrict('${gss.code}')" title="Strict Delete"><i class="fa-solid fa-trash"></i></button></div></div>`;
+    }); container.innerHTML = html;
+};
+
+window.deleteEntity = function(type, id) {
+    window.haptic([50,50,50]); const net = getActiveNetwork(); if(!confirm(t("confDel"))) return; saveSnapshot();
+    
+    if (type === 'line') { 
+        window.markDeleted('objects', id); 
+        net.lines = net.lines.filter(x => x.id !== id); 
+    } 
+    else if (type === 'consumer') { 
+        window.markDeleted('objects', id); 
+        net.consumers = net.consumers.filter(x => x.id !== id); 
+    } 
+    else if (type === 'dt') {
+        const d = net.dts.find(x => x.id === id); if(!d) return;
+        const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn);
+        net.lines.forEach(l => { if (l.fromNode === ('DT_' + d.code) || l.toNode === ('DT_' + d.code) || ltPoleNodeIds.includes(String(l.fromNode)) || ltPoleNodeIds.includes(String(l.toNode))) window.markDeleted('objects', l.id); });
+        net.lines = net.lines.filter(l => l.fromNode !== ('DT_' + d.code) && l.toNode !== ('DT_' + d.code) && !ltPoleNodeIds.includes(String(l.fromNode)) && !ltPoleNodeIds.includes(String(l.toNode)));
+        net.consumers.forEach(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); if(isDirectToDT || isOnRemovedLTPole) window.markDeleted('objects', c.id); });
+        net.consumers = net.consumers.filter(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); return !(isDirectToDT || isOnRemovedLTPole); });
+        ltPolesToRemove.forEach(p => window.markDeleted('objects', p.id));
+        net.poles = net.poles.filter(p => !ltPoleIds.includes(String(p.poleNo)));
+        window.markDeleted('objects', id); 
+        net.dts = net.dts.filter(x => x.id !== id);
+    }
+    else if (type === 'pole') {
+        const p = net.poles.find(x => x.id === id);
+        if (p) { 
+            if (p.lineType === 'LT') {
+                net.consumers.forEach(c => { if(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo)) window.markDeleted('objects', c.id); });
+                net.consumers = net.consumers.filter(c => !(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo)));
+                net.lines.forEach(l => { if(String(l.fromNode) === ('POLE_'+p.poleNo) || String(l.toNode) === ('POLE_'+p.poleNo)) window.markDeleted('objects', l.id); });
+                net.lines = net.lines.filter(l => String(l.fromNode) !== ('POLE_'+p.poleNo) && String(l.toNode) !== ('POLE_'+p.poleNo));
+                window.markDeleted('objects', p.id); 
+                net.poles = net.poles.filter(x => x.id !== p.id);
+            } 
+            else { 
+                const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); 
+                dtsOnPole.forEach(dt => window.deleteEntity('dt', dt.id)); 
+                net.lines.forEach(l => { if(l.fromNode === ('POLE_'+p.poleNo) || l.toNode === ('POLE_'+p.poleNo)) window.markDeleted('objects', l.id); });
+                net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); 
+                window.markDeleted('objects', id); 
+                net.poles = net.poles.filter(x => x.id !== id); 
+            } 
+        }
+    } 
+    else if (type === 'gss') { 
+        if (appState.gssNodes[id]) { 
+            window.markDeleted('gss', id); 
+            delete appState.gssNodes[id]; 
+        } 
+    }
+    window.closeObjectSheet(); renderEntireNetwork(); triggerPersistence(false); showToast(t("toastDel"));
+}
+
+window.deleteGssAndFeederStrict = function(code) {
+    window.haptic([50,50,50]);
+    const conf1 = confirm(`WARNING: You are about to delete GSS ${code} and ALL its associated feeders and network data! This cannot be undone. Continue?`);
+    if (!conf1) return; const conf2 = prompt(`To strictly confirm deletion, please type the GSS code "${code}" below:`);
+    if (conf2 !== code) return alert("Deletion cancelled: GSS code did not match.");
+
+    if (appState.gssNodes[code]) { window.markDeleted('gss', code); delete appState.gssNodes[code]; }
+    const feedersToDelete = []; Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].feeder.parentGss === code) feedersToDelete.push(fCode); });
+    feedersToDelete.forEach(fCode => { window.markDeleted('feeders', fCode); delete appState.feeders[fCode]; });
+    
+    if (!appState.feeders[appState.currentFeederCode] || feedersToDelete.includes(appState.currentFeederCode)) {
+        const remainingFeeders = Object.keys(appState.feeders);
+        appState.currentFeederCode = remainingFeeders.length > 0 ? remainingFeeders[0] : null;
+    }
+    renderEntireNetwork(); triggerPersistence(false); window.renderGssSidebarList(); showToast(t("toastDel"));
 }
 
 let appInitialized = false;
