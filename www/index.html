@@ -9,6 +9,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Correct CSS Path -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -47,15 +49,15 @@
     <!-- 🌍 MAIN APP CONTAINER -->
     <div id="app-container" style="display:none;">
         
+        <!-- 🗺️ Map Container -->
         <div id="map"></div>
 
-        <!-- 🚫 EMPTY STATE SCREEN -->
+        <!-- 🚫 EMPTY STATE SCREEN (Fixed Click Issue) -->
         <div id="empty-state-screen" class="empty-state-overlay" style="display:none;">
             <div class="empty-state-card">
                 <div class="empty-icon"><i class="fa-solid fa-network-wired"></i></div>
                 <h3>Welcome! Let's build your network.</h3>
                 <p>Start by adding a Substation (GSS) to begin drawing your layout.</p>
-                <!-- ✅ FIXED: Added window. to onclick -->
                 <button class="btn-primary pulse-btn" onclick="window.openAddGssModal()">
                     <i class="fa-solid fa-plus-circle"></i> Add First GSS
                 </button>
@@ -212,12 +214,15 @@
         </div>
     </div>
 
+    <!-- 🍞 Toast Notification -->
     <div id="app-toast" class="toast-glass"><span id="toast-msg"></span></div>
 
     <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    
+    <!-- Correct JS Path -->
     <script src="js/app.js"></script>
 </body>
 </html>
