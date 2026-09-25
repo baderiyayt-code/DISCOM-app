@@ -148,12 +148,18 @@ window.setupRealtimeSync = function() {
     }).subscribe();
 };
 
-// ==== 🚀 BACKGROUND NETWORK WATCHER (AUTO-SYNC) ====
-window.addEventListener('online', () => {
+// ==== 🚀 SMART BACKGROUND NETWORK WATCHER ====
+window.addEventListener('online', async () => {
     setSyncStatus('syncing');
     showToast("Internet Connected! Auto-syncing...");
-    if (appState.unsyncedCount > 0) {
-        window.syncToSupabase(false).then(() => { pullFromSupabase(true); });
+    
+    const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
+    const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
+    
+    if (hasDirty || hasDeleted) {
+        await window.syncToSupabase(false);
+        // Delay Pull by 3s so Cloud Replication completes (Prevents wiping local offline items)
+        setTimeout(() => { pullFromSupabase(true); }, 3000); 
     } else {
         pullFromSupabase(true);
     }
@@ -167,7 +173,7 @@ function cleanData(arr) {
     return arr.map(obj => { let cleaned = {}; for(let key in obj) { if(obj[key] !== undefined && obj[key] !== null) cleaned[key] = obj[key]; } return cleaned; });
 }
 
-// ==== 🚀 OFFLINE-FIRST SYNC UPSERT (SILENT BACKGROUND) ====
+// ==== 🚀 OFFLINE-FIRST SYNC UPSERT (NO LOCAL WIPE) ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     
@@ -226,6 +232,7 @@ window.syncToSupabase = async function(manual = false) {
             await supabaseClient.from('object_photos').delete().eq('user_id', uid).in('parent_id', strIds);
         }
 
+        // Successfully pushed to cloud. We can safely clear dirty queues.
         appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
         appState.deletedItems = { gss: [], feeders: [], objects: [] };
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
@@ -248,34 +255,24 @@ async function pullFromSupabase(isBackground = true) {
             supabaseClient.from('network_objects').select('*').eq('user_id', uid)
         ]);
 
+        const isCloudEmpty = (!gssRes.data || gssRes.data.length === 0) && (!objRes.data || objRes.data.length === 0);
+        let hasLocalData = false;
+        if(appState.feeders) { Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].poles.length > 0 || appState.feeders[fCode].dts.length > 0) hasLocalData = true; }); }
+
+        if (isCloudEmpty && hasLocalData) {
+            window.hideLoader();
+            setTimeout(() => { window.syncToSupabase(false); }, 1500);
+            return;
+        }
+
         let newGss = {}, newFeeders = {};
         const oldFeeders = appState.feeders; 
 
-        // GSS Merge
-        if (gssRes.data) {
-            gssRes.data.forEach(g => {
-                if (!checkDirty('GSS', g.gss_code)) {
-                    newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng };
-                }
-            });
-        }
+        if (gssRes.data) gssRes.data.forEach(g => { if (!checkDirty('GSS', g.gss_code)) { newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng }; } });
+        if (fdrRes.data) fdrRes.data.forEach(f => { if (!checkDirty('FEEDER', f.feeder_code)) { if(!newFeeders[f.feeder_code]) newFeeders[f.feeder_code] = { feeder: {}, poles: [], dts: [], lines: [], consumers: [] }; newFeeders[f.feeder_code].feeder = { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" }; } });
 
-        // Feeder Merge
-        if (fdrRes.data) {
-            fdrRes.data.forEach(f => {
-                if (!checkDirty('FEEDER', f.feeder_code)) {
-                    if(!newFeeders[f.feeder_code]) newFeeders[f.feeder_code] = { feeder: {}, poles: [], dts: [], lines: [], consumers: [] };
-                    newFeeders[f.feeder_code].feeder = { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" };
-                }
-            });
-        }
+        Object.keys(appState.feeders).forEach(fc => { if(!newFeeders[fc]) newFeeders[fc] = { feeder: appState.feeders[fc].feeder, poles: [], dts: [], lines: [], consumers: [] }; });
 
-        // Initialize array structures
-        Object.keys(appState.feeders).forEach(fc => {
-            if(!newFeeders[fc]) newFeeders[fc] = { feeder: appState.feeders[fc].feeder, poles: [], dts: [], lines: [], consumers: [] };
-        });
-
-        // 1. Inject LOCAL DIRTY (Unsynced) items FIRST (Local Wins)
         const injectDirty = (type, arrName) => {
             if(appState.dirtyItems && appState.dirtyItems[type]) {
                 appState.dirtyItems[type].forEach(id => {
@@ -291,18 +288,13 @@ async function pullFromSupabase(isBackground = true) {
         };
         injectDirty('POLE', 'poles'); injectDirty('DT', 'dts'); injectDirty('LINE', 'lines'); injectDirty('CONSUMER', 'consumers');
 
-        // 2. Add CLOUD items (if not dirty/modified locally)
         if (objRes.data) {
             objRes.data.forEach(obj => {
                 const fc = String(obj.feeder_code);
                 if(!newFeeders[fc]) newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
                 
                 if (!checkDirty(obj.type, obj.id)) {
-                    let d = obj.data;
-                    if(!d) return;
-                    d.id = obj.id; 
-                    d.feederCode = fc; 
-                    
+                    let d = obj.data; if(!d) return; d.id = obj.id; d.feederCode = fc; 
                     try {
                         let oldNet = appState.feeders[fc];
                         if(oldNet) {
@@ -319,7 +311,7 @@ async function pullFromSupabase(isBackground = true) {
             });
         }
 
-        appState.gssNodes = { ...newGss, ...appState.gssNodes }; // Local dirty GSS retained
+        appState.gssNodes = { ...newGss, ...appState.gssNodes }; 
         appState.feeders = newFeeders;
         
         const validFeeders = Object.keys(appState.feeders);
@@ -331,9 +323,10 @@ async function pullFromSupabase(isBackground = true) {
         getActiveNetwork(); 
         if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
         renderEntireNetwork(); 
+        if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
+        if(!isBackground) centerMapOnGSS(); 
         setSyncStatus('synced'); 
 
-        // If local offline data was retained during merge, auto-push to cloud
         const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
         const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
         if(hasDirty || hasDeleted) { setTimeout(() => { window.syncToSupabase(false); }, 2000); }
@@ -342,16 +335,14 @@ async function pullFromSupabase(isBackground = true) {
     finally { if(!isBackground) window.hideLoader(); }
 }
 
-// ==== 🚀 TRUE OFFLINE PERSISTENCE (INSTANT SAVE) ====
 function triggerPersistence(incrementSync = true) { 
     if(incrementSync) { appState.unsyncedCount = (appState.unsyncedCount || 0) + 1; updateSyncUI(); }
     
-    // 1. INSTANT LOCAL SAVE (No Network Wait)
+    // INSTANT LOCAL SAVE (No Network Wait)
     if(typeof localforage !== 'undefined') {
         localforage.setItem(DB_KEY, appState).then(() => {
-            // 2. BACKGROUND CLOUD PUSH
             if(navigator.onLine) syncToSupabase(false);
-            else showToast("Saved Locally! App is Offline.");
+            else showToast(t("toastSavedLocal") || "Saved Locally! App is Offline.");
         }).catch(() => {
             localStorage.setItem(DB_KEY, JSON.stringify(appState));
             if(navigator.onLine) syncToSupabase(false);
@@ -407,7 +398,17 @@ window.handleSupabaseAuth = async function(mode) {
             appState.user.isLoggedIn = true; appState.user.email = response.data.user.email; appState.user.id = response.data.user.id;
             appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0];
             
-            applyAuthUIVisuals(); await pullFromSupabase(false); showToast("Login Successful!");
+            applyAuthUIVisuals(); 
+            
+            const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
+            const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
+            if (hasDirty || hasDeleted) { 
+                await window.syncToSupabase(false); 
+                setTimeout(() => { pullFromSupabase(false); }, 3000);
+            } else {
+                await pullFromSupabase(false); 
+            }
+            showToast("Login Successful!");
         }
     } finally { window.hideLoader(); }
 }
@@ -1496,8 +1497,13 @@ async function initializeApplication() {
             if(navigator.onLine) {
                 const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
                 const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
-                if (hasDirty || hasDeleted) { window.syncToSupabase(false); }
-                pullFromSupabase(true); 
+                if (hasDirty || hasDeleted) { 
+                    await window.syncToSupabase(false); 
+                    // Delay pull to let cloud catch up (avoids wipe)
+                    setTimeout(() => { pullFromSupabase(true); }, 3000);
+                } else {
+                    pullFromSupabase(true); 
+                }
             }
         } 
         else if (supabaseClient) {
@@ -1512,8 +1518,12 @@ async function initializeApplication() {
                     if(navigator.onLine) {
                         const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
                         const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
-                        if (hasDirty || hasDeleted) { window.syncToSupabase(false); }
-                        pullFromSupabase(true); 
+                        if (hasDirty || hasDeleted) { 
+                            await window.syncToSupabase(false); 
+                            setTimeout(() => { pullFromSupabase(true); }, 3000);
+                        } else {
+                            pullFromSupabase(true); 
+                        }
                     }
                 }
             });
