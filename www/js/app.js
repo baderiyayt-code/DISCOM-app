@@ -115,9 +115,9 @@ function setSyncStatus(status) {
     if (!ind) return;
     if(!navigator.onLine) status = 'offline';
     let iconHtml = '';
-    if(status === 'syncing') iconHtml = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
-    else if(status === 'synced') iconHtml = '<i class="fa-solid fa-cloud-check sync-success"></i>';
-    else iconHtml = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
+    if(status === 'syncing') iconHtml = '<i class="fa-solid fa-cloud-arrow-up sync-active" title="Syncing in background..."></i>';
+    else if(status === 'synced') iconHtml = '<i class="fa-solid fa-cloud-check sync-success" title="All data safely on cloud"></i>';
+    else iconHtml = '<i class="fa-solid fa-cloud-xmark sync-error" title="Offline - Data saved locally"></i>';
     ind.innerHTML = iconHtml + `<span class="sync-badge" id="sync-badge" style="display:${appState.unsyncedCount > 0 ? 'block' : 'none'};">${appState.unsyncedCount}</span>`;
     if (status === 'synced') { appState.unsyncedCount = 0; updateSyncUI(); }
 }
@@ -148,7 +148,7 @@ window.setupRealtimeSync = function() {
     }).subscribe();
 };
 
-// ==== 🚀 AUTO-BACKGROUND SYNC ON NETWORK RECOVERY ====
+// ==== 🚀 BACKGROUND NETWORK WATCHER (AUTO-SYNC) ====
 window.addEventListener('online', () => {
     setSyncStatus('syncing');
     showToast("Internet Connected! Auto-syncing...");
@@ -167,7 +167,7 @@ function cleanData(arr) {
     return arr.map(obj => { let cleaned = {}; for(let key in obj) { if(obj[key] !== undefined && obj[key] !== null) cleaned[key] = obj[key]; } return cleaned; });
 }
 
-// ==== 🚀 OFFLINE-FIRST SYNC UPSERT ====
+// ==== 🚀 OFFLINE-FIRST SYNC UPSERT (SILENT BACKGROUND) ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     
@@ -231,11 +231,11 @@ window.syncToSupabase = async function(manual = false) {
         if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'db-updated', payload: { timestamp: Date.now() } });
         setSyncStatus('synced');
     } catch (err) { console.error("Sync Error:", err); setSyncStatus('offline'); } 
-    finally { window.hideLoader(); setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
+    finally { if(manual) window.hideLoader(); setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
 }
 
-// ==== 🚀 OFFLINE-FIRST NON-DESTRUCTIVE MERGE PULL ====
-async function pullFromSupabase(isBackground = false) {
+// ==== 🚀 OFFLINE-FIRST NON-DESTRUCTIVE PULL ====
+async function pullFromSupabase(isBackground = true) {
     if (!navigator.onLine) { setSyncStatus('offline'); return; }
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
     if(!isBackground) { setSyncStatus('syncing'); window.showLoader("Merging Map Data..."); }
@@ -248,44 +248,54 @@ async function pullFromSupabase(isBackground = false) {
             supabaseClient.from('network_objects').select('*').eq('user_id', uid)
         ]);
 
-        // Merge GSS (Cloud wins unless locally dirty)
+        let newGss = {}, newFeeders = {};
+        const oldFeeders = appState.feeders; 
+
+        // GSS Merge
         if (gssRes.data) {
             gssRes.data.forEach(g => {
                 if (!checkDirty('GSS', g.gss_code)) {
-                    appState.gssNodes[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng };
+                    newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng };
                 }
             });
         }
 
-        // Merge Feeders
+        // Feeder Merge
         if (fdrRes.data) {
             fdrRes.data.forEach(f => {
                 if (!checkDirty('FEEDER', f.feeder_code)) {
-                    if(!appState.feeders[f.feeder_code]) {
-                        appState.feeders[f.feeder_code] = { feeder: {}, poles: [], dts: [], lines: [], consumers: [] };
-                    }
-                    appState.feeders[f.feeder_code].feeder = { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" };
+                    if(!newFeeders[f.feeder_code]) newFeeders[f.feeder_code] = { feeder: {}, poles: [], dts: [], lines: [], consumers: [] };
+                    newFeeders[f.feeder_code].feeder = { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" };
                 }
             });
         }
 
-        // Object Array Isolation (Protects Offline Data)
-        let newObjArrays = {}; 
+        // Initialize array structures
         Object.keys(appState.feeders).forEach(fc => {
-            newObjArrays[fc] = { poles: [], dts: [], lines: [], consumers: [] };
-            const net = appState.feeders[fc];
-            // Seed with LOCAL OFFLINE (DIRTY) items FIRST
-            if(net.poles) newObjArrays[fc].poles = net.poles.filter(p => checkDirty('POLE', p.id));
-            if(net.dts) newObjArrays[fc].dts = net.dts.filter(d => checkDirty('DT', d.id));
-            if(net.lines) newObjArrays[fc].lines = net.lines.filter(l => checkDirty('LINE', l.id));
-            if(net.consumers) newObjArrays[fc].consumers = net.consumers.filter(c => checkDirty('CONSUMER', c.id));
+            if(!newFeeders[fc]) newFeeders[fc] = { feeder: appState.feeders[fc].feeder, poles: [], dts: [], lines: [], consumers: [] };
         });
 
-        // Add Cloud items
+        // 1. Inject LOCAL DIRTY (Unsynced) items FIRST (Local Wins)
+        const injectDirty = (type, arrName) => {
+            if(appState.dirtyItems && appState.dirtyItems[type]) {
+                appState.dirtyItems[type].forEach(id => {
+                    Object.keys(oldFeeders).forEach(fCode => {
+                        let item = oldFeeders[fCode][arrName].find(x => x.id === id);
+                        if(item) {
+                            if(!newFeeders[fCode]) newFeeders[fCode] = { feeder: { code: fCode, name: "Feeder "+fCode, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+                            newFeeders[fCode][arrName].push(item);
+                        }
+                    });
+                });
+            }
+        };
+        injectDirty('POLE', 'poles'); injectDirty('DT', 'dts'); injectDirty('LINE', 'lines'); injectDirty('CONSUMER', 'consumers');
+
+        // 2. Add CLOUD items (if not dirty/modified locally)
         if (objRes.data) {
             objRes.data.forEach(obj => {
                 const fc = String(obj.feeder_code);
-                if(!newObjArrays[fc]) newObjArrays[fc] = { poles: [], dts: [], lines: [], consumers: [] };
+                if(!newFeeders[fc]) newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
                 
                 if (!checkDirty(obj.type, obj.id)) {
                     let d = obj.data;
@@ -301,22 +311,16 @@ async function pullFromSupabase(isBackground = false) {
                         }
                     } catch(e){}
 
-                    if (obj.type === 'POLE') newObjArrays[fc].poles.push(d);
-                    if (obj.type === 'DT') newObjArrays[fc].dts.push(d);
-                    if (obj.type === 'LINE') newObjArrays[fc].lines.push(d);
-                    if (obj.type === 'CONSUMER') newObjArrays[fc].consumers.push(d);
+                    if (obj.type === 'POLE') newFeeders[fc].poles.push(d);
+                    if (obj.type === 'DT') newFeeders[fc].dts.push(d);
+                    if (obj.type === 'LINE') newFeeders[fc].lines.push(d);
+                    if (obj.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
                 }
             });
         }
 
-        // Apply back to state
-        Object.keys(newObjArrays).forEach(fc => {
-            if(!appState.feeders[fc]) appState.feeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
-            appState.feeders[fc].poles = newObjArrays[fc].poles;
-            appState.feeders[fc].dts = newObjArrays[fc].dts;
-            appState.feeders[fc].lines = newObjArrays[fc].lines;
-            appState.feeders[fc].consumers = newObjArrays[fc].consumers;
-        });
+        appState.gssNodes = { ...newGss, ...appState.gssNodes }; // Local dirty GSS retained
+        appState.feeders = newFeeders;
         
         const validFeeders = Object.keys(appState.feeders);
         if(validFeeders.length === 0) appState.currentFeederCode = null;
@@ -327,36 +331,34 @@ async function pullFromSupabase(isBackground = false) {
         getActiveNetwork(); 
         if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
         renderEntireNetwork(); 
-        if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
-        if(!isBackground) centerMapOnGSS(); 
         setSyncStatus('synced'); 
 
-        // If local offline data was preserved, schedule an automatic push
+        // If local offline data was retained during merge, auto-push to cloud
         const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
         const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
-        if(hasDirty || hasDeleted) {
-            setTimeout(() => { window.syncToSupabase(true); }, 2000);
-        }
+        if(hasDirty || hasDeleted) { setTimeout(() => { window.syncToSupabase(false); }, 2000); }
 
     } catch (err) { console.error("Pull error:", err); setSyncStatus('offline'); }
-    finally { window.hideLoader(); }
+    finally { if(!isBackground) window.hideLoader(); }
 }
 
+// ==== 🚀 TRUE OFFLINE PERSISTENCE (INSTANT SAVE) ====
 function triggerPersistence(incrementSync = true) { 
     if(incrementSync) { appState.unsyncedCount = (appState.unsyncedCount || 0) + 1; updateSyncUI(); }
     
-    // OFFLINE SAVE LOGIC FIRST
+    // 1. INSTANT LOCAL SAVE (No Network Wait)
     if(typeof localforage !== 'undefined') {
         localforage.setItem(DB_KEY, appState).then(() => {
-            if(navigator.onLine) syncToSupabase();
+            // 2. BACKGROUND CLOUD PUSH
+            if(navigator.onLine) syncToSupabase(false);
             else showToast("Saved Locally! App is Offline.");
         }).catch(() => {
             localStorage.setItem(DB_KEY, JSON.stringify(appState));
-            if(navigator.onLine) syncToSupabase();
+            if(navigator.onLine) syncToSupabase(false);
         });
     } else {
         localStorage.setItem(DB_KEY, JSON.stringify(appState)); 
-        if(navigator.onLine) syncToSupabase();
+        if(navigator.onLine) syncToSupabase(false);
     }
 }
 
@@ -405,7 +407,7 @@ window.handleSupabaseAuth = async function(mode) {
             appState.user.isLoggedIn = true; appState.user.email = response.data.user.email; appState.user.id = response.data.user.id;
             appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0];
             
-            applyAuthUIVisuals(); await pullFromSupabase(); showToast("Login Successful!");
+            applyAuthUIVisuals(); await pullFromSupabase(false); showToast("Login Successful!");
         }
     } finally { window.hideLoader(); }
 }
@@ -1059,8 +1061,7 @@ window.openAddGssModal = function() {
 window.saveNewGss = function() {
     window.haptic(30); const code = document.getElementById('inpGssCode').value.trim(), name = document.getElementById('inpGssName').value.trim();
     if (!code || !name) return alert("Enter GSS Code and Name"); if (appState.gssNodes[code]) return alert("GSS Code already exists!");
-    let center = {lat: 26.915, lng: 75.783}; if(map) center = map.getCenter();
-    appState.gssNodes[code] = { code, name, lat: parseFloat(center.lat.toFixed(6)), lng: parseFloat(center.lng.toFixed(6)) };
+    const center = map.getCenter(); appState.gssNodes[code] = { code, name, lat: parseFloat(center.lat.toFixed(6)), lng: parseFloat(center.lng.toFixed(6)) };
     window.markDirty('GSS', code); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("New GSS added successfully!");
 };
 window.relocateGss = function(gssCode) { window.closeObjectSheet(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
@@ -1475,31 +1476,45 @@ async function initializeApplication() {
 
         let data = null;
         if (typeof localforage !== 'undefined') { data = await localforage.getItem(DB_KEY); } else { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
-        if (data && data.feeders) { appState = data; if (!appState.unsyncedCount) appState.unsyncedCount = 0; }
-        if (!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
-        if (!appState.deletedItems) appState.deletedItems = { gss: [], feeders: [], objects: [] };
+        if (data && data.feeders) { 
+            appState = data; 
+            if (!appState.unsyncedCount) appState.unsyncedCount = 0; 
+            if (!appState.dirtyItems) appState.dirtyItems = { GSS: [], FEEDER: [], POLE: [], DT: [], LINE: [], CONSUMER: [] };
+            if (!appState.deletedItems) appState.deletedItems = { gss: [], feeders: [], objects: [] };
+        }
+        
         if(appState.settings.darkMode) document.documentElement.setAttribute('data-theme', 'dark');
 
         translateApp(); updateSyncUI();
         
+        // ==== 🚀 INSTANT OFFLINE RENDER ON STARTUP ====
         if (appState.user && appState.user.isLoggedIn) { 
             applyAuthUIVisuals(); 
-            const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
-            const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
-            if (hasDirty || hasDeleted) { window.syncToSupabase(); }
-            pullFromSupabase(); 
+            renderEntireNetwork(); 
+            centerMapOnGSS(); 
+            
+            if(navigator.onLine) {
+                const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
+                const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
+                if (hasDirty || hasDeleted) { window.syncToSupabase(false); }
+                pullFromSupabase(true); 
+            }
         } 
-        
-        if (supabaseClient) {
+        else if (supabaseClient) {
             supabaseClient.auth.getSession().then(async ({ data }) => {
                 if (data && data.session && data.session.user) {
                     appState.user.isLoggedIn = true; appState.user.email = data.session.user.email; appState.user.id = data.session.user.id;
                     appState.user.name = data.session.user.user_metadata?.full_name || data.session.user.email.split('@')[0];
                     applyAuthUIVisuals(); 
-                    const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
-                    const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
-                    if (hasDirty || hasDeleted) { window.syncToSupabase(); }
-                    pullFromSupabase(); 
+                    renderEntireNetwork();
+                    centerMapOnGSS();
+
+                    if(navigator.onLine) {
+                        const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
+                        const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
+                        if (hasDirty || hasDeleted) { window.syncToSupabase(false); }
+                        pullFromSupabase(true); 
+                    }
                 }
             });
         }
