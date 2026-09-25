@@ -19,7 +19,7 @@
 </head>
 <body>
 
-    <!-- 🔐 AUTHENTICATION SCREEN (Glassmorphism Card) -->
+    <!-- 🔐 AUTHENTICATION SCREEN -->
     <div id="auth-screen">
         <div class="auth-glass-card">
             <div class="auth-logo"><i class="fa-solid fa-bolt-lightning"></i></div>
@@ -28,15 +28,15 @@
             
             <div id="signupNameField" style="display:none;" class="form-group">
                 <i class="fa-solid fa-user"></i>
-                <input type="text" id="authName" placeholder="Full Name">
+                <input type="text" id="authName" class="form-input" placeholder="Full Name">
             </div>
             <div class="form-group">
                 <i class="fa-solid fa-envelope"></i>
-                <input type="email" id="authEmail" placeholder="Email Address">
+                <input type="email" id="authEmail" class="form-input" placeholder="Email Address">
             </div>
             <div class="form-group">
                 <i class="fa-solid fa-lock"></i>
-                <input type="password" id="authPassword" placeholder="Password">
+                <input type="password" id="authPassword" class="form-input" placeholder="Password">
             </div>
 
             <button class="btn-primary" id="loginBtn" onclick="handleSupabaseAuth('login')">Login Securely</button>
@@ -52,8 +52,20 @@
         <!-- 🗺️ Map Container -->
         <div id="map"></div>
 
-        <!-- 🏷️ Top Navigation Bar (Glassmorphism) -->
-        <div class="top-glass-bar">
+        <!-- 🚫 EMPTY STATE SCREEN (Glassmorphism + Animated Button) -->
+        <div id="empty-state-screen" class="empty-state-overlay" style="display:none;">
+            <div class="empty-state-card">
+                <div class="empty-icon"><i class="fa-solid fa-network-wired"></i></div>
+                <h3>Welcome! Let's build your network.</h3>
+                <p>Start by adding a Substation (GSS) to begin drawing your layout.</p>
+                <button class="btn-primary pulse-btn" onclick="openAddGssModal()">
+                    <i class="fa-solid fa-plus-circle"></i> Add First GSS
+                </button>
+            </div>
+        </div>
+
+        <!-- 🏷️ Top Navigation Bar (Glassmorphism & Integrated Sync Dot) -->
+        <div class="top-glass-bar" id="main-top-bar">
             <button class="icon-btn" onclick="toggleSidebar(true)"><i class="fa-solid fa-bars"></i></button>
             
             <div class="feeder-selector">
@@ -63,9 +75,9 @@
             </div>
 
             <button class="icon-btn" onclick="toggleSearchBox()"><i class="fa-solid fa-magnifying-glass"></i></button>
-            <div id="sync-indicator" class="sync-status" onclick="syncToSupabase(true)">
-                <i class="fa-solid fa-cloud"></i>
-                <span id="sync-badge" class="sync-badge" style="display:none;">0</span>
+            <!-- Sleek Integrated Sync Dot -->
+            <div id="sync-dot-container" class="sync-dot-wrapper" onclick="showSyncDetails()">
+                <div id="sync-status-dot" class="status-dot success-dot"></div>
             </div>
         </div>
 
@@ -73,7 +85,7 @@
         <div id="searchBoxOverlay" class="search-overlay" style="display:none;">
             <div class="search-glass-box">
                 <i class="fa-solid fa-magnifying-glass"></i>
-                <input type="text" id="appSearchBar" placeholder="Search K-No, DT Code, Name..." onkeyup="handleSearch(event)">
+                <input type="text" id="appSearchBar" class="form-input" placeholder="Search K-No, DT Code, Name..." onkeyup="handleSearch(event)">
                 <button class="icon-btn" onclick="toggleSearchBox()"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div id="searchSuggestions" class="search-suggestions"></div>
@@ -87,7 +99,7 @@
         </div>
 
         <!-- 📊 KPI Dashboard (Glass Bottom Bar) -->
-        <div class="kpi-glass-board">
+        <div class="kpi-glass-board" id="main-kpi-board">
             <div class="kpi-item"><span class="kpi-val" id="kpi11">0</span><span class="kpi-label">11KV (km)</span></div>
             <div class="kpi-item"><span class="kpi-val" id="kpiLT">0</span><span class="kpi-label">LT (km)</span></div>
             <div class="kpi-item"><span class="kpi-val" id="kpi3Ph">0</span><span class="kpi-label">3-Ph DT</span></div>
@@ -121,8 +133,8 @@
         <div id="placement-confirm-bar" class="action-bar-glass" style="display:none;">
             <p>Move map to set exact location</p>
             <div class="btn-group">
-                <button class="btn-cancel" onclick="cancelPlacement()">Cancel</button>
-                <button class="btn-confirm" onclick="confirmPlacement()">Confirm Here</button>
+                <button class="btn-outline" onclick="cancelPlacement()">Cancel</button>
+                <button class="btn-primary" onclick="confirmPlacement()">Confirm Here</button>
             </div>
         </div>
 
@@ -131,13 +143,13 @@
             <p id="moveTargetTitle">Move Object</p>
             <div id="live-move-icon" style="display:none; margin:10px auto;"></div>
             <div class="btn-group">
-                <button class="btn-cancel" onclick="cancelObjectMove()">Cancel</button>
-                <button class="btn-confirm" onclick="confirmObjectMove()">Save Location</button>
+                <button class="btn-outline" onclick="cancelObjectMove()">Cancel</button>
+                <button class="btn-primary" onclick="confirmObjectMove()">Save Location</button>
             </div>
         </div>
 
         <!-- 📄 Bottom Info Sheet (Material Card) -->
-        <div id="bottom-info-sheet" class="bottom-sheet">
+        <div id="bottom-info-sheet" class="bottom-sheet glass-panel">
             <div class="sheet-drag-handle"></div>
             <div id="obj-sheet-content" class="sheet-content-scroll"></div>
         </div>
@@ -203,7 +215,7 @@
                 <div class="form-row"><label>App Language</label><select id="setLanguage" class="form-select"><option value="en">English</option><option value="hi">हिन्दी</option></select></div>
                 <div class="form-row"><label>App Theme</label><select id="setTheme" class="form-select"><option value="light">Light Mode</option><option value="dark">Dark Mode</option></select></div>
                 <button class="btn-primary" onclick="autoSaveSettings()" style="margin-top:20px;">Save Settings</button>
-                <button class="btn-outline-danger" onclick="openResetConfirmationModal()" style="margin-top:20px; width:100%;">Danger: Reset App Data</button>
+                <button class="btn-outline text-danger" onclick="openResetConfirmationModal()" style="margin-top:20px; width:100%; border-color:var(--danger);">Danger: Reset App Data</button>
             </div>
         </div>
 
