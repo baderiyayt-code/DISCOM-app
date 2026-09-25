@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Security Policy for Cordova to allow external fonts and scripts -->
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; font-src * data:; style-src * 'unsafe-inline';">
     <title>DISCOM Survey Pro</title>
     
     <!-- Google Fonts: Inter -->
@@ -14,12 +16,12 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-    <!-- Custom CSS -->
+    <!-- Custom CSS (यह फाइल उसी फोल्डर में होनी चाहिए) -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <!-- 🔐 AUTHENTICATION SCREEN (Fixed Black-Box UI) -->
+    <!-- 🔐 PREMIUM AUTHENTICATION SCREEN -->
     <div id="auth-screen">
         <div class="auth-card">
             <div class="auth-logo"><i class="fa-solid fa-bolt-lightning"></i></div>
