@@ -21,7 +21,7 @@ let appState = {
 let historyStack = []; let map = null;
 window.haptic = function(pattern) { if (window.cordova && navigator.vibrate) navigator.vibrate(pattern); };
 
-// ==== 🚀 BEAUTIFUL DOMAIN-SPECIFIC LOADER (POLE TO POLE WIRE) ====
+// ==== 🚀 BEAUTIFUL DOMAIN-SPECIFIC LOADER ====
 window.showLoader = function(text = "Syncing Data...") {
     let loader = document.getElementById('discom-global-loader');
     if (!loader) {
@@ -148,7 +148,7 @@ window.setupRealtimeSync = function() {
     }).subscribe();
 };
 
-// ==== 🚀 BACKGROUND NETWORK WATCHER (AUTO-SYNC) ====
+// ==== 🚀 AUTO-BACKGROUND SYNC ON NETWORK RECOVERY ====
 window.addEventListener('online', () => {
     setSyncStatus('syncing');
     showToast("Internet Connected! Auto-syncing...");
@@ -167,7 +167,7 @@ function cleanData(arr) {
     return arr.map(obj => { let cleaned = {}; for(let key in obj) { if(obj[key] !== undefined && obj[key] !== null) cleaned[key] = obj[key]; } return cleaned; });
 }
 
-// ==== 🚀 OFFLINE-SAFE SYNC ENGINE ====
+// ==== 🚀 OFFLINE-FIRST SYNC UPSERT ====
 window.syncToSupabase = async function(manual = false) {
     if (manual) window.haptic(15);
     
@@ -234,10 +234,11 @@ window.syncToSupabase = async function(manual = false) {
     finally { window.hideLoader(); setTimeout(() => { window.isSyncingLocal = false; }, 1500); }
 }
 
+// ==== 🚀 OFFLINE-FIRST NON-DESTRUCTIVE MERGE PULL ====
 async function pullFromSupabase(isBackground = false) {
     if (!navigator.onLine) { setSyncStatus('offline'); return; }
     if (!appState.user.isLoggedIn || !appState.user.id || !supabaseClient) return; 
-    if(!isBackground) { setSyncStatus('syncing'); window.showLoader("Fetching Map Data..."); }
+    if(!isBackground) { setSyncStatus('syncing'); window.showLoader("Merging Map Data..."); }
     
     try {
         const uid = appState.user.id;
@@ -247,64 +248,81 @@ async function pullFromSupabase(isBackground = false) {
             supabaseClient.from('network_objects').select('*').eq('user_id', uid)
         ]);
 
-        const isCloudEmpty = (!gssRes.data || gssRes.data.length === 0) && (!objRes.data || objRes.data.length === 0);
-        let hasLocalData = false;
-        if(appState.feeders) { Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].poles.length > 0 || appState.feeders[fCode].dts.length > 0) hasLocalData = true; }); }
-
-        if (isCloudEmpty && hasLocalData) {
-            window.hideLoader();
-            setTimeout(() => { window.syncToSupabase(false); }, 1500);
-            return;
-        }
-
-        let newGss = {}, newFeeders = {};
-        const oldFeeders = appState.feeders; // Save to prevent offline data wipe
-
-        if (gssRes.data && gssRes.data.length > 0) gssRes.data.forEach(g => { newGss[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng }; });
-        if (fdrRes.data && fdrRes.data.length > 0) fdrRes.data.forEach(f => { newFeeders[f.feeder_code] = { feeder: { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] }; });
-
-        if (objRes.data && objRes.data.length > 0) {
-            objRes.data.forEach(obj => {
-                const fc = String(obj.feeder_code);
-                if(!newFeeders[fc]) newFeeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1", subdivCode: "SD-01" }, poles: [], dts: [], lines: [], consumers: [] };
-                let d = obj.data; if(!d) return; d.id = obj.id; d.feederCode = fc; 
-                try {
-                    if(oldFeeders[fc]) {
-                        let oldArr = obj.type === 'POLE' ? oldFeeders[fc].poles : obj.type === 'DT' ? oldFeeders[fc].dts : obj.type === 'CONSUMER' ? oldFeeders[fc].consumers : null;
-                        if(oldArr) { let localObj = oldArr.find(x => x.id === d.id); if(localObj && localObj.photo) d.photo = localObj.photo; }
-                    }
-                } catch(e){}
-
-                if (obj.type === 'POLE') newFeeders[fc].poles.push(d);
-                if (obj.type === 'DT') newFeeders[fc].dts.push(d);
-                if (obj.type === 'LINE') newFeeders[fc].lines.push(d);
-                if (obj.type === 'CONSUMER') newFeeders[fc].consumers.push(d);
+        // Merge GSS (Cloud wins unless locally dirty)
+        if (gssRes.data) {
+            gssRes.data.forEach(g => {
+                if (!checkDirty('GSS', g.gss_code)) {
+                    appState.gssNodes[g.gss_code] = { code: g.gss_code, name: g.gss_name, lat: g.lat, lng: g.lng };
+                }
             });
         }
 
-        // ==== 🚀 PREVENT OFFLINE DATA LOSS ====
-        // Inject dirty (unsynced) items into the new state before replacing it
-        const injectDirty = (type, arrName) => {
-            if(appState.dirtyItems && appState.dirtyItems[type]) {
-                appState.dirtyItems[type].forEach(id => {
-                    Object.keys(oldFeeders).forEach(fCode => {
-                        let item = oldFeeders[fCode][arrName].find(x => x.id === id);
-                        if(item) {
-                            if(!newFeeders[fCode]) newFeeders[fCode] = { feeder: { code: fCode, name: "Feeder "+fCode, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
-                            newFeeders[fCode][arrName] = newFeeders[fCode][arrName].filter(x => x.id !== id);
-                            newFeeders[fCode][arrName].push(item);
-                        }
-                    });
-                });
-            }
-        };
-        injectDirty('POLE', 'poles'); injectDirty('DT', 'dts'); injectDirty('LINE', 'lines'); injectDirty('CONSUMER', 'consumers');
+        // Merge Feeders
+        if (fdrRes.data) {
+            fdrRes.data.forEach(f => {
+                if (!checkDirty('FEEDER', f.feeder_code)) {
+                    if(!appState.feeders[f.feeder_code]) {
+                        appState.feeders[f.feeder_code] = { feeder: {}, poles: [], dts: [], lines: [], consumers: [] };
+                    }
+                    appState.feeders[f.feeder_code].feeder = { code: f.feeder_code, name: f.feeder_name, parentGss: f.gss_code, subdivCode: "SD-01" };
+                }
+            });
+        }
 
-        appState.gssNodes = { ...newGss, ...appState.gssNodes }; // Keep local dirty GSS
-        appState.feeders = newFeeders;
+        // Object Array Isolation (Protects Offline Data)
+        let newObjArrays = {}; 
+        Object.keys(appState.feeders).forEach(fc => {
+            newObjArrays[fc] = { poles: [], dts: [], lines: [], consumers: [] };
+            const net = appState.feeders[fc];
+            // Seed with LOCAL OFFLINE (DIRTY) items FIRST
+            if(net.poles) newObjArrays[fc].poles = net.poles.filter(p => checkDirty('POLE', p.id));
+            if(net.dts) newObjArrays[fc].dts = net.dts.filter(d => checkDirty('DT', d.id));
+            if(net.lines) newObjArrays[fc].lines = net.lines.filter(l => checkDirty('LINE', l.id));
+            if(net.consumers) newObjArrays[fc].consumers = net.consumers.filter(c => checkDirty('CONSUMER', c.id));
+        });
+
+        // Add Cloud items
+        if (objRes.data) {
+            objRes.data.forEach(obj => {
+                const fc = String(obj.feeder_code);
+                if(!newObjArrays[fc]) newObjArrays[fc] = { poles: [], dts: [], lines: [], consumers: [] };
+                
+                if (!checkDirty(obj.type, obj.id)) {
+                    let d = obj.data;
+                    if(!d) return;
+                    d.id = obj.id; 
+                    d.feederCode = fc; 
+                    
+                    try {
+                        let oldNet = appState.feeders[fc];
+                        if(oldNet) {
+                            let oldArr = obj.type === 'POLE' ? oldNet.poles : obj.type === 'DT' ? oldNet.dts : obj.type === 'CONSUMER' ? oldNet.consumers : null;
+                            if(oldArr) { let localObj = oldArr.find(x => x.id === d.id); if(localObj && localObj.photo) d.photo = localObj.photo; }
+                        }
+                    } catch(e){}
+
+                    if (obj.type === 'POLE') newObjArrays[fc].poles.push(d);
+                    if (obj.type === 'DT') newObjArrays[fc].dts.push(d);
+                    if (obj.type === 'LINE') newObjArrays[fc].lines.push(d);
+                    if (obj.type === 'CONSUMER') newObjArrays[fc].consumers.push(d);
+                }
+            });
+        }
+
+        // Apply back to state
+        Object.keys(newObjArrays).forEach(fc => {
+            if(!appState.feeders[fc]) appState.feeders[fc] = { feeder: { code: fc, name: "Feeder "+fc, parentGss: "1" }, poles: [], dts: [], lines: [], consumers: [] };
+            appState.feeders[fc].poles = newObjArrays[fc].poles;
+            appState.feeders[fc].dts = newObjArrays[fc].dts;
+            appState.feeders[fc].lines = newObjArrays[fc].lines;
+            appState.feeders[fc].consumers = newObjArrays[fc].consumers;
+        });
         
-        const validFeeders = Object.keys(newFeeders);
-        if(validFeeders.length === 0) appState.currentFeederCode = null; else if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = validFeeders[0];
+        const validFeeders = Object.keys(appState.feeders);
+        if(validFeeders.length === 0) appState.currentFeederCode = null;
+        else if(!appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = validFeeders[0];
+        
+        appState.unsyncedCount = 0;
         
         getActiveNetwork(); 
         if (typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState);
@@ -312,14 +330,34 @@ async function pullFromSupabase(isBackground = false) {
         if(map && !isBackground) { setTimeout(() => { map.invalidateSize(); }, 300); }
         if(!isBackground) centerMapOnGSS(); 
         setSyncStatus('synced'); 
+
+        // If local offline data was preserved, schedule an automatic push
+        const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
+        const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
+        if(hasDirty || hasDeleted) {
+            setTimeout(() => { window.syncToSupabase(true); }, 2000);
+        }
+
     } catch (err) { console.error("Pull error:", err); setSyncStatus('offline'); }
     finally { window.hideLoader(); }
 }
 
 function triggerPersistence(incrementSync = true) { 
     if(incrementSync) { appState.unsyncedCount = (appState.unsyncedCount || 0) + 1; updateSyncUI(); }
-    if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); 
-    else localStorage.setItem(DB_KEY, JSON.stringify(appState)); syncToSupabase(); 
+    
+    // OFFLINE SAVE LOGIC FIRST
+    if(typeof localforage !== 'undefined') {
+        localforage.setItem(DB_KEY, appState).then(() => {
+            if(navigator.onLine) syncToSupabase();
+            else showToast("Saved Locally! App is Offline.");
+        }).catch(() => {
+            localStorage.setItem(DB_KEY, JSON.stringify(appState));
+            if(navigator.onLine) syncToSupabase();
+        });
+    } else {
+        localStorage.setItem(DB_KEY, JSON.stringify(appState)); 
+        if(navigator.onLine) syncToSupabase();
+    }
 }
 
 let authMode = 'login';
@@ -944,7 +982,6 @@ window.renderGssSidebarList = function() {
     }); container.innerHTML = html;
 };
 
-// ==== TARGETED DELETE ENGINE ====
 window.deleteEntity = function(type, id) {
     window.haptic([50,50,50]); const net = getActiveNetwork(); if(!confirm(t("confDel"))) return; saveSnapshot();
     
@@ -1022,7 +1059,8 @@ window.openAddGssModal = function() {
 window.saveNewGss = function() {
     window.haptic(30); const code = document.getElementById('inpGssCode').value.trim(), name = document.getElementById('inpGssName').value.trim();
     if (!code || !name) return alert("Enter GSS Code and Name"); if (appState.gssNodes[code]) return alert("GSS Code already exists!");
-    const center = map.getCenter(); appState.gssNodes[code] = { code, name, lat: parseFloat(center.lat.toFixed(6)), lng: parseFloat(center.lng.toFixed(6)) };
+    let center = {lat: 26.915, lng: 75.783}; if(map) center = map.getCenter();
+    appState.gssNodes[code] = { code, name, lat: parseFloat(center.lat.toFixed(6)), lng: parseFloat(center.lng.toFixed(6)) };
     window.markDirty('GSS', code); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("New GSS added successfully!");
 };
 window.relocateGss = function(gssCode) { window.closeObjectSheet(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
@@ -1051,7 +1089,6 @@ window.saveFeederConfiguration = function() {
 
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
-    if(!navigator.onLine) return alert("Offline Mode: Naya Object banane ke liye pehle internet connection check karein."); // Strict offline creation block
     if (type !== 'GSS' && type !== 'FEEDER') {
         const net = getActiveNetwork();
         if (!net) return alert("Please create a GSS and Feeder first!");
@@ -1060,16 +1097,27 @@ window.openAddForm = function(type) {
     else window.showFormModal(type, null, null);
 }
 
-window.confirmPlacement = function() { window.haptic(30); window.safeSetDisplay('center-placement-pin', 'none'); window.safeSetDisplay('placement-confirm-bar', 'none'); window.safeSetDisplay('bottom-single-action', 'block'); const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); }
+window.confirmPlacement = function() { 
+    window.haptic(30); 
+    window.safeSetDisplay('center-placement-pin', 'none'); window.safeSetDisplay('placement-confirm-bar', 'none'); window.safeSetDisplay('bottom-single-action', 'block'); 
+    let center = {lat:26.9, lng:75.7}; if(map) center = map.getCenter();
+    window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); 
+}
 window.cancelPlacement = function() { window.haptic(15); window.safeSetDisplay('center-placement-pin', 'none'); window.safeSetDisplay('placement-confirm-bar', 'none'); window.safeSetDisplay('bottom-single-action', 'block'); }
 
-// ==== 🔥 FALLBACK COORDINATES ENHANCEMENT ====
+function getSafeCoords() {
+    let lat = parseFloat(document.getElementById('inpLat')?.value);
+    let lng = parseFloat(document.getElementById('inpLng')?.value);
+    if(isNaN(lat) || isNaN(lng)) {
+        if(map) { const c = map.getCenter(); lat = parseFloat(c.lat.toFixed(6)); lng = parseFloat(c.lng.toFixed(6)); }
+        else { lat = 26.9150; lng = 75.7830; } 
+    }
+    return {lat, lng};
+}
+
 window.showFormModal = function(type, snapLat, snapLng, editId = null) {
     if(map) map.closePopup();
-    const net = getActiveNetwork(); 
-    let center = { lat: 26.9150, lng: 75.7830 };
-    if(map) center = map.getCenter(); 
-    
+    const net = getActiveNetwork(); let center = { lat: 26.9150, lng: 75.7830 }; if(map) center = map.getCenter(); 
     snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
     
     let isEdit = editId !== null; let existingObj = {};
@@ -1225,17 +1273,6 @@ window.saveEditedGss = function(code) {
     window.markDirty('GSS', code); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("GSS Updated"); 
 }
 
-// ==== BUG FIX: BETTER FALLBACK IF GPS/MAP FAILS ====
-function getSafeCoords() {
-    let lat = parseFloat(document.getElementById('inpLat').value);
-    let lng = parseFloat(document.getElementById('inpLng').value);
-    if(isNaN(lat) || isNaN(lng)) {
-        if(map) { const c = map.getCenter(); lat = parseFloat(c.lat.toFixed(6)); lng = parseFloat(c.lng.toFixed(6)); }
-        else { lat = 26.9150; lng = 75.7830; } // Fallback to safe area instead of crash
-    }
-    return {lat, lng};
-}
-
 window.savePoleData = function(editId) { 
     window.haptic(30); saveSnapshot(); 
     const category = document.getElementById('inpPoleCategory').value;
@@ -1317,9 +1354,7 @@ window.saveDTData = function(editId) {
     } else {
         if (net.dts.some(d => String(d.code) === code)) return alert(t("alertExists"));
         const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); 
-        let lat = net.feeder.lat, lng = net.feeder.lng; 
-        if (p) { lat = parseFloat(p.lat); lng = parseFloat(p.lng); }
-        if(isNaN(lat) || isNaN(lng)) { const sc = getSafeCoords(); lat = sc.lat; lng = sc.lng; }
+        const {lat, lng} = getSafeCoords();
         
         const newId = 'DT_'+Date.now();
         net.dts.push({ id: newId, feederCode: fc, parentPole: parentRef, code, name, rating, phase, srNo, tn, mountedOn, location, photo, lat, lng });
@@ -1354,7 +1389,6 @@ window.saveConsumerData = function(editId) {
 
 window.openEditModal = function(type, id) { window.showFormModal(type.toUpperCase(), null, null, id); }
 
-// ==== 🚀 ADDED 40 kVA in DT ====
 window.updateDTRatingDropdowns = function(phaseId, ratingId, existingVal) {
     const phase = document.getElementById(phaseId).value, ratingSel = document.getElementById(ratingId);
     let opts = '';
@@ -1452,8 +1486,8 @@ async function initializeApplication() {
             applyAuthUIVisuals(); 
             const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
             const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
-            if (hasDirty || hasDeleted) { await window.syncToSupabase(); }
-            await pullFromSupabase(); 
+            if (hasDirty || hasDeleted) { window.syncToSupabase(); }
+            pullFromSupabase(); 
         } 
         
         if (supabaseClient) {
@@ -1464,8 +1498,8 @@ async function initializeApplication() {
                     applyAuthUIVisuals(); 
                     const hasDirty = Object.values(appState.dirtyItems).some(arr => arr.length > 0);
                     const hasDeleted = Object.values(appState.deletedItems).some(arr => arr.length > 0);
-                    if (hasDirty || hasDeleted) { await window.syncToSupabase(); }
-                    await pullFromSupabase(); 
+                    if (hasDirty || hasDeleted) { window.syncToSupabase(); }
+                    pullFromSupabase(); 
                 }
             });
         }
