@@ -16,11 +16,11 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<!-- CUSTOM ERECTION LOADING SCREEN -->
 <div id="erection-loader">
     <div class="loader-scene">
         <div class="loader-pole lp1"></div>
@@ -29,31 +29,27 @@
         <div class="loader-pole lp4"></div>
         <div class="loader-wire"></div>
     </div>
-    <div class="loader-text">Erecting Network...</div>
+    <div class="loader-text" data-i18n="loading">Erecting Network...</div>
 </div>
 
-<!-- STRICT PERMISSION OVERLAY -->
 <div id="permission-overlay" style="display:none;">
     <div class="permission-card">
         <i class="fa-solid fa-triangle-exclamation" style="font-size:3rem; color:#f59e0b; margin-bottom:15px;"></i>
-        <h2>Permissions Required</h2>
-        <p>This app strictly requires <b>Location</b> and <b>Storage</b> permissions to function.</p>
-        <button class="btn-action-primary" onclick="window.requestAppPermissions()">Grant Permissions</button>
+        <h2 data-i18n="permReq">Permissions Required</h2>
+        <p data-i18n="permDesc">This app strictly requires <b>Location, Camera</b> and <b>Storage</b> permissions to function.</p>
+        <button class="btn-action-primary" onclick="window.requestAppPermissions()" data-i18n="grantPerm">Grant Permissions</button>
     </div>
 </div>
 
-<!-- MANDATORY ONBOARDING OVERLAY -->
 <div id="onboarding-overlay" style="display:none;">
     <div class="permission-card">
         <i class="fa-solid fa-tower-cell" style="font-size:3rem; color:#2563eb; margin-bottom:15px;"></i>
         <h2 id="onboarding-title">Network Setup Required</h2>
         <p id="onboarding-desc">Please add your first GSS to begin mapping.</p>
-        <!-- FIX: Hide overlay automatically when clicking the button -->
-        <button class="btn-action-primary" id="onboarding-btn" onclick="document.getElementById('onboarding-overlay').style.display='none'; window.openAddGssModal();">Add GSS Now</button>
+        <button class="btn-action-primary" id="onboarding-btn">Add GSS Now</button>
     </div>
 </div>
 
-<!-- AUTH SCREEN -->
 <div id="auth-screen" style="display: none;">
     <div class="auth-card">
         <img src="res/icon.png" alt="Logo" style="width:80px; height:80px; border-radius:16px; margin-bottom:10px; display:inline-block;" onerror="this.style.display='none'">
@@ -70,7 +66,6 @@
     </div>
 </div>
 
-<!-- MAIN APP -->
 <div id="app-container">
     <div id="app-toast"><i class="fa-solid fa-circle-check" style="color:#4ade80;"></i> <span id="toast-msg">Success</span></div>
 
@@ -79,7 +74,7 @@
             <div class="header-title-group">
                 <div class="action-btn-sm" onclick="window.toggleSidebar(true)"><i class="fa-solid fa-bars"></i></div>
                 <select id="feederSelectHeader" class="modern-select" onchange="window.switchFeeder(this.value)"></select>
-                <button class="action-btn-sm" onclick="window.openAddNewFeederModal()"><i class="fa-solid fa-plus"></i></button>
+                <button class="action-btn-sm" onclick="window.openFeederConfigModal()"><i class="fa-solid fa-plus"></i></button>
             </div>
             <div class="header-actions">
                 <button class="action-btn-sm" onclick="window.toggleSearchBox()"><i class="fa-solid fa-magnifying-glass"></i></button>
@@ -119,11 +114,11 @@
 
     <div id="speed-dial-menu">
         <div class="dial-grid">
-            <div class="dial-card" onclick="window.openAddForm('POLE')"><i class="fa-solid fa-grip-lines-vertical" style="color:#0ea5e9;"></i><span>HT Pole</span></div>
-            <div class="dial-card" onclick="window.openAddForm('LTPOLE')"><i class="fa-solid fa-grip-lines-vertical" style="color:#10b981;"></i><span>LT Pole</span></div>
-            <div class="dial-card" onclick="window.openAddForm('LINE')"><i class="fa-solid fa-arrow-trend-up" style="color:#2563eb;"></i><span>Line</span></div>
-            <div class="dial-card" onclick="window.openAddForm('DT')"><i class="fa-solid fa-bolt" style="color:#f59e0b;"></i><span>DT</span></div>
-            <div class="dial-card" onclick="window.openAddForm('CONSUMER')"><i class="fa-solid fa-user-plus" style="color:#3b82f6;"></i><span>Consumer</span></div>
+            <div class="dial-card" onclick="window.openAddForm('POLE')"><i class="fa-solid fa-grip-lines-vertical" style="color:#0ea5e9;"></i><span data-i18n="htPole">HT Pole</span></div>
+            <div class="dial-card" onclick="window.openAddForm('LTPOLE')"><i class="fa-solid fa-grip-lines-vertical" style="color:#10b981;"></i><span data-i18n="ltPole">LT Pole</span></div>
+            <div class="dial-card" onclick="window.openAddForm('LINE')"><i class="fa-solid fa-arrow-trend-up" style="color:#2563eb;"></i><span data-i18n="line">Line</span></div>
+            <div class="dial-card" onclick="window.openAddForm('DT')"><i class="fa-solid fa-bolt" style="color:#f59e0b;"></i><span data-i18n="dt">DT</span></div>
+            <div class="dial-card" onclick="window.openAddForm('CONSUMER')"><i class="fa-solid fa-user-plus" style="color:#3b82f6;"></i><span data-i18n="consumer">Consumer</span></div>
         </div>
     </div>
 
@@ -132,34 +127,34 @@
     </div>
 
     <div id="placement-confirm-bar" class="floating-action-bar">
-        <div><b style="color:var(--accent); font-size:1.0rem;"><i class="fa-solid fa-location-dot"></i> Confirm Location</b></div>
+        <div><b style="color:var(--accent); font-size:1.0rem;"><i class="fa-solid fa-location-dot"></i> <span data-i18n="confirmLoc">Confirm Location</span></b></div>
         <div style="display:flex; gap:8px; margin-top:4px;">
-            <button class="btn-action-primary" style="margin:0;" onclick="window.confirmPlacement()">Confirm Here</button>
-            <button class="btn-danger-outline" style="margin:0;" onclick="window.cancelPlacement()">Cancel</button>
+            <button class="btn-action-primary" style="margin:0;" onclick="window.confirmPlacement()" data-i18n="confirmHere">Confirm Here</button>
+            <button class="btn-danger-outline" style="margin:0;" onclick="window.cancelPlacement()" data-i18n="cancel">Cancel</button>
         </div>
     </div>
 
     <div id="move-confirm-bar" class="floating-action-bar">
         <div><b id="moveTargetTitle" style="color:var(--accent); font-size:1.0rem;">Target</b></div>
         <div style="display:flex; gap:8px; margin-top:4px;">
-            <button class="btn-action-primary" style="margin:0;" onclick="window.confirmObjectMove()">Set New Location</button>
-            <button class="btn-danger-outline" style="margin:0;" onclick="window.cancelObjectMove()">Cancel</button>
+            <button class="btn-action-primary" style="margin:0;" onclick="window.confirmObjectMove()" data-i18n="setNewLoc">Set New Location</button>
+            <button class="btn-danger-outline" style="margin:0;" onclick="window.cancelObjectMove()" data-i18n="cancel">Cancel</button>
         </div>
     </div>
 </div>
 
-<!-- BOTTOM DETAIL SHEET FOR MAP OBJECTS -->
 <div id="object-bottom-sheet" class="object-bottom-sheet">
     <div class="sheet-drag-handle"></div>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
         <h3 id="objSheetTitle" style="font-weight:900; color:var(--accent);">Object Title</h3>
         <button class="action-btn-sm" onclick="window.closeObjectSheet()"><i class="fa-solid fa-xmark"></i></button>
     </div>
-    <div id="objSheetDetails" style="font-size:0.9rem; margin-bottom:15px; line-height:1.5;"></div>
+    <div id="objSheetDetails" style="font-size:0.9rem; margin-bottom:15px; line-height:1.5; color:var(--text-main);"></div>
     
-    <div style="margin-bottom:15px; padding:10px; background:#f1f5f9; border-radius:10px;">
-        <label style="font-size:0.75rem; font-weight:700; color:var(--text-sub);">Upload Object Photo</label>
-        <input type="file" id="objPhotoInput" accept="image/*" class="form-input" style="padding:8px; margin-top:4px;" onchange="window.uploadObjectPhoto(event)">
+    <div style="margin-bottom:15px; padding:10px; background:var(--bg-glass); border: 1px solid var(--border); border-radius:10px; text-align:center;">
+        <button class="btn-action-primary" style="background:#0f172a; padding:10px; width:100%; font-size:0.9rem;" onclick="window.captureObjectPhoto()">
+            <i class="fa-solid fa-camera"></i> Capture Object Photo
+        </button>
     </div>
 
     <div style="display:flex; gap:10px;">
@@ -172,29 +167,38 @@
 <div id="settings-page">
     <div class="settings-header">
         <button class="action-btn-sm" style="border:none; background:transparent; font-size:1.3rem;" onclick="window.closeSettingsPage()"><i class="fa-solid fa-arrow-left"></i></button>
-        <h2 style="font-size:1.1rem; font-weight:800;">Settings</h2>
+        <h2 style="font-size:1.1rem; font-weight:800;" data-i18n="settings">Settings</h2>
     </div>
     <div class="settings-body">
         <div class="settings-card">
             <div class="form-row">
-                <label>Distance Unit</label>
+                <label data-i18n="appTheme">Theme Mode</label>
+                <select id="setTheme" class="form-select" onchange="window.autoSaveSettings()">
+                    <option value="light" selected>Light Mode</option>
+                    <option value="dark">Dark Mode</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label data-i18n="appLanguage">App Language</label>
+                <select id="setLanguage" class="form-select" onchange="window.autoSaveSettings()">
+                    <option value="en" selected>English</option>
+                    <option value="hi">हिंदी (Hindi)</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label data-i18n="distUnit">Distance Unit</label>
                 <select id="setUnit" class="form-select" onchange="window.autoSaveSettings()">
                     <option value="m">Meters (m)</option>
                     <option value="km">Kilometers (km)</option>
                 </select>
             </div>
-            <div class="form-row" style="margin-bottom:0;">
-                <label>GPS Accuracy Threshold (Meters)</label>
-                <input type="number" id="setGpsAccuracy" class="form-input" value="10" onchange="window.autoSaveSettings()">
-            </div>
         </div>
         <div class="settings-card" style="border-color: #ef4444; background:#fef2f2;">
-            <button type="button" class="btn-danger-outline" onclick="window.openResetConfirmationModal()"><i class="fa-solid fa-trash-can"></i> <span>Reset App Data</span></button>
+            <button type="button" class="btn-danger-outline" onclick="window.openResetConfirmationModal()"><i class="fa-solid fa-trash-can"></i> <span data-i18n="resetData">Reset App Data</span></button>
         </div>
     </div>
 </div>
 
-<!-- SIDEBAR -->
 <div id="sidebarBackdrop" onclick="window.toggleSidebar(false)"></div>
 <div id="sidebar-drawer">
     <div class="sidebar-header-gradient">
@@ -205,38 +209,34 @@
 
     <div class="sidebar-menu-list">
         <div class="menu-category-title" onclick="window.toggleGssFolder()" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
-            <span>GSS Management</span> <i id="gssFolderIcon" class="fa-solid fa-chevron-down"></i>
+            <span data-i18n="gssMgmt">GSS Management</span> <i id="gssFolderIcon" class="fa-solid fa-chevron-down"></i>
         </div>
         <div id="gssFolderContent" style="display:none; padding-left: 5px; margin-bottom: 15px;">
-            <div class="menu-link-btn" onclick="window.openAddGssModal()"><i class="fa-solid fa-plus-circle" style="color:#2563eb;"></i> <span>Add New GSS</span></div>
+            <div class="menu-link-btn" onclick="window.openAddGssModal()"><i class="fa-solid fa-plus-circle" style="color:#2563eb;"></i> <span data-i18n="addNewGss">Add New GSS</span></div>
             <div id="gssListContainer"></div>
         </div>
 
         <div class="menu-link-btn" onclick="window.openFeederConfigModal()" style="background:#eff6ff; color:#1d4ed8;">
-            <i class="fa-solid fa-tower-broadcast"></i> <span>Manage Feeders</span>
+            <i class="fa-solid fa-tower-broadcast"></i> <span data-i18n="manageFdr">Manage Feeders</span>
         </div>
 
-        <div class="menu-category-title">Export Data (Save Local)</div>
-        <div class="menu-link-btn" onclick="window.generateCadSLDPdf()"><i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> <span>Export SLD PDF</span></div>
-        <div class="menu-link-btn" onclick="window.exportToAutoCAD_DXF()"><i class="fa-solid fa-draw-polygon" style="color:#10b981;"></i> <span>Export DXF</span></div>
-        <div class="menu-link-btn" onclick="window.exportToGoogleEarth_KML()"><i class="fa-solid fa-earth-americas" style="color:#0ea5e9;"></i> <span>Export styled KML</span></div>
-        <div class="menu-link-btn" onclick="window.exportDataToCSV()"><i class="fa-solid fa-file-csv" style="color:#f59e0b;"></i> <span>Export CSV (GE Ready)</span></div>
+        <div class="menu-category-title" data-i18n="export">Export Data (Save Local)</div>
+        <div class="menu-link-btn" onclick="window.generateCadSLDPdf()"><i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> <span data-i18n="exportPdf">Export SLD PDF</span></div>
+        <div class="menu-link-btn" onclick="window.exportToAutoCAD_DXF()"><i class="fa-solid fa-draw-polygon" style="color:#10b981;"></i> <span data-i18n="exportDxf">Export DXF</span></div>
+        <div class="menu-link-btn" onclick="window.exportToGoogleEarth_KML()"><i class="fa-solid fa-earth-americas" style="color:#0ea5e9;"></i> <span data-i18n="exportKml">Export styled KML</span></div>
+        <div class="menu-link-btn" onclick="window.exportDataToCSV()"><i class="fa-solid fa-file-csv" style="color:#f59e0b;"></i> <span data-i18n="exportCsv">Export CSV (GE Ready)</span></div>
         
-        <div class="menu-category-title">Backup & Restore</div>
+        <div class="menu-category-title" data-i18n="import">Backup & Restore</div>
         <div class="menu-link-btn" onclick="window.exportFullJSONBackup()"><i class="fa-solid fa-download" style="color:#2563eb;"></i> <span>Export Backup (JSON)</span></div>
         <label class="menu-link-btn">
-            <i class="fa-solid fa-file-import" style="color:#8b5cf6;"></i><span>Import Backup (JSON)</span>
+            <i class="fa-solid fa-file-import" style="color:#8b5cf6;"></i><span data-i18n="importData">Import Backup (JSON)</span>
             <input type="file" id="jsonFileInput" accept=".json,application/json" style="display:none;" onchange="window.handleImportChoice(event)">
         </label>
 
-        <div class="menu-category-title">System</div>
-        <div class="menu-link-btn" onclick="window.openSettingsPage()"><i class="fa-solid fa-gear" style="color:#64748b;"></i><span>Settings</span></div>
-        <div class="menu-link-btn" onclick="window.openAboutModal()"><i class="fa-solid fa-circle-info" style="color:#0ea5e9;"></i><span>About App</span></div>
-        
-        <div style="margin-top: auto; padding-top:20px;">
-            <div class="menu-link-btn" onclick="window.handleSupabaseLogout()" style="background: rgba(239,68,68,0.1); color: #ef4444; margin-top:20px;">
-                <i class="fa-solid fa-right-from-bracket"></i> <span>Logout Securely</span>
-            </div>
+        <div class="menu-category-title" data-i18n="system">System</div>
+        <div class="menu-link-btn" onclick="window.openSettingsPage()"><i class="fa-solid fa-gear" style="color:#64748b;"></i><span data-i18n="settings">Settings</span></div>
+        <div class="menu-link-btn" onclick="window.handleSupabaseLogout()" style="background: rgba(239,68,68,0.1); color: #ef4444; margin-top:20px;">
+            <i class="fa-solid fa-right-from-bracket"></i> <span>Logout Securely</span>
         </div>
     </div>
 </div>
