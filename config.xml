@@ -13,29 +13,11 @@
     <allow-intent href="mailto:*" />
     <allow-intent href="geo:*" />
     
-    <!-- FIX FOR LOCALHOST SERVER CONNECTION ERROR -->
-    <preference name="scheme" value="https" />
-    <preference name="hostname" value="localhost" />
-    <allow-navigation href="https://localhost/*" />
-    <preference name="loadUrlTimeoutValue" value="70000" />
-    
-    <!-- BACKUP FIX: Agar naya HTTPS scheme device par support na kare, toh upar ki 4 lines hatakar niche wali line ko uncomment (enable) kar dein -->
-    <!-- <preference name="AndroidInsecureFileModeEnabled" value="true" /> -->
-    
-    <!-- HARDWARE ACCELERATION ENABLED -->
     <preference name="AndroidXEnabled" value="true" />
-    <preference name="android-hwaccel" value="true" />
-    <preference name="CrosswalkAnimatable" value="true" />
-    
-    <icon src="res/icon.png" />
     
     <platform name="android">
         <allow-intent href="market:*" />
     </platform>
 
-    <plugin name="cordova-plugin-camera" />
     <plugin name="cordova-plugin-geolocation" />
-    <plugin name="cordova-plugin-file" />
-    <plugin name="cordova-plugin-vibration" />
-    <plugin name="cordova-plugin-android-permissions" />
 </widget>
