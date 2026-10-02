@@ -21,8 +21,9 @@
         <allow-intent href="market:*" />
     </platform>
 
-    <!-- Required Plugins -->
+    <!-- Essential Plugins for Permissions, GPS, Camera, and EXPORT FILE FIX -->
     <plugin name="cordova-plugin-geolocation" />
     <plugin name="cordova-plugin-android-permissions" />
     <plugin name="cordova-plugin-camera" />
+    <plugin name="cordova-plugin-x-socialsharing" />
 </widget>
