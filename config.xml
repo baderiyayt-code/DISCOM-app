@@ -20,13 +20,13 @@
     <platform name="android">
         <allow-intent href="market:*" />
         
-        <!-- YEH FIX HAI: AndroidManifest mein explicitly 'tools' namespace inject karega -->
+        <!-- Inject tools namespace correctly -->
         <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest">
             <manifest xmlns:tools="http://schemas.android.com/tools" />
         </edit-config>
         
-        <!-- YEH DUPLICATE HATAYEGA: Conflict karne wali permission ko replace kar dega -->
-        <config-file target="AndroidManifest.xml" parent="/*">
+        <!-- YEH FIX HAI: parent="/manifest" ensure karega ki merge command sahi jagah apply ho -->
+        <config-file target="AndroidManifest.xml" parent="/manifest">
             <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="replace" />
         </config-file>
     </platform>
