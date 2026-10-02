@@ -26,8 +26,9 @@ let layerKeys = [];
 let featureGroups = {};
 
 function initMapLayers() {
-    if (typeof L === 'undefined') return; // Safe fallback if Leaflet CDN is blocked
+    if (typeof L === 'undefined') return; 
     
+    // Fix: Vector Drift and Zoom Issues Fixed
     map = L.map('map', { 
         zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
         zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false
@@ -109,17 +110,14 @@ async function pullFromSupabase() {
                 const cloudData = data[0].data; appState.feeders = cloudData.feeders || appState.feeders; appState.gssNodes = cloudData.gssNodes || appState.gssNodes; appState.currentFeederCode = cloudData.currentFeederCode || appState.currentFeederCode;
             }
             if(typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState); 
-            renderEntireNetwork(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow();
+            renderEntireNetwork(); setSyncStatus('synced'); centerMapOnGSS(); window.checkOnboardingFlow();
         }
     } catch (err) { console.error("Sync error:", err); setSyncStatus('offline'); }
 }
 
 function triggerPersistence() { 
-    if(typeof localforage !== 'undefined') {
-        localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); 
-    } else {
-        localStorage.setItem(DB_KEY, JSON.stringify(appState));
-    }
+    if(typeof localforage !== 'undefined') { localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); } 
+    else { localStorage.setItem(DB_KEY, JSON.stringify(appState)); }
     syncToSupabase(); 
 }
 
@@ -141,12 +139,22 @@ window.checkOnboardingFlow = function() {
         document.getElementById('onboarding-overlay').style.display = 'flex';
         document.getElementById('onboarding-title').innerText = "Network Setup Required";
         document.getElementById('onboarding-desc').innerText = "Please add your first GSS to begin mapping.";
-        document.getElementById('onboarding-btn').onclick = window.openAddGssModal;
+        
+        // FIX: Force hide overlay when clicking Add GSS
+        document.getElementById('onboarding-btn').onclick = function() {
+            document.getElementById('onboarding-overlay').style.display = 'none';
+            window.openAddGssModal();
+        };
     } else if (Object.keys(appState.feeders).length === 0) {
         document.getElementById('onboarding-overlay').style.display = 'flex';
         document.getElementById('onboarding-title').innerText = "Create Feeder";
         document.getElementById('onboarding-desc').innerText = "You must create a Feeder linked to your GSS to continue.";
-        document.getElementById('onboarding-btn').onclick = window.openFeederConfigModal;
+        
+        // FIX: Force hide overlay when clicking Add Feeder
+        document.getElementById('onboarding-btn').onclick = function() {
+            document.getElementById('onboarding-overlay').style.display = 'none';
+            window.openFeederConfigModal();
+        };
     } else {
         document.getElementById('onboarding-overlay').style.display = 'none';
     }
@@ -164,7 +172,7 @@ window.handleSupabaseAuth = async function(mode) {
         applyAuthUIVisuals(); 
         await pullFromSupabase(); 
         showToast("Login Successful!");
-        checkOnboardingFlow();
+        window.checkOnboardingFlow();
     }
 }
 window.handleSupabaseLogout = async function() { if(supabaseClient) await supabaseClient.auth.signOut(); if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.removeItem(DB_KEY); location.reload(); }
@@ -455,29 +463,6 @@ window.renderGssSidebarList = function() {
         </div>`;
     }); container.innerHTML = html;
 };
-
-window.deleteGssAndFeederStrict = function(code) {
-    const conf1 = confirm(`WARNING: You are about to delete GSS ${code} and ALL its associated feeders and network data! This cannot be undone. Continue?`);
-    if (!conf1) return;
-    const conf2 = prompt(`To strictly confirm deletion, please type the GSS code "${code}" below:`);
-    if (conf2 !== code) return alert("Deletion cancelled: GSS code did not match.");
-
-    saveSnapshot();
-    if (appState.gssNodes[code]) delete appState.gssNodes[code];
-    
-    const feedersToDelete = [];
-    Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].feeder.parentGss === code) feedersToDelete.push(fCode); });
-    feedersToDelete.forEach(fCode => delete appState.feeders[fCode]);
-    
-    if (!appState.feeders[appState.currentFeederCode] || feedersToDelete.includes(appState.currentFeederCode)) {
-        const remainingFeeders = Object.keys(appState.feeders);
-        appState.currentFeederCode = remainingFeeders.length > 0 ? remainingFeeders[0] : null;
-    }
-
-    renderEntireNetwork(); triggerPersistence(); window.renderGssSidebarList(); 
-    showToast("GSS and Feeder Data completely deleted!");
-    window.checkOnboardingFlow();
-}
 
 window.openAddGssModal = function() {
     window.toggleSidebar(false);
@@ -871,7 +856,7 @@ window.generateCadSLDPdf = async function() {
     await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, doc.output('blob'), "application/pdf");
 }
 
-/* ====== 11 & 12. RUNTIME PERMISSIONS & STARTUP ====== */
+/* ====== PERMISSIONS & STARTUP ====== */
 window.requestAppPermissions = function() {
     if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
         var permissions = cordova.plugins.permissions;
@@ -893,18 +878,11 @@ window.requestAppPermissions = function() {
 async function initializeAppPostPermissions() {
     try {
         initMapLayers();
-        if (typeof supabase !== 'undefined') {
-            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        }
+        if (typeof supabase !== 'undefined') { supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
 
         let data = null;
-        if (typeof localforage !== 'undefined') {
-            data = await localforage.getItem(DB_KEY); 
-        }
-        if (!data) { 
-            const lsData = localStorage.getItem(DB_KEY); 
-            if (lsData) data = JSON.parse(lsData); 
-        }
+        if (typeof localforage !== 'undefined') { data = await localforage.getItem(DB_KEY); }
+        if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
         
         if (data && data.feeders) appState = data; 
         translateApp(); 
