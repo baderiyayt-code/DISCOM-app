@@ -13,11 +13,17 @@
     <allow-intent href="mailto:*" />
     <allow-intent href="geo:*" />
     
+    <!-- App Logo Fixed -->
+    <icon src="res/icon.png" />
+    
     <preference name="AndroidXEnabled" value="true" />
     
     <platform name="android">
         <allow-intent href="market:*" />
     </platform>
 
+    <!-- Essential Plugins -->
     <plugin name="cordova-plugin-geolocation" />
+    <plugin name="cordova-plugin-camera" />
+    <plugin name="cordova-plugin-android-permissions" />
 </widget>
