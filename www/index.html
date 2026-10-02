@@ -69,7 +69,6 @@
 <div id="app-container">
     <div id="app-toast"><i class="fa-solid fa-circle-check" style="color:#4ade80;"></i> <span id="toast-msg">Success</span></div>
 
-    <!-- REFINED TOP BAR WITH LIVE SEARCH -->
     <div id="top-bar">
         <div class="header-glass" style="flex-direction: column; align-items: stretch; gap: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -102,7 +101,13 @@
     <div id="layer-indicator">Google Hybrid</div>
     <div id="map" class="map-container"></div>
     <div id="reticle-coordinates">0.000000, 0.000000</div>
-    <div id="center-placement-pin">📍</div>
+    
+    <!-- NEW: FLOATING NEAREST OBJECT DISTANCE -->
+    <div id="center-placement-pin">
+        📍
+        <div id="nearest-obj-tooltip" style="position:absolute; top:-35px; left:50%; transform:translateX(-50%); background:rgba(15,23,42,0.9); color:#fff; font-size:0.75rem; font-weight:700; padding:6px 12px; border-radius:12px; white-space:nowrap; display:none; pointer-events:none; box-shadow:0 4px 6px rgba(0,0,0,0.3);">Nearest: Searching...</div>
+    </div>
+    
     <div id="live-move-icon"></div>
 
     <div class="right-tools-stack">
@@ -147,7 +152,6 @@
     <div class="sheet-drag-handle"></div>
     
     <div style="display:flex; gap:15px;">
-        <!-- PHOTO PREVIEW AREA -->
         <div id="objPhotoPreviewContainer" style="width:100px; height:100px; background:var(--bg-glass); border-radius:12px; border:2px dashed var(--border); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; cursor:pointer;" onclick="document.getElementById('objPhotoInput').click()">
             <i class="fa-solid fa-camera" id="objPhotoPlaceholder" style="font-size:2rem; color:var(--text-sub);"></i>
             <img id="objPhotoImg" src="" style="width:100%; height:100%; object-fit:cover; display:none;">
@@ -177,7 +181,6 @@
     </div>
     <div class="settings-body">
         <div class="settings-card">
-            <!-- NEW: LIVE SYNC TOGGLE -->
             <div class="form-row" style="display:flex; justify-content:space-between; align-items:center;">
                 <label style="margin:0; font-size:1rem;">Live Database Sync</label>
                 <label class="switch">
@@ -191,7 +194,8 @@
             <div class="form-row"><label data-i18n="distUnit">Distance Unit</label><select id="setUnit" class="form-select" onchange="window.autoSaveSettings()"><option value="m">Meters (m)</option><option value="km">Kilometers (km)</option></select></div>
         </div>
         <div class="settings-card" style="border-color: #ef4444; background:#fef2f2;">
-            <button type="button" class="btn-danger-outline" onclick="window.openResetConfirmationModal()"><i class="fa-solid fa-trash-can"></i> <span data-i18n="resetData">Reset App Data</span></button>
+            <!-- Reset Button Call -->
+            <button type="button" class="btn-danger-outline" onclick="window.openResetConfirmationModal()"><i class="fa-solid fa-trash-can"></i> <span data-i18n="resetData">Factory Reset App Data</span></button>
         </div>
     </div>
 </div>
