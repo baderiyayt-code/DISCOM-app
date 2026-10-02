@@ -74,14 +74,13 @@
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <div class="action-btn-sm" onclick="window.toggleSidebar(true)"><i class="fa-solid fa-bars"></i></div>
-                    <div id="activeFeederLabel" style="font-weight: 800; font-size: 1.05rem; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No Feeder</div>
+                    <div id="activeFeederLabel" style="font-weight: 800; font-size: 1.05rem; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No Feeder Selected</div>
                 </div>
                 <div class="header-actions">
                     <div id="sync-indicator" onclick="window.syncToSupabase()" style="cursor:pointer;"><i class="fa-solid fa-cloud"></i></div>
                     <button class="action-btn-sm bg" onclick="window.runOrphanNodeChecker()"><i class="fa-solid fa-network-wired" style="color:#ea580c;"></i></button>
                 </div>
             </div>
-            <!-- ALWAYS VISIBLE LIVE SEARCH -->
             <div class="top-search-container" style="position: relative;">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
                 <input type="text" id="appSearchBar" class="search-input-full" placeholder="Search Consumer, DT, Pole..." oninput="window.handleSearch(event)" autocomplete="off">
@@ -102,10 +101,10 @@
     <div id="map" class="map-container"></div>
     <div id="reticle-coordinates">0.000000, 0.000000</div>
     
-    <!-- NEW: FLOATING NEAREST OBJECT DISTANCE -->
+    <!-- FIX 5: Live Floating Nearest Distance Indicator -->
     <div id="center-placement-pin">
         📍
-        <div id="nearest-obj-tooltip" style="position:absolute; top:-35px; left:50%; transform:translateX(-50%); background:rgba(15,23,42,0.9); color:#fff; font-size:0.75rem; font-weight:700; padding:6px 12px; border-radius:12px; white-space:nowrap; display:none; pointer-events:none; box-shadow:0 4px 6px rgba(0,0,0,0.3);">Nearest: Searching...</div>
+        <div id="live-distance-indicator">Nearest: --</div>
     </div>
     
     <div id="live-move-icon"></div>
@@ -194,7 +193,6 @@
             <div class="form-row"><label data-i18n="distUnit">Distance Unit</label><select id="setUnit" class="form-select" onchange="window.autoSaveSettings()"><option value="m">Meters (m)</option><option value="km">Kilometers (km)</option></select></div>
         </div>
         <div class="settings-card" style="border-color: #ef4444; background:#fef2f2;">
-            <!-- Reset Button Call -->
             <button type="button" class="btn-danger-outline" onclick="window.openResetConfirmationModal()"><i class="fa-solid fa-trash-can"></i> <span data-i18n="resetData">Factory Reset App Data</span></button>
         </div>
     </div>
