@@ -161,8 +161,8 @@ const map = L.map('map', {
     touchRotate: true, 
     shiftKeyRotate: true, 
     bearing: 0,
-    zoomAnimation: false,
-    markerZoomAnimation: false,
+    zoomAnimation: false,         // CRITICAL: prevents visual drift
+    markerZoomAnimation: false,   // CRITICAL: binds markers tightly to the grid
     fadeAnimation: false
 }).setView([26.9150, 75.7830], 16);
 
@@ -243,11 +243,13 @@ function renderEntireNetwork() {
                 const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 });
                 m.on('click', () => {
                     const html = `<div style="padding:4px;"><b style="color:#b91c1c; font-size:1.1rem;">${gss.name}</b><br><small>Code: ${gss.code}</small><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('gss','${gss.code}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.relocateGss('${gss.code}')">Relocate</button></div></div>`;
-                    L.popup().setLatLng([gss.lat, gss.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                    // EXACT LOCATION FIX + Offset
+                    L.popup({ offset: [0, -18] }).setLatLng([gss.lat, gss.lng]).setContent(html).openOn(map);
                 }); featureGroups.gss.addLayer(m);
             }
         });
 
+        // Poles Z-Index mapping -> 200, DTs Z-Index mapping -> 400 (Always on top of poles)
         if (f.poles) {
             net.poles.forEach(p => {
                 const isOrphan = appState.orphanPoleIds.has(p.id), isLT = p.lineType === 'LT';
@@ -258,7 +260,8 @@ function renderEntireNetwork() {
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2] }), zIndexOffset: 200 });
                 m.on('click', () => {
                     const html = `<div style="padding:4px;"><b>Pole: ${p.poleNo} (${p.lineType || 'HT'})</b><p style="margin:4px 0; font-size:0.8rem;">Parent: ${p.dtCode || 'Feeder'}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:8px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('pole','${p.id}')">Edit</button><button style="flex:1; padding:8px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('POLE','${p.id}','${p.poleNo}')">Move</button><button style="flex:1; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('pole','${p.id}')">Delete</button></div></div>`;
-                    L.popup().setLatLng([p.lat, p.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                    // EXACT LOCATION FIX + Offset
+                    L.popup({ offset: [0, -10] }).setLatLng([p.lat, p.lng]).setContent(html).openOn(map);
                 }); featureGroups.poles.addLayer(m);
             });
         }
@@ -274,7 +277,8 @@ function renderEntireNetwork() {
                     m.on('click', () => {
                         const locTitle = d.location ? d.location : `DT Code: ${d.code}`;
                         const html = `<div style="padding:6px;"><b style="color:#d97706; font-size:1.05rem;"><i class="fa-solid fa-location-dot"></i> ${locTitle}</b><p style="margin:6px 0; font-size:0.9rem; line-height:1.4;">Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b></p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('dt','${d.id}')">Edit</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('dt','${d.id}')">Delete</button></div></div>`;
-                        L.popup().setLatLng([d.lat, d.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                        // EXACT LOCATION FIX + Offset
+                        L.popup({ offset: [0, -14] }).setLatLng([d.lat, d.lng]).setContent(html).openOn(map);
                     }); featureGroups.dts.addLayer(m);
                 }
             });
@@ -289,9 +293,10 @@ function renderEntireNetwork() {
             L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(featureGroups.lines);
             hitPoly.on('click', () => {
                 const html = `<div style="padding:4px;"><b style="color:${spec.color};">${spec.name}</b><p style="margin:4px 0;">From-To: <b>${line.fromNode} ➔ ${line.toNode}</b></p><p style="margin:4px 0;">Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b></p><button style="width:100%; padding:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; font-weight:700;" onclick="window.deleteEntity('line','${line.id}')">Delete</button></div>`;
+                // EXACT LOCATION FIX (Midpoint of line)
                 const midLat = (c1.lat + c2.lat) / 2;
                 const midLng = (c1.lng + c2.lng) / 2;
-                L.popup().setLatLng([midLat, midLng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                L.popup().setLatLng([midLat, midLng]).setContent(html).openOn(map);
             });
         });
 
@@ -301,7 +306,8 @@ function renderEntireNetwork() {
                 const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'consumer-marker-icon', html: `<i class="fa-solid fa-house"></i>`, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 100 });
                 m.on('click', () => {
                     const html = `<div style="padding:4px;"><b>${c.name}</b><p style="color:#64748b; margin:4px 0;">K-No: ${c.kno} | Connected to: ${c.parentRef}</p><div style="display:flex; gap:6px; margin-top:8px;"><button style="flex:1; padding:6px; background:#eff6ff; border:none; border-radius:6px;" onclick="window.openEditModal('consumer','${c.id}')">Edit</button><button style="flex:1; padding:6px; background:#fef3c7; border:none; border-radius:6px;" onclick="window.startObjectMove('CONSUMER','${c.id}','${c.name}')">Move</button><button style="flex:1; padding:6px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px;" onclick="window.deleteEntity('consumer','${c.id}')">Delete</button></div></div>`;
-                    L.popup().setLatLng([c.lat, c.lng]).setContent(html).openOn(map); // EXACT LOCATION FIX
+                    // EXACT LOCATION FIX + Offset
+                    L.popup({ offset: [0, -8] }).setLatLng([c.lat, c.lng]).setContent(html).openOn(map);
                 }); featureGroups.consumers.addLayer(m);
 
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
@@ -709,7 +715,7 @@ window.cancelObjectMove = function() { appState.activeMove = null; document.getE
 // Advanced "Save to Downloads" using File System Access API with standard fallback
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
-        showToast("Preparing download...");
+        showToast("Preparing file export...");
         const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
         
         // 1. Try Native Web File System Access API (Native Folder Picker)
