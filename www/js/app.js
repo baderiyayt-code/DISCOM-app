@@ -11,8 +11,8 @@ let appState = {
     user: { isLoggedIn: false, name: "", email: "", id: null },
     filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
     currentFeederCode: "1",
-    gssNodes: {}, // Start empty
-    feeders: {},  // Start empty
+    gssNodes: {}, 
+    feeders: {},  
     orphanPoleIds: new Set(), activeMove: null, placementType: null
 };
 
@@ -22,7 +22,7 @@ function getActiveNetwork() {
     let keys = Object.keys(appState.feeders);
     if (keys.length > 0 && !appState.feeders[appState.currentFeederCode]) appState.currentFeederCode = keys[0];
     let net = appState.feeders[appState.currentFeederCode];
-    if (!net) return null; // Used for empty state handling
+    if (!net) return null; 
     if (!Array.isArray(net.poles)) net.poles = []; 
     if (!Array.isArray(net.lines)) net.lines = []; 
     if (!Array.isArray(net.dts)) net.dts = []; 
@@ -85,7 +85,6 @@ function applyAuthUIVisuals() {
     const adminCard = document.getElementById('adminPasswordCard'); if (adminCard) adminCard.style.display = (appState.user.email === ADMIN_EMAIL) ? 'block' : 'none';
 }
 
-// 5. MANDATORY ONBOARDING LOGIC
 window.checkOnboardingFlow = function() {
     if(Object.keys(appState.gssNodes).length === 0) {
         document.getElementById('onboarding-overlay').style.display = 'flex';
@@ -118,10 +117,10 @@ window.handleSupabaseAuth = async function(mode) {
 }
 window.handleSupabaseLogout = async function() { await supabaseClient.auth.signOut(); await localforage.clear(); localStorage.removeItem(DB_KEY); location.reload(); }
 
-/* ====== MAP LAYER SETUP & LIVE TRACKING ====== */
+/* ====== MAP LAYER SETUP ====== */
 const map = L.map('map', { 
     zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
-    zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false // Enforces strict anchoring
+    zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false
 }).setView([26.9150, 75.7830], 16);
 
 function updateMapZoomClasses() {
@@ -150,9 +149,8 @@ const featureGroups = {
 
 map.on('move', () => { const c = map.getCenter(); document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; });
 
-// 1. FAST LOADING & CENTERING
 function centerMapOnGSS() {
-    map.invalidateSize(); // Fixes gray screen
+    map.invalidateSize();
     const net = getActiveNetwork(); if(!net) return;
     const gss = appState.gssNodes[net.feeder.parentGss];
     if (gss && typeof gss.lat === 'number') map.setView([gss.lat, gss.lng], 16, {animate: false});
@@ -173,14 +171,13 @@ window.toggleLiveTracking = function() {
                 const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [44,44] });
                 window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
             } else window.liveUserMarker.setLatLng([lat, lng]);
-            map.setView([lat, lng], 18); // 1. Map Auto-Centering on User
+            map.setView([lat, lng], 18);
             document.getElementById('liveTrackBtn').style.color = '#10b981';
-        }, (err) => alert("GPS Error. Ensure location permissions are granted."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+        }, (err) => alert("GPS Error."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     }
 }
 
-
-/* ====== 10. NEW BOTTOM SHEET DETAILS (REPLACES POPUPS) ====== */
+/* ====== BOTTOM SHEET & PHOTO UPLOAD ====== */
 window.currentSelectedObj = null;
 
 window.closeObjectSheet = function() {
@@ -194,13 +191,11 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
     document.getElementById('objSheetDetails').innerHTML = detailsHtml;
     document.getElementById('object-bottom-sheet').classList.add('open');
     
-    // Binding standard actions
     document.getElementById('btnObjEdit').onclick = () => window.openEditModal(type.toLowerCase(), id);
     document.getElementById('btnObjMove').onclick = () => window.startObjectMove(type, id, title);
     document.getElementById('btnObjDelete').onclick = () => { window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
 };
 
-// 2. OBJECT PHOTO DB UPLOAD LOGIC
 window.uploadObjectPhoto = async function(event) {
     const file = event.target.files[0];
     if (!file || !window.currentSelectedObj || !appState.user.isLoggedIn) return;
@@ -219,14 +214,10 @@ window.uploadObjectPhoto = async function(event) {
             
             if (error) throw error;
             showToast("Photo saved to Database successfully!");
-        } catch (err) {
-            console.error(err);
-            alert("Failed to upload photo. Check permissions and DB setup.");
-        }
+        } catch (err) { console.error(err); alert("Failed to upload photo. Check permissions and DB setup."); }
     };
     reader.readAsDataURL(file);
 };
-
 
 /* ====== GIS CORE LOGIC ====== */
 function renderEntireNetwork() {
@@ -239,7 +230,7 @@ function renderEntireNetwork() {
                 const gssIcon = L.divIcon({ className: 'gss-square-icon', html: `<span>GSS</span>`, iconSize: [36,36], iconAnchor: [18,18] });
                 const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 });
                 m.on('click', () => {
-                    map.flyTo([gss.lat, gss.lng], 19); // 9. Click to center
+                    map.flyTo([gss.lat, gss.lng], 19); 
                     const details = `Code: <b>${gss.code}</b>`;
                     window.openObjectSheet('GSS', gss.code, gss.name, details);
                 }); featureGroups.gss.addLayer(m);
@@ -255,7 +246,7 @@ function renderEntireNetwork() {
 
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: iconClass + (isOrphan ? ' orphan-pulse' : ''), html: `<span>${displayNo}</span>`, iconSize: size, iconAnchor: [size[0]/2, size[1]/2] }), zIndexOffset: 200 });
                 m.on('click', () => {
-                    map.flyTo([p.lat, p.lng], 19); // 9. Click to center
+                    map.flyTo([p.lat, p.lng], 19); 
                     const details = `Type: <b>${p.lineType || 'HT'}</b><br>Parent: <b>${p.dtCode || 'Feeder'}</b><br>Config: <b>${p.poleType || 'Standard'}</b>`;
                     window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, details);
                 }); featureGroups.poles.addLayer(m);
@@ -271,7 +262,7 @@ function renderEntireNetwork() {
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: 'dt-square-icon' + (isOrphan ? ' orphan-pulse' : ''), html: `${numRating}`, iconSize: [28, 28], iconAnchor: [14, 14] }), zIndexOffset: 400 });
                     
                     m.on('click', () => {
-                        map.flyTo([d.lat, d.lng], 19); // 9. Click to center
+                        map.flyTo([d.lat, d.lng], 19); 
                         const details = `Rating: <b>${d.rating} kVA</b><br>Type: <b>${d.phase || 'Three Phase'}</b><br>Connected To: <b>${d.parentPole ? 'Pole '+d.parentPole : 'GSS'}</b><br>Loc: <b>${d.location||'N/A'}</b>`;
                         window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, details);
                     }); featureGroups.dts.addLayer(m);
@@ -288,7 +279,7 @@ function renderEntireNetwork() {
             L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false, className: spec.lineClass }).addTo(featureGroups.lines);
             hitPoly.on('click', () => {
                 const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2;
-                map.flyTo([midLat, midLng], 19); // 9. Click to center
+                map.flyTo([midLat, midLng], 19); 
                 const details = `From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Distance: <b>${window.formatDistance(line.distanceMeters||0)}</b>`;
                 window.openObjectSheet('LINE', line.id, spec.name, details);
             });
@@ -299,7 +290,7 @@ function renderEntireNetwork() {
                 if (appState.activeMove && appState.activeMove.id === c.id) return; 
                 const m = L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'consumer-marker-icon', html: `<i class="fa-solid fa-house"></i>`, iconSize: [16,16], iconAnchor: [8,8] }), zIndexOffset: 100 });
                 m.on('click', () => {
-                    map.flyTo([c.lat, c.lng], 19); // 9. Click to center
+                    map.flyTo([c.lat, c.lng], 19); 
                     const details = `K-No: <b>${c.kno}</b><br>Connected to: <b>${c.parentRef}</b><br>Load: <b>${c.load||'N/A'}</b>`;
                     window.openObjectSheet('CONSUMER', c.id, c.name, details);
                 }); featureGroups.consumers.addLayer(m);
@@ -335,7 +326,7 @@ window.undoLastAction = function() {
     renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺");
 }
 
-/* ====== 6. CAPSULE BUTTON FILTERS ====== */
+/* ====== CAPSULE BUTTON FILTERS ====== */
 window.openFilterModal = function() {
     const f = appState.filters;
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-filter" style="color:#d97706;"></i> Object Filter</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -355,17 +346,10 @@ window.saveFilters = function() {
 }
 
 /* ====== UI MENUS & UTILITIES ====== */
-window.autoSaveSettings = function() { 
-    appState.settings.unit = document.getElementById('setUnit').value; appState.settings.gpsInterval = parseFloat(document.getElementById('setGpsInterval').value);
-    appState.settings.gpsAccuracy = parseFloat(document.getElementById('setGpsAccuracy').value); appState.settings.language = document.getElementById('setLanguage').value;
-    triggerPersistence(); translateApp(); renderEntireNetwork(); showToast("Settings Saved!"); 
-}
-
 window.toggleSpeedDial = function(force) {
     const dial = document.getElementById('speed-dial-menu'), fab = document.getElementById('mainFabBtn'); if (!dial || !fab) return; 
     const isOpen = force !== undefined ? force : !dial.classList.contains('active'); dial.classList.toggle('active', isOpen); fab.classList.toggle('open', isOpen);
 }
-
 document.addEventListener('click', function(e) {
     const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn');
     if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) window.toggleSpeedDial(false); }
@@ -380,22 +364,14 @@ window.toggleSidebar = function(open) {
     if(open) window.renderGssSidebarList();
 }
 
-window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); translateApp(); }
+window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); }
 window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); }
-
-window.openSettingsPage = function() { 
-    window.toggleSidebar(false); document.getElementById('setUnit').value = appState.settings.unit || 'm';
-    document.getElementById('setGpsInterval').value = appState.settings.gpsInterval || 3; document.getElementById('setGpsAccuracy').value = appState.settings.gpsAccuracy || 10;
-    document.getElementById('setLanguage').value = appState.settings.language || 'en'; document.getElementById('settings-page').classList.add('open'); 
-}
-window.closeSettingsPage = function() { document.getElementById('settings-page').classList.remove('open'); }
 
 window.switchFeeder = function(code) { if (appState.feeders[code]) { appState.currentFeederCode = code; renderEntireNetwork(); triggerPersistence(); centerMapOnGSS(); } }
 
 window.calcDistance = function(lat1, lon1, lat2, lon2) {
     const R = 6371e3, p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180, dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2; return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 window.formatDistance = function(m) { return (appState.settings.unit === 'km') ? (m / 1000).toFixed(3) + ' KM' : m.toFixed(1) + ' M'; }
 window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a, b) => window.calcDistance(lat, lng, a.lat, a.lng) - window.calcDistance(lat, lng, b.lat, b.lng)); }
@@ -411,7 +387,6 @@ function getNodeCoords(nodeId) {
     if (idStr.startsWith('GSS_')) { const code = idStr.replace('GSS_', ''); if (appState.gssNodes[code]) return { lat: appState.gssNodes[code].lat, lng: appState.gssNodes[code].lng }; }
     if (idStr.startsWith('DT_')) { const code = idStr.replace('DT_', ''), d = net.dts.find(x => String(x.code) === code); if (d) return { lat: d.lat, lng: d.lng }; }
     if (idStr.startsWith('POLE_')) { const code = idStr.replace('POLE_', ''), p = net.poles.find(x => String(x.poleNo) === code); if (p) return { lat: p.lat, lng: p.lng }; }
-
     const p = net.poles.find(x => String(x.poleNo) === idStr); if (p) return { lat: p.lat, lng: p.lng };
     const d = net.dts.find(x => String(x.code) === idStr); if (d) return { lat: d.lat, lng: d.lng };
     if (appState.gssNodes[idStr]) return { lat: appState.gssNodes[idStr].lat, lng: appState.gssNodes[idStr].lng };
@@ -419,8 +394,6 @@ function getNodeCoords(nodeId) {
     return null; 
 }
 
-
-/* ====== GSS MANAGEMENT ====== */
 window.runOrphanNodeChecker = function() {
     updateOrphanStatus(); const net = getActiveNetwork(), orphanCount = appState.orphanPoleIds.size;
     if (orphanCount === 0) return showToast("No orphan poles or nodes found! Network is fully connected.");
@@ -458,7 +431,6 @@ window.renderGssSidebarList = function() {
     }); container.innerHTML = html;
 };
 
-// Strict GSS Delete Permission Handling
 window.deleteGssAndFeederStrict = function(code) {
     const conf1 = confirm(`WARNING: You are about to delete GSS ${code} and ALL its associated feeders and network data! This cannot be undone. Continue?`);
     if (!conf1) return;
@@ -511,7 +483,6 @@ function updateOrphanStatus() {
     net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
 }
 
-/* ====== TOP BAR SEARCH ======= */
 window.toggleSearchBox = function() {
     const box = document.getElementById('searchBoxOverlay');
     if (box.style.display === 'none') { box.style.display = 'flex'; document.getElementById('appSearchBar').focus(); } else { box.style.display = 'none'; window.clearSearch(); }
@@ -535,7 +506,7 @@ window.selectSearchResult = function(type, id) {
     if(target && target.lat) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { window.openObjectSheet(type, id, type === 'CONSUMER' ? target.name : `DT: ${target.code}`, popupHtml); }, 1000); }
 }
 
-/* ====== 3. CRUD LOGIC (WITH POLE CONDITIONAL DROPDOWN) ====== */
+/* ====== CRUD LOGIC ====== */
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
     if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'flex'; } 
@@ -653,15 +624,13 @@ window.filterConsumerPoles = function() {
 }
 window.saveNewPole = function() { 
     saveSnapshot(); const no = document.getElementById('inpPoleNo').value.trim(), category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value); 
-    const pType = document.getElementById('inpMainPoleType').value;
-    const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A';
+    const pType = document.getElementById('inpMainPoleType').value; const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A';
     if (!no) return alert("Enter pole number"); const net = getActiveNetwork(); if (net.poles.some(p => String(p.poleNo) === no)) return alert(`Pole exists!`); 
     net.poles.push({ id: 'P_'+Date.now(), poleNo: no, lineType: category, poleType: pType, poleConfig: pConfig, lat, lng }); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("HT Pole added successfully!");
 }
 window.saveNewLTPole = function() {
     saveSnapshot(); const dtCode = document.getElementById('inpLTPoleDT').value, category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value); 
-    const pType = document.getElementById('inpMainPoleType').value;
-    const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A';
+    const pType = document.getElementById('inpMainPoleType').value; const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A';
     if (!dtCode) return alert("Select DT"); const net = getActiveNetwork(); const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode)); const finalPoleNo = `${dtCode}-${existingLTPoles.length + 1}`;
     if (net.poles.some(p => String(p.poleNo) === String(finalPoleNo))) return alert(`Pole ${finalPoleNo} exists!`); 
     net.poles.push({ id: 'P_'+Date.now(), poleNo: finalPoleNo, lineType: category, dtCode: dtCode, poleType: pType, poleConfig: pConfig, lat, lng }); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("LT Pole added successfully!");
@@ -742,8 +711,7 @@ window.confirmObjectMove = function() {
 }
 window.cancelObjectMove = function() { appState.activeMove = null; document.getElementById('live-move-icon').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
 
-/* ====== NATIVE DIRECTORY EXPORT & IMPORT ====== */
-// Advanced "Save to Downloads" using File System Access API with standard fallback
+/* ====== EXPORT & IMPORT ====== */
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
         showToast("Preparing file export...");
@@ -756,9 +724,9 @@ async function smartExportFile(filename, dataBlobOrText, mimeType) {
                 const writable = await fileHandle.createWritable();
                 await writable.write(blob);
                 await writable.close();
-                showToast("File Saved Successfully to Directory!");
+                showToast("File Saved Successfully!");
                 return;
-            } catch (e) { console.warn("SaveFilePicker cancelled or failed, falling back to Download Manager...", e); }
+            } catch (e) { console.warn("SaveFilePicker cancelled", e); }
         }
 
         const url = URL.createObjectURL(blob);
@@ -767,8 +735,8 @@ async function smartExportFile(filename, dataBlobOrText, mimeType) {
         document.body.appendChild(a); a.click();
         
         setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-        showToast("File Downloaded to local storage!");
-    } catch (err) { console.error("Export Error: ", err); alert("Export failed: " + err.message); }
+        showToast("File Downloaded!");
+    } catch (err) { alert("Export failed: " + err.message); }
 }
 
 window.exportFullJSONBackup = async function() { window.toggleSidebar(false); const backupData = JSON.stringify(appState); await smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json"); }
@@ -878,7 +846,7 @@ window.generateCadSLDPdf = async function() {
     await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, doc.output('blob'), "application/pdf");
 }
 
-/* ====== 11 & 12. RUNTIME PERMISSIONS & STARTUP ====== */
+/* ====== PERMISSIONS & STARTUP ====== */
 window.requestAppPermissions = function() {
     if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
         var permissions = cordova.plugins.permissions;
@@ -893,7 +861,7 @@ window.requestAppPermissions = function() {
         }, function() { document.getElementById('permission-overlay').style.display = 'flex'; });
     } else {
         document.getElementById('permission-overlay').style.display = 'none';
-        initializeAppPostPermissions(); // Web fallback
+        initializeAppPostPermissions();
     }
 }
 
@@ -912,19 +880,16 @@ async function initializeAppPostPermissions() {
             }
         });
         
-        if(appState.user.isLoggedIn) map.invalidateSize(); // Ensure map tiles load perfectly
+        if(appState.user.isLoggedIn) map.invalidateSize(); 
         
     } catch (e) { console.error("Init Error:", e); }
 }
 
-// FIX: Run animation for 2 seconds, THEN hide it and show permissions overlay
 function startAppStartupSequence() {
     setTimeout(() => {
-        // 1. Loading screen ko hamesha hide karein 2 second baad
         const loader = document.getElementById('erection-loader');
         if(loader) loader.style.display = 'none';
         
-        // 2. Uske baad permissions check karein
         if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
             var permissions = cordova.plugins.permissions;
             permissions.hasPermission(permissions.ACCESS_FINE_LOCATION, function(status) {
