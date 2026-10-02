@@ -709,7 +709,7 @@ window.cancelObjectMove = function() { appState.activeMove = null; document.getE
 // Advanced "Save to Downloads" using File System Access API with standard fallback
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
-        showToast("Preparing file export...");
+        showToast("Preparing download...");
         const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
         
         // 1. Try Native Web File System Access API (Native Folder Picker)
