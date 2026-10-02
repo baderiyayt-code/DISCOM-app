@@ -73,7 +73,7 @@
         <div class="header-glass">
             <div class="header-title-group">
                 <div class="action-btn-sm" onclick="window.toggleSidebar(true)"><i class="fa-solid fa-bars"></i></div>
-                <!-- Removed Dropdown & Plus button. Replaced with Feeder Label -->
+                <!-- FIXED: Feeder Dropdown & Add Button completely removed. Simple Label showing Active Feeder -->
                 <div id="activeFeederLabel" style="font-weight: 800; font-size: 1.05rem; color: var(--accent); margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No Feeder Selected</div>
             </div>
             <div class="header-actions">
@@ -208,7 +208,6 @@
     </div>
 
     <div class="sidebar-menu-list">
-        <!-- GSS Management -->
         <div class="menu-category-title" onclick="window.toggleGssFolder()" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
             <span data-i18n="gssMgmt">GSS Management</span> <i id="gssFolderIcon" class="fa-solid fa-chevron-down"></i>
         </div>
@@ -217,12 +216,12 @@
             <div id="gssListContainer"></div>
         </div>
 
-        <!-- NEW Feeder Management Dropdown -->
         <div class="menu-category-title" onclick="window.toggleFeederFolder()" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
             <span>Feeder Management</span> <i id="feederFolderIcon" class="fa-solid fa-chevron-down"></i>
         </div>
         <div id="feederFolderContent" style="display:none; padding-left: 5px; margin-bottom: 15px;">
             <div class="menu-link-btn" onclick="window.openFeederConfigModal()"><i class="fa-solid fa-plus-circle" style="color:#10b981;"></i> <span>Add New Feeder</span></div>
+            <!-- Dynamic Feeders will load here -->
             <div id="feederListContainer"></div>
         </div>
 
