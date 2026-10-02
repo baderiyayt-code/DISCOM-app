@@ -3,7 +3,7 @@ const DB_KEY = "DISCOM_ENTERPRISE_DB";
 // ======== SUPABASE INITIALIZATION ========
 const SUPABASE_URL = 'https://sxfyeublvtisndnzycib.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4ZnlldWJsdnRpc25kbnp5Y2liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMjkzOTEsImV4cCI6MjEwNDgwNTM5MX0.FENa8zOaDzlYZJI_HfWtallAkWukxSiM52-RGQ-CUmA';
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let supabaseClient = null;
 const ADMIN_EMAIL = 'admin@discom.com';
 
 let appState = {
@@ -17,6 +17,51 @@ let appState = {
 };
 
 let historyStack = [];
+
+// Initialize Map Safely
+let map = null;
+let tileLayers = {};
+let currentTileIndex = 0;
+let layerKeys = [];
+let featureGroups = {};
+
+function initMapLayers() {
+    if (typeof L === 'undefined') return; // Safe fallback if Leaflet CDN is blocked
+    
+    map = L.map('map', { 
+        zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
+        zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false
+    }).setView([26.9150, 75.7830], 16);
+
+    map.on('zoomend', updateMapZoomClasses); 
+    map.on('move', () => { const c = map.getCenter(); document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; });
+
+    tileLayers = { 
+        hybrid: { name: 'Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
+        street: { name: 'Google Street Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22 }) },
+        osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22 }) }
+    };
+    layerKeys = Object.keys(tileLayers); 
+    tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
+
+    featureGroups = { 
+        gss: L.featureGroup().addTo(map), lines: L.featureGroup().addTo(map), consumerLines: L.featureGroup().addTo(map),
+        poles: L.featureGroup().addTo(map), dts: L.featureGroup().addTo(map), consumers: L.featureGroup().addTo(map) 
+    };
+}
+
+function updateMapZoomClasses() {
+    if(!map) return;
+    const z = map.getZoom(); const mapEl = document.getElementById('map');
+    mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss');
+    if (z <= 20) mapEl.classList.add('hide-consumers'); if (z <= 19) mapEl.classList.add('hide-lt-poles'); if (z <= 18) mapEl.classList.add('hide-lt-lines'); if (z <= 17) mapEl.classList.add('hide-ht-poles'); if (z <= 16) mapEl.classList.add('hide-dt'); if (z <= 15) mapEl.classList.add('hide-gss');
+}
+
+window.toggleMapLayer = function() { 
+    if(!map) return;
+    map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; 
+    tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
+}
 
 function getActiveNetwork() {
     let keys = Object.keys(appState.feeders);
@@ -44,14 +89,14 @@ function setSyncStatus(status) {
 }
 
 function syncToSupabase() {
-    if (!appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
+    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
     const dataToSync = JSON.parse(JSON.stringify(appState)); delete dataToSync.user; delete dataToSync.orphanPoleIds;
     supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: dataToSync, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
     .then(({error}) => { if(error) setSyncStatus('offline'); else setSyncStatus('synced'); }).catch(() => setSyncStatus('offline'));
 }
 
 async function pullFromSupabase() {
-    if (!appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
+    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
     const isAdmin = appState.user.email === ADMIN_EMAIL; let query = supabaseClient.from('survey_data').select('data');
     if (!isAdmin) query = query.eq('user_id', appState.user.id);
     try {
@@ -63,14 +108,20 @@ async function pullFromSupabase() {
             } else {
                 const cloudData = data[0].data; appState.feeders = cloudData.feeders || appState.feeders; appState.gssNodes = cloudData.gssNodes || appState.gssNodes; appState.currentFeederCode = cloudData.currentFeederCode || appState.currentFeederCode;
             }
-            await localforage.setItem(DB_KEY, appState); 
-            renderEntireNetwork(); setSyncStatus('synced'); centerMapOnGSS();
-            checkOnboardingFlow();
+            if(typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState); 
+            renderEntireNetwork(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow();
         }
     } catch (err) { console.error("Sync error:", err); setSyncStatus('offline'); }
 }
 
-function triggerPersistence() { localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); syncToSupabase(); }
+function triggerPersistence() { 
+    if(typeof localforage !== 'undefined') {
+        localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); 
+    } else {
+        localStorage.setItem(DB_KEY, JSON.stringify(appState));
+    }
+    syncToSupabase(); 
+}
 
 /* ====== AUTHENTICATION & ONBOARDING ====== */
 let authMode = 'login';
@@ -102,6 +153,7 @@ window.checkOnboardingFlow = function() {
 };
 
 window.handleSupabaseAuth = async function(mode) {
+    if(!supabaseClient) return alert("Network Error. Supabase not initialized.");
     const email = document.getElementById('authEmail').value.trim(), password = document.getElementById('authPassword').value.trim(), name = document.getElementById('authName').value.trim();
     if(!email || !password) return alert("Email and Password required"); showToast("Processing..."); let response;
     if (mode === 'signup') { if(!name) return alert("Enter Full Name"); response = await supabaseClient.auth.signUp({ email, password, options: { data: { full_name: name } } }); } else response = await supabaseClient.auth.signInWithPassword({ email, password });
@@ -115,41 +167,11 @@ window.handleSupabaseAuth = async function(mode) {
         checkOnboardingFlow();
     }
 }
-window.handleSupabaseLogout = async function() { await supabaseClient.auth.signOut(); await localforage.clear(); localStorage.removeItem(DB_KEY); location.reload(); }
+window.handleSupabaseLogout = async function() { if(supabaseClient) await supabaseClient.auth.signOut(); if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.removeItem(DB_KEY); location.reload(); }
 
 /* ====== MAP LAYER SETUP ====== */
-const map = L.map('map', { 
-    zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
-    zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false
-}).setView([26.9150, 75.7830], 16);
-
-function updateMapZoomClasses() {
-    const z = map.getZoom(); const mapEl = document.getElementById('map');
-    mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss');
-    if (z <= 20) mapEl.classList.add('hide-consumers'); if (z <= 19) mapEl.classList.add('hide-lt-poles'); if (z <= 18) mapEl.classList.add('hide-lt-lines'); if (z <= 17) mapEl.classList.add('hide-ht-poles'); if (z <= 16) mapEl.classList.add('hide-dt'); if (z <= 15) mapEl.classList.add('hide-gss');
-}
-map.on('zoomend', updateMapZoomClasses); setTimeout(updateMapZoomClasses, 100);
-
-const tileLayers = { 
-    hybrid: { name: 'Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
-    street: { name: 'Google Street Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22 }) },
-    osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22 }) }
-};
-let currentTileIndex = 0; const layerKeys = Object.keys(tileLayers); tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
-
-window.toggleMapLayer = function() { 
-    map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; 
-    tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
-}
-
-const featureGroups = { 
-    gss: L.featureGroup().addTo(map), lines: L.featureGroup().addTo(map), consumerLines: L.featureGroup().addTo(map),
-    poles: L.featureGroup().addTo(map), dts: L.featureGroup().addTo(map), consumers: L.featureGroup().addTo(map) 
-};
-
-map.on('move', () => { const c = map.getCenter(); document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; });
-
 function centerMapOnGSS() {
+    if(!map) return;
     map.invalidateSize();
     const net = getActiveNetwork(); if(!net) return;
     const gss = appState.gssNodes[net.feeder.parentGss];
@@ -161,12 +183,13 @@ window.toggleLiveTracking = function() {
     if (!navigator.geolocation) return alert("Geolocation API not found.");
     if (window.liveTrackingId) {
         navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
-        if (window.liveUserMarker) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
+        if (window.liveUserMarker && map) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
         document.getElementById('liveTrackBtn').style.color = '#ef4444'; showToast("Live tracking disabled.");
     } else {
         showToast("Fetching location...");
         window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
+            if(!map) return;
             if (!window.liveUserMarker) {
                 const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [44,44] });
                 window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
@@ -197,6 +220,7 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
 };
 
 window.uploadObjectPhoto = async function(event) {
+    if (!supabaseClient) return alert("Database not connected. Go online.");
     const file = event.target.files[0];
     if (!file || !window.currentSelectedObj || !appState.user.isLoggedIn) return;
     
@@ -221,6 +245,7 @@ window.uploadObjectPhoto = async function(event) {
 
 /* ====== GIS CORE LOGIC ====== */
 function renderEntireNetwork() {
+    if(!map) return;
     try {
         updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(); if(!net) return; const f = appState.filters;
 
@@ -506,7 +531,7 @@ window.selectSearchResult = function(type, id) {
     if(target && target.lat) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { window.openObjectSheet(type, id, type === 'CONSUMER' ? target.name : `DT: ${target.code}`, popupHtml); }, 1000); }
 }
 
-/* ====== CRUD LOGIC ====== */
+/* ====== 3. CRUD LOGIC (WITH POLE CONDITIONAL DROPDOWN) ====== */
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
     if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'flex'; } 
@@ -846,7 +871,7 @@ window.generateCadSLDPdf = async function() {
     await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, doc.output('blob'), "application/pdf");
 }
 
-/* ====== PERMISSIONS & STARTUP ====== */
+/* ====== 11 & 12. RUNTIME PERMISSIONS & STARTUP ====== */
 window.requestAppPermissions = function() {
     if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
         var permissions = cordova.plugins.permissions;
@@ -861,28 +886,60 @@ window.requestAppPermissions = function() {
         }, function() { document.getElementById('permission-overlay').style.display = 'flex'; });
     } else {
         document.getElementById('permission-overlay').style.display = 'none';
-        initializeAppPostPermissions();
+        initializeAppPostPermissions(); 
     }
 }
 
 async function initializeAppPostPermissions() {
     try {
-        let data = await localforage.getItem(DB_KEY); if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
-        if (data && data.feeders) appState = data; translateApp(); 
-        if (appState.user && appState.user.isLoggedIn) { applyAuthUIVisuals(); renderEntireNetwork(); centerMapOnGSS(); checkOnboardingFlow(); } 
-        else { document.getElementById('app-container').style.display = 'none'; document.getElementById('auth-screen').style.display = 'flex'; }
+        initMapLayers();
+        if (typeof supabase !== 'undefined') {
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+
+        let data = null;
+        if (typeof localforage !== 'undefined') {
+            data = await localforage.getItem(DB_KEY); 
+        }
+        if (!data) { 
+            const lsData = localStorage.getItem(DB_KEY); 
+            if (lsData) data = JSON.parse(lsData); 
+        }
         
-        supabaseClient.auth.getSession().then(({ data }) => {
-            if (data && data.session && data.session.user) {
-                appState.user.isLoggedIn = true; appState.user.email = data.session.user.email; appState.user.id = data.session.user.id;
-                appState.user.name = data.session.user.user_metadata?.full_name || data.session.user.email.split('@')[0];
-                applyAuthUIVisuals(); pullFromSupabase(); 
-            }
-        });
+        if (data && data.feeders) appState = data; 
+        translateApp(); 
         
-        if(appState.user.isLoggedIn) map.invalidateSize(); 
+        if (appState.user && appState.user.isLoggedIn) { 
+            applyAuthUIVisuals(); 
+            renderEntireNetwork(); 
+            centerMapOnGSS(); 
+            checkOnboardingFlow(); 
+        } else { 
+            document.getElementById('app-container').style.display = 'none'; 
+            document.getElementById('auth-screen').style.display = 'flex'; 
+        }
         
-    } catch (e) { console.error("Init Error:", e); }
+        if (supabaseClient) {
+            supabaseClient.auth.getSession().then(({ data }) => {
+                if (data && data.session && data.session.user) {
+                    appState.user.isLoggedIn = true; 
+                    appState.user.email = data.session.user.email; 
+                    appState.user.id = data.session.user.id;
+                    appState.user.name = data.session.user.user_metadata?.full_name || data.session.user.email.split('@')[0];
+                    applyAuthUIVisuals(); 
+                    pullFromSupabase(); 
+                }
+            }).catch(err => console.log("Offline mode"));
+        }
+        
+        if(appState.user.isLoggedIn && map) map.invalidateSize(); 
+        
+    } catch (e) { 
+        console.error("Init Error:", e); 
+        document.getElementById('app-container').style.display = 'none'; 
+        document.getElementById('auth-screen').style.display = 'flex'; 
+        showToast("Offline Mode / Load Error");
+    }
 }
 
 function startAppStartupSequence() {
