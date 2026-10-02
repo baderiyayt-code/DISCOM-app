@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<widget id="com.discom.surveypro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+<widget id="com.discom.surveypro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
     <name>DISCOM Pro</name>
     <description>Enterprise Survey App for DISCOM</description>
     <author email="admin@discom.com" href="http://discom.com">Suraj Singh Mehta</author>
@@ -17,18 +17,11 @@
     
     <preference name="AndroidXEnabled" value="true" />
     
+    <!-- YEH HOOK SCRIPT BUILD SE PEHLE DUPLICATES KO SAAF KAREGI -->
+    <hook type="after_prepare" src="scripts/fix_manifest.js" />
+    
     <platform name="android">
         <allow-intent href="market:*" />
-        
-        <!-- Inject tools namespace correctly -->
-        <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest">
-            <manifest xmlns:tools="http://schemas.android.com/tools" />
-        </edit-config>
-        
-        <!-- YEH FIX HAI: parent="/manifest" ensure karega ki merge command sahi jagah apply ho -->
-        <config-file target="AndroidManifest.xml" parent="/manifest">
-            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="replace" />
-        </config-file>
     </platform>
 
     <!-- Plugins -->
