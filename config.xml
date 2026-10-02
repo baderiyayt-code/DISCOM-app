@@ -17,16 +17,13 @@
     
     <preference name="AndroidXEnabled" value="true" />
     
-    <!-- YEH HOOK SCRIPT BUILD SE PEHLE DUPLICATES KO SAAF KAREGI -->
-    <hook type="after_prepare" src="scripts/fix_manifest.js" />
-    
     <platform name="android">
         <allow-intent href="market:*" />
     </platform>
 
-    <!-- Plugins -->
+    <!-- Essential Plugins for Permissions, GPS, Camera, and Native File Export -->
     <plugin name="cordova-plugin-geolocation" />
     <plugin name="cordova-plugin-android-permissions" />
     <plugin name="cordova-plugin-camera" />
-    <plugin name="cordova-plugin-x-socialsharing" />
+    <plugin name="cordova-plugin-file" />
 </widget>
