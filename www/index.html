@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!-- CRITICAL FIX: Allows external CDN scripts to load in Cordova -->
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;">
     <meta name="theme-color" content="#1e3a8a">
     <title>DISCOM Survey Pro</title>
 
@@ -15,8 +17,6 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    
-    <!-- CSS File Link -->
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -216,7 +216,7 @@
             <i class="fa-solid fa-tower-broadcast"></i> <span>Manage Feeders</span>
         </div>
 
-        <div class="menu-category-title">Export Data (Downloads)</div>
+        <div class="menu-category-title">Export Data (Save Local)</div>
         <div class="menu-link-btn" onclick="window.generateCadSLDPdf()"><i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> <span>Export SLD PDF</span></div>
         <div class="menu-link-btn" onclick="window.exportToAutoCAD_DXF()"><i class="fa-solid fa-draw-polygon" style="color:#10b981;"></i> <span>Export DXF</span></div>
         <div class="menu-link-btn" onclick="window.exportToGoogleEarth_KML()"><i class="fa-solid fa-earth-americas" style="color:#0ea5e9;"></i> <span>Export styled KML</span></div>
