@@ -13,7 +13,10 @@ let appState = {
     currentFeederCode: "1",
     gssNodes: {}, 
     feeders: {},  
-    orphanPoleIds: new Set(), activeMove: null, placementType: null
+    orphanPoleIds: new Set(), 
+    activeMove: null, 
+    placementType: null,
+    photos: [] // FIX 5: For Offline Photo Sync
 };
 
 let historyStack = [];
@@ -28,7 +31,6 @@ let featureGroups = {};
 function initMapLayers() {
     if (typeof L === 'undefined') return; 
     
-    // Fix: Vector Drift and Zoom Issues Fixed
     map = L.map('map', { 
         zoomControl: false, attributionControl: false, preferCanvas: true, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
         zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false
@@ -90,10 +92,38 @@ function setSyncStatus(status) {
 }
 
 function syncToSupabase() {
-    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
-    const dataToSync = JSON.parse(JSON.stringify(appState)); delete dataToSync.user; delete dataToSync.orphanPoleIds;
+    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; 
+    setSyncStatus('syncing');
+    
+    const dataToSync = JSON.parse(JSON.stringify(appState)); 
+    delete dataToSync.user; delete dataToSync.orphanPoleIds;
+    delete dataToSync.photos; // Don't push heavy base64 to main json blob
+
     supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: dataToSync, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
-    .then(({error}) => { if(error) setSyncStatus('offline'); else setSyncStatus('synced'); }).catch(() => setSyncStatus('offline'));
+    .then(({error}) => { 
+        if(error) { setSyncStatus('offline'); return; }
+        
+        // FIX 5: Offline Photo Sync to Separate Table
+        if (appState.photos && appState.photos.length > 0) {
+            const unsyncedPhotos = appState.photos.filter(p => !p.synced);
+            if (unsyncedPhotos.length > 0) {
+                const photoPayload = unsyncedPhotos.map(p => ({
+                    user_id: appState.user.id,
+                    object_type: p.object_type,
+                    object_id: p.object_id,
+                    photo_url: p.photo_url
+                }));
+                
+                supabaseClient.from('object_photos').insert(photoPayload).then(({error: photoErr}) => {
+                    if (!photoErr) {
+                        unsyncedPhotos.forEach(p => p.synced = true);
+                        if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState);
+                    }
+                });
+            }
+        }
+        setSyncStatus('synced'); 
+    }).catch(() => setSyncStatus('offline'));
 }
 
 async function pullFromSupabase() {
@@ -107,17 +137,26 @@ async function pullFromSupabase() {
                 appState.feeders = {}; appState.gssNodes = {};
                 data.forEach(row => { const cloudData = row.data; if (cloudData.gssNodes) Object.assign(appState.gssNodes, cloudData.gssNodes); if (cloudData.feeders) { Object.keys(cloudData.feeders).forEach(fCode => { appState.feeders[fCode] = cloudData.feeders[fCode]; }); } });
             } else {
-                const cloudData = data[0].data; appState.feeders = cloudData.feeders || appState.feeders; appState.gssNodes = cloudData.gssNodes || appState.gssNodes; appState.currentFeederCode = cloudData.currentFeederCode || appState.currentFeederCode;
+                const cloudData = data[0].data; 
+                appState.feeders = cloudData.feeders || appState.feeders; 
+                appState.gssNodes = cloudData.gssNodes || appState.gssNodes; 
+                appState.currentFeederCode = cloudData.currentFeederCode || appState.currentFeederCode;
+                if(cloudData.photos) appState.photos = cloudData.photos;
             }
             if(typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState); 
-            renderEntireNetwork(); setSyncStatus('synced'); centerMapOnGSS(); window.checkOnboardingFlow();
+            renderEntireNetwork(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow();
+        } else {
+            checkOnboardingFlow(); 
         }
     } catch (err) { console.error("Sync error:", err); setSyncStatus('offline'); }
 }
 
 function triggerPersistence() { 
-    if(typeof localforage !== 'undefined') { localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); } 
-    else { localStorage.setItem(DB_KEY, JSON.stringify(appState)); }
+    if(typeof localforage !== 'undefined') {
+        localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); 
+    } else {
+        localStorage.setItem(DB_KEY, JSON.stringify(appState));
+    }
     syncToSupabase(); 
 }
 
@@ -139,8 +178,6 @@ window.checkOnboardingFlow = function() {
         document.getElementById('onboarding-overlay').style.display = 'flex';
         document.getElementById('onboarding-title').innerText = "Network Setup Required";
         document.getElementById('onboarding-desc').innerText = "Please add your first GSS to begin mapping.";
-        
-        // FIX: Force hide overlay when clicking Add GSS
         document.getElementById('onboarding-btn').onclick = function() {
             document.getElementById('onboarding-overlay').style.display = 'none';
             window.openAddGssModal();
@@ -149,8 +186,6 @@ window.checkOnboardingFlow = function() {
         document.getElementById('onboarding-overlay').style.display = 'flex';
         document.getElementById('onboarding-title').innerText = "Create Feeder";
         document.getElementById('onboarding-desc').innerText = "You must create a Feeder linked to your GSS to continue.";
-        
-        // FIX: Force hide overlay when clicking Add Feeder
         document.getElementById('onboarding-btn').onclick = function() {
             document.getElementById('onboarding-overlay').style.display = 'none';
             window.openFeederConfigModal();
@@ -172,7 +207,6 @@ window.handleSupabaseAuth = async function(mode) {
         applyAuthUIVisuals(); 
         await pullFromSupabase(); 
         showToast("Login Successful!");
-        window.checkOnboardingFlow();
     }
 }
 window.handleSupabaseLogout = async function() { if(supabaseClient) await supabaseClient.auth.signOut(); if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.removeItem(DB_KEY); location.reload(); }
@@ -187,6 +221,8 @@ function centerMapOnGSS() {
 }
 
 window.liveTrackingId = null; window.liveUserMarker = null;
+window.isFirstLocationLock = true; // FIX 3: Prevent map lock
+
 window.toggleLiveTracking = function() {
     if (!navigator.geolocation) return alert("Geolocation API not found.");
     if (window.liveTrackingId) {
@@ -195,6 +231,7 @@ window.toggleLiveTracking = function() {
         document.getElementById('liveTrackBtn').style.color = '#ef4444'; showToast("Live tracking disabled.");
     } else {
         showToast("Fetching location...");
+        window.isFirstLocationLock = true; 
         window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
             if(!map) return;
@@ -202,7 +239,13 @@ window.toggleLiveTracking = function() {
                 const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [44,44] });
                 window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
             } else window.liveUserMarker.setLatLng([lat, lng]);
-            map.setView([lat, lng], 18);
+            
+            // FIX 3: Only center map on first lock
+            if (window.isFirstLocationLock) {
+                map.setView([lat, lng], 18);
+                window.isFirstLocationLock = false;
+            }
+            
             document.getElementById('liveTrackBtn').style.color = '#10b981';
         }, (err) => alert("GPS Error."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     }
@@ -227,26 +270,32 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
     document.getElementById('btnObjDelete').onclick = () => { window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
 };
 
+// FIX 5: Offline Photo Cache Support
 window.uploadObjectPhoto = async function(event) {
-    if (!supabaseClient) return alert("Database not connected. Go online.");
     const file = event.target.files[0];
     if (!file || !window.currentSelectedObj || !appState.user.isLoggedIn) return;
     
-    showToast("Uploading photo...");
+    showToast("Saving photo...");
     const reader = new FileReader();
     reader.onloadend = async function() {
         const base64Data = reader.result;
-        try {
-            const { data, error } = await supabaseClient.from('object_photos').insert([{
-                user_id: appState.user.id,
-                object_type: window.currentSelectedObj.type,
-                object_id: window.currentSelectedObj.id,
-                photo_url: base64Data
-            }]);
-            
-            if (error) throw error;
-            showToast("Photo saved to Database successfully!");
-        } catch (err) { console.error(err); alert("Failed to upload photo. Check permissions and DB setup."); }
+        
+        if(!appState.photos) appState.photos = [];
+        appState.photos.push({
+            id: 'PH_' + Date.now(),
+            object_type: window.currentSelectedObj.type,
+            object_id: window.currentSelectedObj.id,
+            photo_url: base64Data,
+            synced: false
+        });
+        triggerPersistence();
+        
+        if (navigator.onLine && supabaseClient) {
+            showToast("Photo saved! Syncing online...");
+            syncToSupabase();
+        } else {
+            showToast("Photo saved locally. Will sync when online.");
+        }
     };
     reader.readAsDataURL(file);
 };
@@ -255,8 +304,9 @@ window.uploadObjectPhoto = async function(event) {
 function renderEntireNetwork() {
     if(!map) return;
     try {
-        updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); const net = getActiveNetwork(); if(!net) return; const f = appState.filters;
-
+        updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); 
+        
+        // FIX 2: Render GSS Even if Feeder doesn't exist yet
         Object.values(appState.gssNodes).forEach(gss => {
             if (typeof gss.lat === 'number') {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
@@ -269,6 +319,12 @@ function renderEntireNetwork() {
                 }); featureGroups.gss.addLayer(m);
             }
         });
+
+        // Now check for active network for the rest of objects
+        const net = getActiveNetwork(); 
+        if(!net) return; 
+        
+        const f = appState.filters;
 
         if (f.poles) {
             net.poles.forEach(p => {
@@ -349,12 +405,14 @@ function renderEntireNetwork() {
 }
 
 function saveSnapshot() {
-    const net = getActiveNetwork(); historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers })));
+    const net = getActiveNetwork(); if(!net) return;
+    historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers })));
     if (historyStack.length > 15) historyStack.shift();
 }
 
 window.undoLastAction = function() {
     if (historyStack.length === 0) return showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = getActiveNetwork();
+    if(!net) return;
     net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers;
     renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺");
 }
@@ -398,7 +456,12 @@ window.toggleSidebar = function(open) {
 }
 
 window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); }
-window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); }
+window.closeModal = function() { 
+    document.getElementById('formModalOverlay').classList.remove('open'); 
+    if(appState.user.isLoggedIn) {
+        setTimeout(window.checkOnboardingFlow, 400); 
+    }
+}
 
 window.switchFeeder = function(code) { if (appState.feeders[code]) { appState.currentFeederCode = code; renderEntireNetwork(); triggerPersistence(); centerMapOnGSS(); } }
 
@@ -416,7 +479,8 @@ function getLineSpec(type) {
 }
 
 function getNodeCoords(nodeId) { 
-    const net = getActiveNetwork(), idStr = String(nodeId);
+    const net = getActiveNetwork(); if(!net) return null;
+    const idStr = String(nodeId);
     if (idStr.startsWith('GSS_')) { const code = idStr.replace('GSS_', ''); if (appState.gssNodes[code]) return { lat: appState.gssNodes[code].lat, lng: appState.gssNodes[code].lng }; }
     if (idStr.startsWith('DT_')) { const code = idStr.replace('DT_', ''), d = net.dts.find(x => String(x.code) === code); if (d) return { lat: d.lat, lng: d.lng }; }
     if (idStr.startsWith('POLE_')) { const code = idStr.replace('POLE_', ''), p = net.poles.find(x => String(x.poleNo) === code); if (p) return { lat: p.lat, lng: p.lng }; }
@@ -428,7 +492,7 @@ function getNodeCoords(nodeId) {
 }
 
 window.runOrphanNodeChecker = function() {
-    updateOrphanStatus(); const net = getActiveNetwork(), orphanCount = appState.orphanPoleIds.size;
+    updateOrphanStatus(); const net = getActiveNetwork(); if(!net) return; const orphanCount = appState.orphanPoleIds.size;
     if (orphanCount === 0) return showToast("No orphan poles or nodes found! Network is fully connected.");
 
     let html = `<div class="sheet-head"><div class="sheet-title" style="color:#d97706;"><i class="fa-solid fa-network-wired"></i> Orphan Nodes Found (${orphanCount})</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>`;
@@ -463,6 +527,54 @@ window.renderGssSidebarList = function() {
         </div>`;
     }); container.innerHTML = html;
 };
+
+// Feeder Config Form
+window.openFeederConfigModal = function() {
+    window.toggleSidebar(false);
+    const gssOpts = Object.values(appState.gssNodes).map(g => `<option value="${g.code}">${g.name}</option>`).join('');
+    openModal(`<div class="sheet-head"><div class="sheet-title">Add Feeder</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="form-row"><label>Select GSS*</label><select id="inpFeederGss" class="form-select">${gssOpts}</select></div>
+        <div class="form-row"><label>Feeder Code*</label><input type="text" id="inpFeederCode" class="form-input" placeholder="e.g. F-01"></div>
+        <div class="form-row"><label>Feeder Name*</label><input type="text" id="inpFeederName" class="form-input" placeholder="e.g. 11 kV Main Feeder"></div>
+        <button class="btn-action-primary" onclick="window.saveNewFeeder()">Save Feeder</button>`);
+};
+
+window.saveNewFeeder = function() {
+    const gss = document.getElementById('inpFeederGss').value;
+    const code = document.getElementById('inpFeederCode').value.trim();
+    const name = document.getElementById('inpFeederName').value.trim();
+    if(!gss || !code || !name) return alert("All fields are required");
+    if(appState.feeders[code]) return alert("Feeder code already exists");
+    appState.feeders[code] = { feeder: { name: name, code: code, subdivCode: "SD-01", parentGss: gss }, poles: [], dts: [], lines: [], consumers: [] };
+    appState.currentFeederCode = code;
+    window.closeModal();
+    renderEntireNetwork();
+    triggerPersistence();
+    showToast("Feeder Added!");
+};
+
+window.deleteGssAndFeederStrict = function(code) {
+    const conf1 = confirm(`WARNING: You are about to delete GSS ${code} and ALL its associated feeders and network data! This cannot be undone. Continue?`);
+    if (!conf1) return;
+    const conf2 = prompt(`To strictly confirm deletion, please type the GSS code "${code}" below:`);
+    if (conf2 !== code) return alert("Deletion cancelled: GSS code did not match.");
+
+    saveSnapshot();
+    if (appState.gssNodes[code]) delete appState.gssNodes[code];
+    
+    const feedersToDelete = [];
+    Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].feeder.parentGss === code) feedersToDelete.push(fCode); });
+    feedersToDelete.forEach(fCode => delete appState.feeders[fCode]);
+    
+    if (!appState.feeders[appState.currentFeederCode] || feedersToDelete.includes(appState.currentFeederCode)) {
+        const remainingFeeders = Object.keys(appState.feeders);
+        appState.currentFeederCode = remainingFeeders.length > 0 ? remainingFeeders[0] : null;
+    }
+
+    renderEntireNetwork(); triggerPersistence(); window.renderGssSidebarList(); 
+    showToast("GSS and Feeder Data completely deleted!");
+    window.checkOnboardingFlow();
+}
 
 window.openAddGssModal = function() {
     window.toggleSidebar(false);
@@ -500,7 +612,7 @@ window.toggleSearchBox = function() {
 window.handleSearch = function(e) {
     const query = e.target.value.toLowerCase().trim(), suggPanel = document.getElementById('searchSuggestions');
     if(query.length === 0) { suggPanel.classList.remove('active'); return; }
-    const net = getActiveNetwork(); let results = [];
+    const net = getActiveNetwork(); if(!net) return; let results = [];
     net.consumers.forEach(c => { if (String(c.kno).toLowerCase().includes(query) || (c.name && c.name.toLowerCase().includes(query))) results.push({ type: 'CONSUMER', id: c.id, title: c.name, desc: `K-No: ${c.kno} | Connected to: ${c.parentRef}` }); });
     net.dts.forEach(d => { if (String(d.code).toLowerCase().includes(query) || String(d.rating).includes(query) || (d.location && d.location.toLowerCase().includes(query))) results.push({ type: 'DT', id: d.id, title: `DT Code: ${d.code}`, desc: `Rating: ${d.rating} kVA | Loc: ${d.location || 'N/A'}` }); });
     if (results.length > 0) {
@@ -510,13 +622,13 @@ window.handleSearch = function(e) {
 }
 window.clearSearch = function() { document.getElementById('appSearchBar').value = ''; document.getElementById('searchSuggestions').classList.remove('active'); }
 window.selectSearchResult = function(type, id) {
-    const net = getActiveNetwork(); window.clearSearch(); window.toggleSearchBox(); let target = null, popupHtml = '';
+    const net = getActiveNetwork(); if(!net) return; window.clearSearch(); window.toggleSearchBox(); let target = null, popupHtml = '';
     if(type === 'CONSUMER') { target = net.consumers.find(c => c.id === id); if(target) popupHtml = `K-No: <b>${target.kno}</b><br>Connected to: <b>${target.parentRef}</b>`; } 
     else if(type === 'DT') { target = net.dts.find(d => d.id === id); if(target) popupHtml = `Rating: <b>${target.rating} kVA</b><br>Loc: <b>${target.location || 'N/A'}</b>`; }
     if(target && target.lat) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { window.openObjectSheet(type, id, type === 'CONSUMER' ? target.name : `DT: ${target.code}`, popupHtml); }, 1000); }
 }
 
-/* ====== 3. CRUD LOGIC (WITH POLE CONDITIONAL DROPDOWN) ====== */
+/* ====== 4. CRUD LOGIC (WITH POLE CONDITIONAL DROPDOWN & ID FIXES) ====== */
 window.openAddForm = function(type) {
     window.toggleSpeedDial(false); 
     if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'flex'; } 
@@ -533,9 +645,17 @@ window.togglePccConfig = function() {
 };
 
 window.showFormModal = function(type, snapLat, snapLng) {
-    const net = getActiveNetwork(); const center = map.getCenter(); snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
+    const net = getActiveNetwork(); if(!net) return; 
+    const center = map.getCenter(); snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
     if (type === 'POLE') {
-        const nextNo = net.poles.filter(p => p.lineType !== 'LT').length + 1;
+        // FIX 4b: Accurate HT Pole ID generation
+        let maxHtNo = 0;
+        net.poles.filter(p => p.lineType !== 'LT').forEach(p => {
+            const num = parseInt(p.poleNo);
+            if(!isNaN(num) && num > maxHtNo) maxHtNo = num;
+        });
+        const nextNo = maxHtNo + 1;
+
         openModal(`
             <div class="sheet-head"><div class="sheet-title">Add HT Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div class="form-row"><label>Pole Number*</label><input type="number" id="inpPoleNo" class="form-input" value="${nextNo}"></div>
@@ -638,10 +758,23 @@ window.saveNewPole = function() {
     if (!no) return alert("Enter pole number"); const net = getActiveNetwork(); if (net.poles.some(p => String(p.poleNo) === no)) return alert(`Pole exists!`); 
     net.poles.push({ id: 'P_'+Date.now(), poleNo: no, lineType: category, poleType: pType, poleConfig: pConfig, lat, lng }); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("HT Pole added successfully!");
 }
+
 window.saveNewLTPole = function() {
     saveSnapshot(); const dtCode = document.getElementById('inpLTPoleDT').value, category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value); 
     const pType = document.getElementById('inpMainPoleType').value; const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A';
-    if (!dtCode) return alert("Select DT"); const net = getActiveNetwork(); const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode)); const finalPoleNo = `${dtCode}-${existingLTPoles.length + 1}`;
+    if (!dtCode) return alert("Select DT"); const net = getActiveNetwork(); const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode)); 
+    
+    // FIX 4: Robust ID generation for LT Poles
+    let maxId = 0;
+    existingLTPoles.forEach(ep => {
+        const parts = String(ep.poleNo).split('-');
+        if (parts.length > 1) {
+            const num = parseInt(parts[parts.length - 1]);
+            if (!isNaN(num) && num > maxId) maxId = num;
+        }
+    });
+    const finalPoleNo = `${dtCode}-${maxId + 1}`;
+    
     if (net.poles.some(p => String(p.poleNo) === String(finalPoleNo))) return alert(`Pole ${finalPoleNo} exists!`); 
     net.poles.push({ id: 'P_'+Date.now(), poleNo: finalPoleNo, lineType: category, dtCode: dtCode, poleType: pType, poleConfig: pConfig, lat, lng }); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("LT Pole added successfully!");
 }
@@ -695,6 +828,7 @@ window.saveEditedDT = function(id) { saveSnapshot(); const net = getActiveNetwor
 window.saveEditedConsumer = function(id) { saveSnapshot(); const net = getActiveNetwork(); const c = net.consumers.find(x => x.id === id); if (!c) return; c.name = document.getElementById('editConsName').value.trim(); c.kno = document.getElementById('editConsKno').value.trim(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Updated"); }
 window.saveEditedGss = function(code) { saveSnapshot(); const g = appState.gssNodes[code]; if (g) g.name = document.getElementById('editGssName').value.trim(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("GSS Updated"); }
 
+// FIX 1: Object Move ID Mapping Fixes
 window.startObjectMove = function(type, id, title) {
     window.closeObjectSheet(); appState.activeMove = { type, id }; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'flex'; document.getElementById('moveTargetTitle').innerText = `Move: ${title}`;
     let target = null; let htmlContent = '';
@@ -702,6 +836,7 @@ window.startObjectMove = function(type, id, title) {
     else {
         const net = getActiveNetwork(); 
         if (type === 'POLE') { target = net.poles.find(x => x.id === id); const isLT = target.lineType === 'LT'; let displayNo = target.poleNo; if (isLT && String(target.poleNo).includes('-')) displayNo = String(target.poleNo).split('-')[1]; htmlContent = `<div class="${isLT ? 'lt-pole-icon' : 'pole-marker-icon'}" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><span>${displayNo}</span></div>`; } 
+        else if (type === 'DT') { target = net.dts.find(x => x.id === id); const numRating = String(target.rating).replace(/[^0-9]/g, ''); htmlContent = `<div class="dt-square-icon" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);">${numRating}</div>`; }
         else if (type === 'CONSUMER') { target = net.consumers.find(x => x.id === id); htmlContent = `<div class="consumer-marker-icon" style="box-shadow: 0 10px 25px rgba(0,0,0,0.5);"><i class="fa-solid fa-house"></i></div>`; }
     }
     if (target && target.lat) { map.panTo([target.lat, target.lng]); const liveIconContainer = document.getElementById('live-move-icon'); liveIconContainer.innerHTML = htmlContent; liveIconContainer.style.display = 'block'; renderEntireNetwork(); }
@@ -710,12 +845,39 @@ window.confirmObjectMove = function() {
     if (!appState.activeMove) return; saveSnapshot(); const c = map.getCenter(); const lat = parseFloat(c.lat.toFixed(6)), lng = parseFloat(c.lng.toFixed(6)), net = getActiveNetwork(); 
     if (appState.activeMove.type === 'GSS') {
         const gss = appState.gssNodes[appState.activeMove.id];
-        if(gss) { gss.lat = lat; gss.lng = lng; net.lines.forEach(l => { if (l.fromNode == gss.code) { l.coords[0] = [lat, lng]; l.distanceMeters = window.calcDistance(lat, lng, l.coords[1][0], l.coords[1][1]); } if (l.toNode == gss.code) { l.coords[1] = [lat, lng]; l.distanceMeters = window.calcDistance(l.coords[0][0], l.coords[0][1], lat, lng); } }); }
+        if(gss) { 
+            gss.lat = lat; gss.lng = lng; 
+            const gssNodeId = 'GSS_' + gss.code; // FIX 1
+            net.lines.forEach(l => { 
+                if (l.fromNode === gssNodeId) { l.coords[0] = [lat, lng]; l.distanceMeters = window.calcDistance(lat, lng, l.coords[1][0], l.coords[1][1]); } 
+                if (l.toNode === gssNodeId) { l.coords[1] = [lat, lng]; l.distanceMeters = window.calcDistance(l.coords[0][0], l.coords[0][1], lat, lng); } 
+            }); 
+        }
     } else {
         if (appState.activeMove.type === 'POLE') {
             const p = net.poles.find(x => x.id === appState.activeMove.id);
-            if (p) { p.lat = lat; p.lng = lng; net.dts.forEach(d => { if (d.parentPole == p.poleNo) { d.lat = lat; d.lng = lng; } }); net.lines.forEach(l => { if (l.fromNode == p.poleNo) { l.coords[0] = [lat, lng]; l.distanceMeters = window.calcDistance(lat, lng, l.coords[1][0], l.coords[1][1]); } if (l.toNode == p.poleNo) { l.coords[1] = [lat, lng]; l.distanceMeters = window.calcDistance(l.coords[0][0], l.coords[0][1], lat, lng); } }); }
-        } else if (appState.activeMove.type === 'CONSUMER') { const cons = net.consumers.find(x => x.id === appState.activeMove.id); if (cons) { cons.lat = lat; cons.lng = lng; } }
+            if (p) { 
+                p.lat = lat; p.lng = lng; 
+                const poleNodeId = 'POLE_' + p.poleNo; // FIX 1
+                net.dts.forEach(d => { if (d.parentPole == p.poleNo) { d.lat = lat; d.lng = lng; } }); 
+                net.lines.forEach(l => { 
+                    if (l.fromNode === poleNodeId) { l.coords[0] = [lat, lng]; l.distanceMeters = window.calcDistance(lat, lng, l.coords[1][0], l.coords[1][1]); } 
+                    if (l.toNode === poleNodeId) { l.coords[1] = [lat, lng]; l.distanceMeters = window.calcDistance(l.coords[0][0], l.coords[0][1], lat, lng); } 
+                }); 
+            }
+        } else if (appState.activeMove.type === 'DT') {
+            const d = net.dts.find(x => x.id === appState.activeMove.id);
+            if (d) {
+                d.lat = lat; d.lng = lng;
+                const dtNodeId = 'DT_' + d.code; // FIX 1
+                net.lines.forEach(l => {
+                    if (l.fromNode === dtNodeId) { l.coords[0] = [lat, lng]; l.distanceMeters = window.calcDistance(lat, lng, l.coords[1][0], l.coords[1][1]); }
+                    if (l.toNode === dtNodeId) { l.coords[1] = [lat, lng]; l.distanceMeters = window.calcDistance(l.coords[0][0], l.coords[0][1], lat, lng); }
+                });
+            }
+        } else if (appState.activeMove.type === 'CONSUMER') { 
+            const cons = net.consumers.find(x => x.id === appState.activeMove.id); if (cons) { cons.lat = lat; cons.lng = lng; } 
+        }
     }
     window.cancelObjectMove(); renderEntireNetwork(); triggerPersistence(); showToast("Location Updated!");
 }
@@ -878,14 +1040,20 @@ window.requestAppPermissions = function() {
 async function initializeAppPostPermissions() {
     try {
         initMapLayers();
-        if (typeof supabase !== 'undefined') { supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+        if (typeof supabase !== 'undefined') {
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
 
         let data = null;
-        if (typeof localforage !== 'undefined') { data = await localforage.getItem(DB_KEY); }
-        if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
+        if (typeof localforage !== 'undefined') {
+            data = await localforage.getItem(DB_KEY); 
+        }
+        if (!data) { 
+            const lsData = localStorage.getItem(DB_KEY); 
+            if (lsData) data = JSON.parse(lsData); 
+        }
         
         if (data && data.feeders) appState = data; 
-        translateApp(); 
         
         if (appState.user && appState.user.isLoggedIn) { 
             applyAuthUIVisuals(); 
