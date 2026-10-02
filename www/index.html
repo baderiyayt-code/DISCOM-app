@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <!-- CRITICAL FIX: Allows external CDN scripts to load in Cordova -->
     <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;">
     <meta name="theme-color" content="#1e3a8a">
     <title>DISCOM Survey Pro</title>
@@ -49,7 +48,8 @@
         <i class="fa-solid fa-tower-cell" style="font-size:3rem; color:#2563eb; margin-bottom:15px;"></i>
         <h2 id="onboarding-title">Network Setup Required</h2>
         <p id="onboarding-desc">Please add your first GSS to begin mapping.</p>
-        <button class="btn-action-primary" id="onboarding-btn" onclick="window.openAddGssModal()">Add GSS Now</button>
+        <!-- FIX: Hide overlay automatically when clicking the button -->
+        <button class="btn-action-primary" id="onboarding-btn" onclick="document.getElementById('onboarding-overlay').style.display='none'; window.openAddGssModal();">Add GSS Now</button>
     </div>
 </div>
 
