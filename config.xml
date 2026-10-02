@@ -1,5 +1,4 @@
 <?xml version='1.0' encoding='utf-8'?>
-<!-- Yahan xmlns:android aur xmlns:tools add kiya gaya hai -->
 <widget id="com.discom.surveypro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <name>DISCOM Pro</name>
     <description>Enterprise Survey App for DISCOM</description>
@@ -21,11 +20,15 @@
     <platform name="android">
         <allow-intent href="market:*" />
         
-        <!-- YEH CODE BUG FIX KAREGA (Duplicates ko replace karke ek banayega) -->
+        <!-- YEH FIX HAI: AndroidManifest mein explicitly 'tools' namespace inject karega -->
+        <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest">
+            <manifest xmlns:tools="http://schemas.android.com/tools" />
+        </edit-config>
+        
+        <!-- YEH DUPLICATE HATAYEGA: Conflict karne wali permission ko replace kar dega -->
         <config-file target="AndroidManifest.xml" parent="/*">
             <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="replace" />
         </config-file>
-        
     </platform>
 
     <!-- Plugins -->
