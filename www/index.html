@@ -208,16 +208,23 @@
     </div>
 
     <div class="sidebar-menu-list">
+        <!-- GSS Management -->
         <div class="menu-category-title" onclick="window.toggleGssFolder()" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
-            <span data-i18n="gssMgmt">GSS Management</span> <i id="gssFolderIcon" class="fa-solid fa-chevron-down"></i>
+            <span>GSS Management</span> <i id="gssFolderIcon" class="fa-solid fa-chevron-down"></i>
         </div>
         <div id="gssFolderContent" style="display:none; padding-left: 5px; margin-bottom: 15px;">
-            <div class="menu-link-btn" onclick="window.openAddGssModal()"><i class="fa-solid fa-plus-circle" style="color:#2563eb;"></i> <span data-i18n="addNewGss">Add New GSS</span></div>
+            <div class="menu-link-btn" onclick="window.openAddGssModal()"><i class="fa-solid fa-plus-circle" style="color:#2563eb;"></i> <span>Add New GSS</span></div>
             <div id="gssListContainer"></div>
         </div>
 
-        <div class="menu-link-btn" onclick="window.openFeederConfigModal()" style="background:#eff6ff; color:#1d4ed8;">
-            <i class="fa-solid fa-tower-broadcast"></i> <span data-i18n="manageFdr">Manage Feeders</span>
+        <!-- NEW Feeder Management Dropdown -->
+        <div class="menu-category-title" onclick="window.toggleFeederFolder()" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+            <span>Feeder Management</span> <i id="feederFolderIcon" class="fa-solid fa-chevron-down"></i>
+        </div>
+        <div id="feederFolderContent" style="display:none; padding-left: 5px; margin-bottom: 15px;">
+            <div class="menu-link-btn" onclick="window.openFeederConfigModal()"><i class="fa-solid fa-plus-circle" style="color:#10b981;"></i> <span>Add Feeder</span></div>
+            <div class="menu-link-btn" onclick="window.openEditFeederModal()"><i class="fa-solid fa-pen" style="color:#f59e0b;"></i> <span>Edit Feeder</span></div>
+            <div class="menu-link-btn" onclick="window.openDeleteFeederModal()"><i class="fa-solid fa-trash" style="color:#ef4444;"></i> <span>Delete Feeder</span></div>
         </div>
 
         <div class="menu-category-title" data-i18n="export">Export Data (Save Local)</div>
