@@ -1,5 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
-<widget id="com.discom.surveypro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+<!-- Yahan xmlns:android aur xmlns:tools add kiya gaya hai -->
+<widget id="com.discom.surveypro" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0" xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <name>DISCOM Pro</name>
     <description>Enterprise Survey App for DISCOM</description>
     <author email="admin@discom.com" href="http://discom.com">Suraj Singh Mehta</author>
@@ -19,9 +20,15 @@
     
     <platform name="android">
         <allow-intent href="market:*" />
+        
+        <!-- YEH CODE BUG FIX KAREGA (Duplicates ko replace karke ek banayega) -->
+        <config-file target="AndroidManifest.xml" parent="/*">
+            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="replace" />
+        </config-file>
+        
     </platform>
 
-    <!-- Essential Plugins for Permissions, GPS, Camera, and EXPORT FILE FIX -->
+    <!-- Plugins -->
     <plugin name="cordova-plugin-geolocation" />
     <plugin name="cordova-plugin-android-permissions" />
     <plugin name="cordova-plugin-camera" />
