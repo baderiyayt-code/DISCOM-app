@@ -43,25 +43,29 @@ function initMapLayers() {
 
     map.on('zoomend', updateMapZoomClasses); 
     
-    // Nearest object calculation on Move
+    // FIX 5: Live Floating Nearest Indicator Logic
     map.on('move', () => { 
         const c = map.getCenter(); 
         document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
         
-        if (appState.placementType) {
-            let minDist = Infinity;
-            let minName = 'Searching...';
+        if (appState.placementType && document.getElementById('center-placement-pin').style.display === 'block') {
             const net = getActiveNetwork();
-            if(net) {
-                net.poles.forEach(p => { const d = calcDistance(c.lat, c.lng, p.lat, p.lng); if(d < minDist) { minDist = d; minName = 'Pole '+p.poleNo; } });
-                net.dts.forEach(p => { const d = calcDistance(c.lat, c.lng, p.lat, p.lng); if(d < minDist) { minDist = d; minName = 'DT '+p.code; } });
-                Object.values(appState.gssNodes).forEach(p => { const d = calcDistance(c.lat, c.lng, p.lat, p.lng); if(d < minDist) { minDist = d; minName = 'GSS '+p.code; } });
+            if (net) {
+                let nearestDist = Infinity; let nearestName = 'None';
+                const checkNode = (lat, lng, name) => {
+                    if(lat && lng && !isNaN(lat) && !isNaN(lng)) {
+                        const d = window.calcDistance(c.lat, c.lng, lat, lng);
+                        if(d < nearestDist) { nearestDist = d; nearestName = name; }
+                    }
+                };
+                net.poles.forEach(p => checkNode(p.lat, p.lng, `Pole ${p.poleNo}`));
+                net.dts.forEach(d => checkNode(d.lat, d.lng, `DT ${d.code}`));
+                const gss = appState.gssNodes[net.feeder?.parentGss];
+                if(gss) checkNode(gss.lat, gss.lng, 'GSS');
                 
-                const tt = document.getElementById('nearest-obj-tooltip');
-                if(tt && minDist !== Infinity) {
-                    tt.style.display = 'block';
-                    tt.innerText = `Nearest: ${minName} (${formatDistance(minDist)})`;
-                }
+                const ind = document.getElementById('live-distance-indicator');
+                if (nearestDist === Infinity) { ind.style.display = 'none'; } 
+                else { ind.style.display = 'block'; ind.innerText = `Nearest: ${nearestName} (${window.formatDistance(nearestDist)})`; }
             }
         }
     });
@@ -91,6 +95,31 @@ window.toggleMapLayer = function() {
     tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
 }
 
+// FIX 1: Active Feeder Label Logic
+window.updateFeederDropdown = function() {
+    const header = document.getElementById('activeFeederLabel');
+    if(!header) return;
+    const keys = Object.keys(appState.feeders || {});
+    if(keys.length === 0) {
+        header.innerText = 'No Feeder';
+        appState.currentFeederCode = null;
+    } else {
+        if(!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode]) { appState.currentFeederCode = keys[0]; }
+        header.innerText = appState.feeders[appState.currentFeederCode].feeder.name;
+    }
+};
+
+window.switchFeeder = function(code) { 
+    if (appState.feeders[code]) { 
+        appState.currentFeederCode = code; 
+        window.updateFeederDropdown();
+        renderEntireNetwork(); 
+        triggerPersistence(); 
+        centerMapOnGSS(); 
+        window.toggleSidebar(false); 
+    } 
+}
+
 function getActiveNetwork() {
     let keys = Object.keys(appState.feeders || {});
     if (keys.length > 0 && (!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode])) appState.currentFeederCode = keys[0];
@@ -114,18 +143,14 @@ function setSyncStatus(status) {
 }
 
 function getPhotoUrl(objId) {
-    if(!appState.photos) return null;
-    const p = appState.photos.find(x => x.object_id === objId);
-    return p ? p.photo_url : null;
+    if(!appState.photos) return null; const p = appState.photos.find(x => x.object_id === objId); return p ? p.photo_url : null;
 }
 
-// FULL STRUCTURED SYNC TO SUPABASE (GSS > Feeder > Object > Details > Photo)
+// FULL STRUCTURED SYNC TO SUPABASE
 window.syncToSupabase = async function() {
     if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
-    
     try {
         const dataToSync = JSON.parse(JSON.stringify(appState)); delete dataToSync.user; delete dataToSync.orphanPoleIds; delete dataToSync.photos; 
-        
         await supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: dataToSync, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
         
         if (appState.photos && appState.photos.length > 0) {
@@ -141,7 +166,6 @@ window.syncToSupabase = async function() {
         for (let fCode in appState.feeders) {
             let f = appState.feeders[fCode];
             let gCode = f.feeder.parentGss || 'UNKNOWN';
-
             f.poles.forEach(p => objectsPayload.push({ id: p.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'POLE', details: p, photo_url: getPhotoUrl(p.id) }));
             f.dts.forEach(d => objectsPayload.push({ id: d.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'DT', details: d, photo_url: getPhotoUrl(d.id) }));
             f.lines.forEach(l => objectsPayload.push({ id: l.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'LINE', details: l, photo_url: getPhotoUrl(l.id) }));
@@ -172,7 +196,6 @@ async function pullFromSupabase() {
             if(cloudData.settings) appState.settings = { ...appState.settings, ...cloudData.settings };
             
             if(typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState); 
-            
             applyTranslations(); applyTheme(); if(map) map.invalidateSize();
             renderEntireNetwork(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow();
         } else checkOnboardingFlow();
@@ -182,7 +205,6 @@ async function pullFromSupabase() {
 function triggerPersistence() { 
     if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); 
     else localStorage.setItem(DB_KEY, JSON.stringify(appState));
-    
     if(appState.settings.liveSync) { window.syncToSupabase(); }
 }
 
@@ -196,7 +218,6 @@ window.toggleAuthMode = function() {
 function applyAuthUIVisuals() {
     document.getElementById('auth-screen').style.display = 'none'; document.getElementById('app-container').style.display = 'flex';
     setTimeout(() => { if(map) map.invalidateSize(); }, 100);
-    document.getElementById('userNameDisplay').innerText = appState.user.name; 
 }
 
 window.checkOnboardingFlow = function() {
@@ -226,28 +247,24 @@ window.handleSupabaseAuth = async function(mode) {
         applyAuthUIVisuals(); await pullFromSupabase(); showToast("Login Successful!");
     }
 }
-window.handleSupabaseLogout = async function() { if(supabaseClient) await supabaseClient.auth.signOut(); if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.removeItem(DB_KEY); location.reload(); }
+window.handleSupabaseLogout = async function() { if(supabaseClient) await supabaseClient.auth.signOut(); if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.clear(); location.reload(); }
 
-/* ====== CAUTION FACTORY RESET LOGIC ====== */
+/* ====== RESET DATA (FIX 2) ====== */
 window.openResetConfirmationModal = function() {
     window.toggleSidebar(false); window.closeSettingsPage();
-    openModal(`
-        <div class="sheet-head"><div class="sheet-title" style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> CAUTION: Factory Reset</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-        <p style="font-size:0.9rem; color:var(--text-sub); margin-bottom:15px; line-height:1.5;">This will permanently delete all app data, including GSS, Feeders, Poles, Lines, Consumers, and Photos from this device. Are you absolutely sure?</p>
-        <div class="form-row"><label>Type "RESET" to confirm</label><input type="text" id="inpResetConfirm" class="form-input" placeholder="Type RESET here" autocomplete="off"></div>
-        <button class="btn-action-primary" style="background:#ef4444;" onclick="window.executeFullReset()">Delete All Data</button>
-    `);
-}
-window.executeFullReset = async function() {
-    const conf = document.getElementById('inpResetConfirm').value.trim();
-    if(conf !== "RESET") return alert("Please type RESET exactly to confirm.");
-    try {
-        if(typeof localforage !== 'undefined') await localforage.clear();
-        localStorage.removeItem(DB_KEY);
-        if(supabaseClient) await supabaseClient.auth.signOut();
-        showToast("App Reset Successfully!");
-        setTimeout(() => location.reload(), 1000);
-    } catch(e) { alert("Reset failed."); }
+    openModal(`<div class="sheet-head"><div class="sheet-title" style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Factory Reset</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+        <p style="font-size:0.9rem; color:var(--text-main); margin-bottom:15px; line-height:1.5;">This will permanently wipe all local database records, logs, and settings. This action cannot be undone.</p>
+        <div class="form-row"><label>Type "RESET" to confirm</label><input type="text" id="inpResetConfirm" class="form-input" placeholder="Type RESET here"></div>
+        <button class="btn-action-primary" style="background:#ef4444;" onclick="window.executeFactoryReset()">Erase All Data</button>`);
+};
+window.executeFactoryReset = async function() {
+    const val = document.getElementById('inpResetConfirm').value;
+    if(val !== 'RESET') return alert("Confirmation text does not match 'RESET'.");
+    showToast("Erasing all data...");
+    if(supabaseClient) await supabaseClient.auth.signOut();
+    if(typeof localforage !== 'undefined') await localforage.clear();
+    localStorage.clear();
+    setTimeout(() => location.reload(), 1000);
 }
 
 /* ====== MAP TRACKING ====== */
@@ -279,17 +296,15 @@ window.toggleLiveTracking = function() {
     }
 }
 
-/* ====== CAMERA & BOTTOM SHEET ====== */
+/* ====== BOTTOM SHEET & CAMERA ====== */
 window.currentSelectedObj = null;
 window.closeObjectSheet = function() { document.getElementById('object-bottom-sheet').classList.remove('open'); window.currentSelectedObj = null; };
 window.openObjectSheet = function(type, id, title, detailsHtml) {
     window.currentSelectedObj = { type, id };
     document.getElementById('objSheetTitle').innerText = title; document.getElementById('objSheetDetails').innerHTML = detailsHtml;
     
-    // PHOTO PREVIEW LOGIC
     const photoUrl = getPhotoUrl(id);
-    const imgEl = document.getElementById('objPhotoImg');
-    const placeholderEl = document.getElementById('objPhotoPlaceholder');
+    const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder');
     if(photoUrl) { imgEl.src = photoUrl; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; } 
     else { imgEl.style.display = 'none'; imgEl.src = ''; placeholderEl.style.display = 'block'; }
     
@@ -299,10 +314,9 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
     document.getElementById('btnObjDelete').onclick = () => { window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
 };
 
-// DIRECT CAMERA PLUGIN
 window.captureObjectPhoto = function() {
     if (!window.currentSelectedObj || !appState.user.isLoggedIn) return;
-    if (typeof navigator.camera === 'undefined') return alert("Camera plugin not installed or accessible on this device.");
+    if (typeof navigator.camera === 'undefined') return alert("Camera plugin not installed on this device.");
     navigator.camera.getPicture(
         function(imageData) {
             showToast("Saving photo...");
@@ -311,10 +325,8 @@ window.captureObjectPhoto = function() {
             appState.photos = appState.photos.filter(x => x.object_id !== window.currentSelectedObj.id);
             appState.photos.push({ id: 'PH_' + Date.now(), object_type: window.currentSelectedObj.type, object_id: window.currentSelectedObj.id, photo_url: base64Data, synced: false });
             
-            const imgEl = document.getElementById('objPhotoImg');
-            const placeholderEl = document.getElementById('objPhotoPlaceholder');
+            const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder');
             imgEl.src = base64Data; imgEl.style.display = 'block'; placeholderEl.style.display = 'none';
-            
             triggerPersistence();
         }, 
         function(message) { alert('Camera cancelled or failed: ' + message); }, 
@@ -346,18 +358,14 @@ function getConsumerSVG(cType) {
     if(cType === 'NonDomestic') iconClass = 'fa-building';
     else if(cType === 'Agriculture') iconClass = 'fa-seedling';
     else if(cType === 'SIP MIP') iconClass = 'fa-industry';
-    
     return `<div style="background:${O_BASE}; border:2.5px solid #fff; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 6px rgba(0,0,0,0.6);"><i class="fa-solid ${iconClass}" style="color:#fff; font-size:10px;"></i></div>`;
 }
 
 function getLineSpec(type, phase) {
     const t = (type || '').toUpperCase();
     if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 4, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
-    
-    let lineClass = 'ht-line-path';
-    let color = '#3b82f6'; // Single Phase Blue Default
+    let lineClass = 'ht-line-path'; let color = '#3b82f6';
     if (phase === 'Three Phase') lineClass = 'ryb-line-path'; 
-
     return { name: '11 KV LINE', color: color, weight: 5, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: '#ffffff' };
 }
 
@@ -377,13 +385,7 @@ function renderEntireNetwork() {
             }
         });
 
-        const net = getActiveNetwork(); if(!net) { 
-            const topLabel = document.getElementById('activeFeederLabel');
-            if(topLabel) topLabel.innerText = "No Feeder Selected";
-            return; 
-        } 
-        
-        const f = appState.filters;
+        const net = getActiveNetwork(); if(!net) return; const f = appState.filters;
 
         if (f.poles) {
             net.poles.forEach(p => {
@@ -393,7 +395,7 @@ function renderEntireNetwork() {
                 
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
                 const svgHtml = getPoleSVG(p.poleType, p.poleConfig);
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pole-marker-icon ' + (isOrphan ? 'orphan-pulse' : ''), html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [30, 48], iconAnchor: [15, 30] }), zIndexOffset: 200 });
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pole-marker-icon ' + (isOrphan ? 'orphan-pulse' : ''), html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [30, 48], iconAnchor: [15, 24] }), zIndexOffset: 200 });
                 m.on('click', () => { map.flyTo([p.lat, p.lng], 19); window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'} ${p.poleConfig&&p.poleConfig!=='N/A'?'('+p.poleConfig+')':''}</b><br>Condition: <b>${p.condition||'Good'}</b><br>Parent: <b>${p.dtCode || 'Feeder'}</b>`); }); 
                 featureGroups.poles.addLayer(m);
             });
@@ -417,18 +419,9 @@ function renderEntireNetwork() {
             if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
             const spec = getLineSpec(line.type, line.phase); if (!f[spec.filterKey]) return;
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25, className: spec.lineClass }).addTo(featureGroups.lines);
-            
-            if(spec.lineClass === 'ryb-line-path') {
-                L.polyline(line.coords, { color: 'transparent', weight: spec.weight, className: 'ryb-line-path', interactive: false }).addTo(featureGroups.lines);
-            } else {
-                L.polyline(line.coords, { color: spec.strokeColor, weight: spec.weight + 4, opacity: 0.8, interactive: false }).addTo(featureGroups.lines);
-                L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false }).addTo(featureGroups.lines);
-            }
-            
-            hitPoly.on('click', () => {
-                const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2; map.flyTo([midLat, midLng], 19); 
-                window.openObjectSheet('LINE', line.id, spec.name, `Phase: <b>${line.phase || 'N/A'}</b><br>Conductor: <b>${line.conductor || 'Standard'}</b><br>From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Dist: <b>${window.formatDistance(line.distanceMeters||0)}</b>`);
-            });
+            if(spec.lineClass === 'ryb-line-path') { L.polyline(line.coords, { color: 'transparent', weight: spec.weight, className: 'ryb-line-path', interactive: false }).addTo(featureGroups.lines); } 
+            else { L.polyline(line.coords, { color: spec.strokeColor, weight: spec.weight + 4, opacity: 0.8, interactive: false }).addTo(featureGroups.lines); L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false }).addTo(featureGroups.lines); }
+            hitPoly.on('click', () => { const midLat = (c1.lat + c2.lat) / 2; const midLng = (c1.lng + c2.lng) / 2; map.flyTo([midLat, midLng], 19); window.openObjectSheet('LINE', line.id, spec.name, `Phase: <b>${line.phase || 'N/A'}</b><br>Conductor: <b>${line.conductor || 'Standard'}</b><br>From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Dist: <b>${window.formatDistance(line.distanceMeters||0)}</b>`); });
         });
 
         if (f.consumers) {
@@ -447,15 +440,8 @@ function renderEntireNetwork() {
         net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
         if(document.getElementById('kpi11')) document.getElementById('kpi11').innerText = window.formatDistance(t11);
         if(document.getElementById('kpiLT')) document.getElementById('kpiLT').innerText = window.formatDistance(tLT);
-        if(document.getElementById('kpi3Ph')) document.getElementById('kpi3Ph').innerText = dt3ph;
-        if(document.getElementById('kpi1Ph')) document.getElementById('kpi1Ph').innerText = dt1ph;
-        if(document.getElementById('kpiCons')) document.getElementById('kpiCons').innerText = net.consumers.length;
-        
-        // Feeder Top bar Fix
-        const topLabel = document.getElementById('activeFeederLabel');
-        if(topLabel) topLabel.innerText = appState.feeders[appState.currentFeederCode]?.feeder.name || "No Feeder Selected";
-        if(document.getElementById('feederListContainer')) window.renderFeederSidebarList();
-        
+        document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph;
+        document.getElementById('kpiCons').innerText = net.consumers.length;
     } catch(err) { console.error("Rendering error:", err); }
 }
 
@@ -477,30 +463,18 @@ window.openFilterModal = function() {
 }
 window.saveFilters = function() { appState.filters.lines11 = document.getElementById('flt11').checked; appState.filters.linesLT = document.getElementById('fltLT').checked; appState.filters.poles = document.getElementById('fltPoles').checked; appState.filters.dts = document.getElementById('fltDTs').checked; appState.filters.consumers = document.getElementById('fltCons').checked; window.closeModal(); renderEntireNetwork(); showToast("Filters Updated"); }
 
-/* ====== UI MENUS & UTILITIES ====== */
+/* ====== UI MENUS ====== */
 window.toggleSpeedDial = function(force) { const dial = document.getElementById('speed-dial-menu'), fab = document.getElementById('mainFabBtn'); if (!dial || !fab) return; const isOpen = force !== undefined ? force : !dial.classList.contains('active'); dial.classList.toggle('active', isOpen); fab.classList.toggle('open', isOpen); }
 document.addEventListener('click', function(e) { const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) window.toggleSpeedDial(false); } });
 document.addEventListener('pointerdown', function(e) { const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) window.toggleSpeedDial(false); } });
 window.toggleSidebar = function(open) { document.getElementById('sidebar-drawer').classList.toggle('open', open); document.getElementById('sidebarBackdrop').classList.toggle('open', open); if(open) { window.renderGssSidebarList(); window.renderFeederSidebarList(); } }
 
 window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); }
-window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); window.isSetupModalOpen = false; if(appState.user.isLoggedIn) { setTimeout(window.checkOnboardingFlow, 400); } }
+window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); window.isSetupModalOpen = false; document.getElementById('live-distance-indicator').style.display='none'; if(appState.user.isLoggedIn) { setTimeout(window.checkOnboardingFlow, 400); } }
 
-window.autoSaveSettings = function() { 
-    appState.settings.unit = document.getElementById('setUnit').value; 
-    appState.settings.language = document.getElementById('setLanguage').value; 
-    appState.settings.theme = document.getElementById('setTheme').value;
-    appState.settings.liveSync = document.getElementById('setLiveSync').checked;
-    applyTranslations(); applyTheme(); triggerPersistence(); renderEntireNetwork(); showToast("Settings Saved!"); 
-}
-window.openSettingsPage = function() { 
-    window.toggleSidebar(false); document.getElementById('setUnit').value = appState.settings.unit || 'm'; 
-    document.getElementById('setLanguage').value = appState.settings.language || 'en'; document.getElementById('setTheme').value = appState.settings.theme || 'light'; 
-    document.getElementById('setLiveSync').checked = appState.settings.liveSync !== false;
-    document.getElementById('settings-page').classList.add('open'); 
-}
+window.autoSaveSettings = function() { appState.settings.unit = document.getElementById('setUnit').value; appState.settings.language = document.getElementById('setLanguage').value; appState.settings.theme = document.getElementById('setTheme').value; appState.settings.liveSync = document.getElementById('setLiveSync').checked; applyTranslations(); applyTheme(); triggerPersistence(); renderEntireNetwork(); showToast("Settings Saved!"); }
+window.openSettingsPage = function() { window.toggleSidebar(false); document.getElementById('setUnit').value = appState.settings.unit || 'm'; document.getElementById('setLanguage').value = appState.settings.language || 'en'; document.getElementById('setTheme').value = appState.settings.theme || 'light'; document.getElementById('setLiveSync').checked = appState.settings.liveSync !== false; document.getElementById('settings-page').classList.add('open'); }
 window.closeSettingsPage = function() { document.getElementById('settings-page').classList.remove('open'); }
-window.switchFeeder = function(code) { if (appState.feeders[code]) { appState.currentFeederCode = code; renderEntireNetwork(); triggerPersistence(); centerMapOnGSS(); window.toggleSidebar(false); } }
 
 window.calcDistance = function(lat1, lon1, lat2, lon2) { const R = 6371e3, p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180, dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180; const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2; return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); }
 window.formatDistance = function(m) { return (appState.settings.unit === 'km') ? (m / 1000).toFixed(3) + ' KM' : m.toFixed(1) + ' M'; }
@@ -546,7 +520,7 @@ window.openFeederConfigModal = function() {
         <div class="form-row"><label>Feeder Name*</label><input type="text" id="inpFeederName" class="form-input" placeholder="e.g. 11 kV Main Feeder"></div>
         <button class="btn-action-primary" onclick="window.saveNewFeeder()">Save Feeder</button>`);
 };
-window.saveNewFeeder = function() { const gss = document.getElementById('inpFeederGss').value; const code = document.getElementById('inpFeederCode').value.trim(); const name = document.getElementById('inpFeederName').value.trim(); if(!gss || !code || !name) return alert("All fields are required"); if(appState.feeders[code]) return alert("Feeder code already exists"); appState.feeders[code] = { feeder: { name: name, code: code, subdivCode: "SD-01", parentGss: gss }, poles: [], dts: [], lines: [], consumers: [] }; appState.currentFeederCode = code; window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Feeder Added!"); window.checkOnboardingFlow(); };
+window.saveNewFeeder = function() { const gss = document.getElementById('inpFeederGss').value; const code = document.getElementById('inpFeederCode').value.trim(); const name = document.getElementById('inpFeederName').value.trim(); if(!gss || !code || !name) return alert("All fields are required"); if(appState.feeders[code]) return alert("Feeder code already exists"); appState.feeders[code] = { feeder: { name: name, code: code, subdivCode: "SD-01", parentGss: gss }, poles: [], dts: [], lines: [], consumers: [] }; appState.currentFeederCode = code; window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Feeder Added!"); };
 
 window.openEditFeederModal = function(code) {
     window.toggleSidebar(false); openModal(`<div class="sheet-head"><div class="sheet-title">Edit Feeder Name</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -574,10 +548,7 @@ function updateOrphanStatus() {
     net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
 }
 
-window.toggleSearchBox = function() {
-    const box = document.getElementById('searchBoxOverlay');
-    if (box.style.display === 'none') { box.style.display = 'flex'; document.getElementById('appSearchBar').focus(); } else { box.style.display = 'none'; window.clearSearch(); }
-}
+window.toggleSearchBox = function() { const box = document.getElementById('searchBoxOverlay'); if (box.style.display === 'none') { box.style.display = 'flex'; document.getElementById('appSearchBar').focus(); } else { box.style.display = 'none'; window.clearSearch(); } }
 window.handleSearch = function(e) {
     const query = e.target.value.toLowerCase().trim(), suggPanel = document.getElementById('searchSuggestions');
     if(query.length === 0) { suggPanel.classList.remove('active'); return; }
@@ -604,19 +575,19 @@ window.selectSearchResult = function(type, id) {
     }
 }
 
-/* ====== ADD FORMS & DROPDOWN DISTANCE FIX ====== */
+/* ====== ADD FORMS ====== */
 window.openAddForm = function(type) { window.toggleSpeedDial(false); if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'flex'; } else window.showFormModal(type, null, null); }
-window.confirmPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); }
-window.cancelPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; }
+window.confirmPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('live-distance-indicator').style.display='none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); }
+window.cancelPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('live-distance-indicator').style.display='none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; }
 window.togglePccConfig = function(id = 'inpMainPoleType', targetId = 'pccConfigDiv') { const pType = document.getElementById(id).value; const configDiv = document.getElementById(targetId); if(pType === 'PCC') configDiv.style.display = 'block'; else configDiv.style.display = 'none'; };
 window.toggleLineConductor = function(id = 'inpLineType', targetId = 'inpConductor') { 
     const lType = document.getElementById(id).value; const sel = document.getElementById(targetId); 
     if(lType === '11 KV LINE') {
         sel.innerHTML = `<option value="Weasel">Weasel</option><option value="Rabbit">Rabbit</option><option value="Dog">Dog</option><option value="Underground Cable">Underground Cable</option>`; 
-        document.getElementById('linePhaseRow').style.display = 'block'; 
+        if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'block'; 
     } else {
         sel.innerHTML = `<option value="Single Phase">Single Phase</option><option value="Three Phase">Three Phase</option>`; 
-        document.getElementById('linePhaseRow').style.display = 'none'; 
+        if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'none'; 
     }
 };
 
@@ -632,7 +603,6 @@ window.showFormModal = function(type, snapLat, snapLng) {
         else {
             if (net.dts.length === 0) return alert("Add a DT first!");
             let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); 
-            // FIX: Dropdown me node ki exact distance add kardi
             dtSelectHtml = `<div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select">${sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id} (${window.formatDistance(window.calcDistance(snapLat, snapLng, d.lat, d.lng))})</option>`).join('')}</select></div>`;
         }
         openModal(`
@@ -659,18 +629,11 @@ window.showFormModal = function(type, snapLat, snapLng) {
                 dtSelectorBox.style.display = 'none'; nodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({...p, title: 'HT Pole '+p.poleNo, id: 'POLE_' + p.poleNo}));
                 const parentGss = appState.gssNodes[net.feeder.parentGss]; if (parentGss) nodes.push({id: 'GSS_'+parentGss.code, title: 'GSS ('+parentGss.code+')', lat: parentGss.lat, lng: parentGss.lng});
             }
-            // Sort by map center and format distance
-            const mapC = map.getCenter();
-            nodes = window.sortByDistance(nodes, mapC.lat, mapC.lng); let defaultFrom = nodes.length > 0 ? nodes[0].id : '';
-            fromSel.innerHTML = nodes.map(n => `<option value="${n.id}" ${n.id === defaultFrom ? 'selected' : ''}>${n.title} (Dist: ${window.formatDistance(window.calcDistance(mapC.lat, mapC.lng, n.lat, n.lng))})</option>`).join(''); 
-            window.syncLineToSelect(); window.toggleLineConductor('inpLineType', 'inpConductor');
+            nodes = window.sortByDistance(nodes, map.getCenter().lat, map.getCenter().lng); let defaultFrom = nodes.length > 0 ? nodes[0].id : '';
+            fromSel.innerHTML = nodes.map(n => `<option value="${n.id}" ${n.id === defaultFrom ? 'selected' : ''}>${n.title} (${window.formatDistance(window.calcDistance(map.getCenter().lat, map.getCenter().lng, n.lat, n.lng))})</option>`).join(''); window.syncLineToSelect(); window.toggleLineConductor('inpLineType', 'inpConductor');
         };
         window.syncLineToSelect = function() {
             const type = document.getElementById('inpLineType').value, fromVal = document.getElementById('inpFromNode').value, toSel = document.getElementById('inpToNode'); let nodes = [];
-            const fromCoords = getNodeCoords(fromVal); 
-            const centerLat = fromCoords ? fromCoords.lat : map.getCenter().lat;
-            const centerLng = fromCoords ? fromCoords.lng : map.getCenter().lng;
-            
             if (type.includes('LT')) {
                 const selectedDT = document.getElementById('inpTargetDT') ? String(document.getElementById('inpTargetDT').value) : '';
                 nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === selectedDT && ('POLE_'+p.poleNo) !== fromVal).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: 'POLE_' + p.poleNo}));
@@ -679,14 +642,8 @@ window.showFormModal = function(type, snapLat, snapLng) {
                 nodes = net.poles.filter(p => p.lineType !== 'LT' && ('POLE_'+p.poleNo) !== fromVal).map(p => ({...p, title: 'HT Pole '+p.poleNo, id: 'POLE_' + p.poleNo}));
                 const parentGss = appState.gssNodes[net.feeder.parentGss]; if (parentGss && ('GSS_'+parentGss.code) !== fromVal) nodes.push({id: 'GSS_'+parentGss.code, title: 'GSS ('+parentGss.code+')', lat: parentGss.lat, lng: parentGss.lng});
             }
-            // Format dropdown To-node distance relative to From-node
-            nodes = window.sortByDistance(nodes, centerLat, centerLng); 
-            toSel.innerHTML = nodes.map(n => `<option value="${n.id}">${n.title} (Dist: ${window.formatDistance(window.calcDistance(centerLat, centerLng, n.lat, n.lng))})</option>`).join(''); 
+            nodes = window.sortByDistance(nodes, map.getCenter().lat, map.getCenter().lng); toSel.innerHTML = nodes.map(n => `<option value="${n.id}">${n.title} (${window.formatDistance(window.calcDistance(map.getCenter().lat, map.getCenter().lng, n.lat, n.lng))})</option>`).join(''); 
         };
-        const htNodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: 'POLE_'+p.poleNo, lat: p.lat, lng: p.lng}));
-        const feederGss = appState.gssNodes[net.feeder.parentGss]; if(feederGss) htNodes.push({id: 'GSS_'+feederGss.code, lat: feederGss.lat, lng: feederGss.lng});
-        let sortedHT = window.sortByDistance(htNodes, map.getCenter().lat, map.getCenter().lng); let initialDefaultFrom = sortedHT.length > 0 ? sortedHT[0].id : '';
-
         openModal(`<div class="sheet-head"><div class="sheet-title">Add Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div class="form-grid-2">
                 <div class="form-row"><label>Voltage Type*</label><select id="inpLineType" class="form-select" onchange="window.filterLineNodes()"><option value="11 KV LINE" selected>11 KV (HT)</option><option value="LT LINE">LT Line</option></select></div>
@@ -695,7 +652,7 @@ window.showFormModal = function(type, snapLat, snapLng) {
             <div class="form-row"><label>Conductor*</label><select id="inpConductor" class="form-select"></select></div>
             <div id="ltLineDTSelector" style="display:none; background:var(--bg-glass); padding:8px; border-radius:8px; margin-bottom:12px;"><label>Select DT for LT Route*</label><select id="inpTargetDT" class="form-select" onchange="window.filterLineNodes()"></select></div>
             <div class="form-grid-2"><div class="form-row"><label>From Node*</label><select id="inpFromNode" class="form-select" onchange="window.syncLineToSelect()"></select></div><div class="form-row"><label>To Node*</label><select id="inpToNode" class="form-select"></select></div></div><button class="btn-action-primary" onclick="window.saveNewLine()">Save Line</button>`);
-        setTimeout(() => { let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), map.getCenter().lat, map.getCenter().lng); document.getElementById('inpTargetDT').innerHTML = sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id}</option>`).join(''); window.filterLineNodes(); window.toggleLineConductor('inpLineType', 'inpConductor'); }, 30);
+        setTimeout(() => { let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); document.getElementById('inpTargetDT').innerHTML = sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id}</option>`).join(''); window.filterLineNodes(); window.toggleLineConductor('inpLineType', 'inpConductor'); }, 30);
     } else if (type === 'DT') {
         let parentNodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: p.poleNo, title: 'HT Pole '+p.poleNo, lat: p.lat, lng: p.lng})); const feederGss = appState.gssNodes[net.feeder.parentGss]; if(feederGss) parentNodes.push({id: feederGss.code, title: 'GSS '+feederGss.code, lat: feederGss.lat, lng: feederGss.lng});
         parentNodes = window.sortByDistance(parentNodes, snapLat, snapLng); const parentOpts = parentNodes.map(p => `<option value="${p.id}">${p.title} (${window.formatDistance(window.calcDistance(snapLat, snapLng, p.lat, p.lng))})</option>`).join('');
@@ -710,7 +667,6 @@ window.showFormModal = function(type, snapLat, snapLng) {
         setTimeout(() => window.filterConsumerPoles(), 30);
     }
 }
-
 window.updateDTRatingDropdowns = function(phaseId, ratingId) {
     const phase = document.getElementById(phaseId).value, ratingSel = document.getElementById(ratingId);
     if(phase === 'Single Phase') ratingSel.innerHTML = `<option value="5">5 kVA</option><option value="10">10 kVA</option><option value="16" selected>16 kVA</option><option value="25">25 kVA</option>`;
@@ -760,151 +716,50 @@ window.saveNewConsumer = function() {
     net.consumers.push({ id: 'CS_'+Date.now(), parentRef, parentType, kno, name, load, status, cType, lat, lng }); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Consumer added!");
 }
 
-/* ====== FULL OBJECT EDITING FORMS ====== */
-window.openEditModal = function(type, id) {
-    window.closeObjectSheet(); const net = getActiveNetwork();
-    if (type === 'pole') { 
-        const p = net.poles.find(x => x.id === id); if (!p) return; 
-        openModal(`
-            <div class="sheet-head"><div class="sheet-title">Edit Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Pole Number (Locked)</label><input type="text" id="editPoleNo" class="form-input" value="${p.poleNo}" disabled></div>
-            <div class="form-grid-2">
-                <div class="form-row"><label>Pole Type*</label><select id="editMainPoleType" class="form-select" onchange="window.togglePccConfig('editMainPoleType', 'editPccConfigDiv')"><option value="PCC" ${p.poleType==='PCC'?'selected':''}>PCC</option><option value="TOWER" ${p.poleType==='TOWER'?'selected':''}>TOWER</option><option value="RAIL POLE" ${p.poleType==='RAIL POLE'?'selected':''}>RAIL POLE</option></select></div>
-                <div class="form-row"><label>Condition</label><select id="editPoleCondition" class="form-select"><option value="Good" ${p.condition==='Good'?'selected':''}>Good</option><option value="Tilted" ${p.condition==='Tilted'?'selected':''}>Tilted</option><option value="Damaged" ${p.condition==='Damaged'?'selected':''}>Damaged</option></select></div>
-            </div>
-            <div class="form-row" id="editPccConfigDiv" style="display:${p.poleType==='PCC'?'block':'none'};"><label>PCC Configuration</label><select id="editPccConfig" class="form-select"><option value="Single Pole" ${p.poleConfig==='Single Pole'?'selected':''}>Single Pole</option><option value="Double Pole" ${p.poleConfig==='Double Pole'?'selected':''}>Double Pole</option></select></div>
-            <button class="btn-action-primary" onclick="window.saveEditedPole('${p.id}')">Save Changes</button>`); 
-    } 
-    else if (type === 'dt') { 
-        const d = net.dts.find(x => x.id === id); if (!d) return; 
-        openModal(`
-            <div class="sheet-head"><div class="sheet-title">Edit DT</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-grid-2">
-                <div class="form-row"><label>DT Code (Locked)</label><input type="text" class="form-input" value="${d.code}" disabled></div>
-                <div class="form-row"><label>Phase*</label><select id="editDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('editDTPhase', 'editDTRating')"><option value="Three Phase" ${d.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${d.phase==='Single Phase'?'selected':''}>Single Phase</option></select></div>
-            </div>
-            <div class="form-row"><label>Rating (kVA)*</label><select id="editDTRating" class="form-select"><option value="${d.rating}" selected>${d.rating} kVA</option></select></div>
-            <div class="form-row"><label>Location</label><input type="text" id="editDTLocation" class="form-input" value="${d.location || ''}"></div>
-            <button class="btn-action-primary" onclick="window.saveEditedDT('${d.id}')">Save Changes</button>`); 
-            setTimeout(() => window.updateDTRatingDropdowns('editDTPhase', 'editDTRating'), 30);
-    } 
-    else if (type === 'consumer') { 
-        const c = net.consumers.find(x => x.id === id); if (!c) return; 
-        openModal(`
-            <div class="sheet-head"><div class="sheet-title">Edit Consumer</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Consumer Name*</label><input type="text" id="editConsName" class="form-input" value="${c.name}"></div>
-            <div class="form-grid-2">
-                <div class="form-row"><label>K-Number (Locked)</label><input type="number" class="form-input" value="${c.kno}" disabled></div>
-                <div class="form-row"><label>Load</label><input type="text" id="editConsLoad" class="form-input" value="${c.load||''}"></div>
-            </div>
-            <div class="form-grid-2">
-                <div class="form-row"><label>Status</label><select id="editConsStatus" class="form-select"><option value="Regular" ${c.status==='Regular'?'selected':''}>Regular</option><option value="DC" ${c.status==='DC'?'selected':''}>DC</option><option value="PDC" ${c.status==='PDC'?'selected':''}>PDC</option></select></div>
-                <div class="form-row"><label>Type</label><select id="editConsType" class="form-select"><option value="Domestic" ${c.cType==='Domestic'?'selected':''}>Domestic</option><option value="NonDomestic" ${c.cType==='NonDomestic'?'selected':''}>NonDomestic</option><option value="Agriculture" ${c.cType==='Agriculture'?'selected':''}>Agriculture</option><option value="Govt." ${c.cType==='Govt.'?'selected':''}>Govt.</option><option value="SIP MIP" ${c.cType==='SIP MIP'?'selected':''}>SIP MIP</option><option value="Other" ${c.cType==='Other'?'selected':''}>Other</option></select></div>
-            </div>
-            <button class="btn-action-primary" onclick="window.saveEditedConsumer('${c.id}')">Save Changes</button>`); 
-    }
-    else if (type === 'line') { 
-        const l = net.lines.find(x => x.id === id); if (!l) return; 
-        openModal(`
-            <div class="sheet-head"><div class="sheet-title">Edit Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Voltage Type (Locked)</label><input type="text" class="form-input" value="${l.type}" disabled></div>
-            <div class="form-row" id="editLinePhaseRow" style="display:${l.type.includes('11')?'block':'none'}"><label>Phase Type (HT)*</label><select id="editLinePhase" class="form-select"><option value="Three Phase" ${l.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${l.phase==='Single Phase'?'selected':''}>Single Phase</option></select></div>
-            <button class="btn-action-primary" onclick="window.saveEditedLine('${l.id}')">Save Changes</button>`); 
-    }
-}
-
-window.saveEditedPole = function(id) { const net = getActiveNetwork(); const p = net.poles.find(x => x.id === id); if(!p) return; p.poleType = document.getElementById('editMainPoleType').value; p.poleConfig = p.poleType === 'PCC' ? document.getElementById('editPccConfig').value : 'N/A'; p.condition = document.getElementById('editPoleCondition').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Pole Settings Updated"); }
-window.saveEditedDT = function(id) { const net = getActiveNetwork(); const d = net.dts.find(x => x.id === id); if (!d) return; d.phase = document.getElementById('editDTPhase').value; d.rating = parseFloat(document.getElementById('editDTRating').value); d.location = document.getElementById('editDTLocation').value.trim(); saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("DT Updated"); }
-window.saveEditedConsumer = function(id) { const net = getActiveNetwork(); const c = net.consumers.find(x => x.id === id); if (!c) return; c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value.trim(); c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Consumer Updated"); }
-window.saveEditedLine = function(id) { const net = getActiveNetwork(); const l = net.lines.find(x => x.id === id); if (!l) return; if(l.type.includes('11')) l.phase = document.getElementById('editLinePhase').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Line Updated"); }
-
-/* ====== ENTITY DELETION ====== */
-function deleteDTLogic(dtId, net) {
-    const d = net.dts.find(x => x.id === dtId); if(!d) return;
-    const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn);
-    net.lines = net.lines.filter(l => l.fromNode !== ('DT_' + d.code) && l.toNode !== ('DT_' + d.code) && !ltPoleNodeIds.includes(String(l.fromNode)) && !ltPoleNodeIds.includes(String(l.toNode)));
-    net.consumers = net.consumers.filter(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); return !(isDirectToDT || isOnRemovedLTPole); });
-    net.poles = net.poles.filter(p => !ltPoleIds.includes(String(p.poleNo))); net.dts = net.dts.filter(x => x.id !== dtId);
-}
-function deleteLTPoleLogic(p, net) { net.consumers = net.consumers.filter(c => !(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo))); net.lines = net.lines.filter(l => String(l.fromNode) !== ('POLE_'+p.poleNo) && String(l.toNode) !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== p.id); }
-window.deleteEntity = function(type, id) {
-    const net = getActiveNetwork(); if(!confirm(`Delete this ${type.toUpperCase()}?`)) return; saveSnapshot();
-    if (type === 'line') net.lines = net.lines.filter(x => x.id !== id); else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); else if (type === 'dt') deleteDTLogic(id, net);
-    else if (type === 'pole') { const p = net.poles.find(x => x.id === id); if (p) { if (p.lineType === 'LT') deleteLTPoleLogic(p, net); else { const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); dtsOnPole.forEach(dt => deleteDTLogic(dt.id, net)); net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== id); } } } 
-    else if (type === 'gss') { if (appState.gssNodes[id]) delete appState.gssNodes[id]; }
-    window.closeObjectSheet(); renderEntireNetwork(); triggerPersistence(); showToast("Deleted!");
-}
-
-/* ====== NATIVE EXPORT LOGIC ====== */
+/* ====== EXPORT LOGIC ====== */
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
         showToast("Preparing file export..."); const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
+        if (window.showSaveFilePicker) { try { const ext = filename.split('.').pop(); const fileHandle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: 'Export', accept: { [mimeType]: ['.' + ext] } }] }); const writable = await fileHandle.createWritable(); await writable.write(blob); await writable.close(); showToast("File Saved Successfully!"); return; } catch (e) { console.warn("SaveFilePicker cancelled", e); } }
         
-        // FIX: Use Cordova SocialSharing plugin to bring up Native Save/Share Menu (Bypasses Scoped Storage block)
-        if (window.cordova && window.plugins && window.plugins.socialsharing) {
-            const reader = new FileReader();
-            reader.onloadend = function() {
-                const base64data = reader.result;
-                window.plugins.socialsharing.share('Exported Survey File', filename, base64data, null);
-                showToast("Opening Share/Save menu...");
-            }
-            reader.readAsDataURL(blob);
+        // Cordova Native File Saving Check (Android Downloads Folder)
+        if (window.cordova && cordova.file && cordova.file.externalRootDirectory) {
+            window.resolveLocalFileSystemURL(cordova.file.externalRootDirectory + 'Download/', function(dirEntry) {
+                dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) {
+                    fileEntry.createWriter(function(fileWriter) {
+                        fileWriter.onwriteend = function() { showToast("Saved to Downloads folder!"); };
+                        fileWriter.onerror = function(e) { fallbackDownload(blob, filename); };
+                        fileWriter.write(blob);
+                    }, function() { fallbackDownload(blob, filename); });
+                }, function() { fallbackDownload(blob, filename); });
+            }, function() { fallbackDownload(blob, filename); });
             return;
         }
-
-        // Web Fallback
-        if (window.showSaveFilePicker) { try { const ext = filename.split('.').pop(); const fileHandle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: 'Export', accept: { [mimeType]: ['.' + ext] } }] }); const writable = await fileHandle.createWritable(); await writable.write(blob); await writable.close(); showToast("File Saved Successfully!"); return; } catch (e) { console.warn("SaveFilePicker cancelled", e); } }
-        const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.style.display = 'none'; a.href = url; a.download = filename; document.body.appendChild(a); a.click(); setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500); showToast("File Downloaded!");
+        
+        fallbackDownload(blob, filename);
     } catch (err) { alert("Export failed: " + err.message); }
+}
+
+function fallbackDownload(blob, filename) {
+    const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.style.display = 'none'; a.href = url; a.download = filename; document.body.appendChild(a); a.click(); setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500); showToast("File Downloaded!");
 }
 
 window.exportFullJSONBackup = async function() { window.toggleSidebar(false); const backupData = JSON.stringify(appState); await smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json"); }
 window.handleImportChoice = function(e) { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async function(event) { try { const content = event.target.result; const importedData = JSON.parse(content); if (importedData.feeders && importedData.gssNodes) { appState = importedData; triggerPersistence(); renderEntireNetwork(); showToast("Data Imported!"); } else alert("Invalid Backup Format!"); } catch (err) { alert("Error parsing file."); } }; reader.readAsText(file); e.target.value = ''; window.toggleSidebar(false); }
-
 window.getCSVString = function() {
     const net = getActiveNetwork(); let csv = "\uFEFFWKT,Name,Type,ParentNode,Details\n"; 
     Object.values(appState.gssNodes).forEach(g => csv += `"POINT (${g.lng} ${g.lat})","${g.name}","GSS","","Code: ${g.code}"\n`);
     net.poles.forEach(p => csv += `"POINT (${p.lng} ${p.lat})","Pole ${p.poleNo}","POLE","${p.dtCode||p.poleNo}","Type: ${p.lineType} | Config: ${p.poleType} (${p.poleConfig})" \n`);
     net.dts.forEach(d => csv += `"POINT (${d.lng} ${d.lat})","DT ${d.code}","DT","${d.parentPole}","Rating: ${d.rating}kVA"\n`);
     net.consumers.forEach(c => csv += `"POINT (${c.lng} ${c.lat})","${c.name}","CONSUMER","${c.parentRef}","KNo: ${c.kno} | Load: ${c.load}"\n`);
-    net.lines.forEach(l => { if (l.coords && l.coords.length === 2) csv += `"LINESTRING (${l.coords[0][1]} ${l.coords[0][0]}, ${l.coords[1][1]} ${l.coords[1][0]})","${l.type}","LINE","${l.fromNode} ➔ ${l.toNode}","Dist: ${(l.distanceMeters||0).toFixed(1)}m | Cond: ${l.conductor}"\n`; });
-    return csv;
+    net.lines.forEach(l => { if (l.coords && l.coords.length === 2) csv += `"LINESTRING (${l.coords[0][1]} ${l.coords[0][0]}, ${l.coords[1][1]} ${l.coords[1][0]})","${l.type}","LINE","${l.fromNode} ➔ ${l.toNode}","Dist: ${(l.distanceMeters||0).toFixed(1)}m | Cond: ${l.conductor}"\n`; }); return csv;
 }
 window.exportDataToCSV = async function() { window.toggleSidebar(false); await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}_GE.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
 window.exportToAutoCAD_DXF = async function() { window.toggleSidebar(false); let dxf = "0\nSECTION\n2\nENTITIES\n"; getActiveNetwork().lines.forEach(l => { if (l.coords && l.coords[0] && l.coords[1]) dxf += `0\nLINE\n8\n${l.type.replace(/\s+/g,'_')}\n10\n${l.coords[0][1]}\n20\n${l.coords[0][0]}\n30\n0\n11\n${l.coords[1][1]}\n21\n${l.coords[1][0]}\n31\n0\n`; }); dxf += "0\nENDSEC\n0\nEOF\n"; await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.dxf`, dxf, "application/dxf"); }
 window.exportToGoogleEarth_KML = async function() { window.toggleSidebar(false); const esc = u => u.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c])); const feederName = esc(getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; getActiveNetwork().lines.forEach(l => { if (l.coords) kml += `<Placemark><LineString><coordinates>${l.coords[0][1]},${l.coords[0][0]},0 ${l.coords[1][1]},${l.coords[1][0]},0</coordinates></LineString></Placemark>\n`; }); getActiveNetwork().dts.forEach(d => { if (d.lat) kml += `<Placemark><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>\n`; }); kml += "</Document>\n</kml>"; await smartExportFile(`${getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); }
+
 window.generateCadSLDPdf = async function() { 
-    window.toggleSidebar(false); const net = getActiveNetwork();
-    if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
-    showToast("Generating A0 SLD PDF..."); const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
-    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
-    if(appState.gssNodes[net.feeder.parentGss]) allPoints.push(appState.gssNodes[net.feeder.parentGss]);
-    net.poles.forEach(p => { if(p.lineType !== 'LT') allPoints.push(p); }); net.dts.forEach(d => allPoints.push(d));
-    if(allPoints.length === 0) return alert("No HT nodes found to plot!");
-    allPoints.forEach(p => { if(p.lat < minLat) minLat = p.lat; if(p.lat > maxLat) maxLat = p.lat; if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng; });
-    const margin = 50; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2); const latDiff = maxLat - minLat || 0.01; const lngDiff = maxLng - minLng || 0.01; const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; const scale = Math.min(scaleX, scaleY); const offsetX = margin + (pdfW - (lngDiff * scale)) / 2; const offsetY = margin + (pdfH - (latDiff * scale)) / 2;
-    function getPt(lat, lng) { return { x: offsetX + (lng - minLng) * scale, y: 841 - (offsetY + (lat - minLat) * scale) }; }
-    doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
-    net.lines.forEach(l => {
-        if(!l.type.includes('11 KV')) return;
-        const c1 = getNodeCoords(l.fromNode), c2 = getNodeCoords(l.toNode);
-        if(c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) {
-            const pt1 = getPt(c1.lat, c1.lng), pt2 = getPt(c2.lat, c2.lng); doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
-            const dist = (l.distanceMeters || window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng)).toFixed(0);
-            const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2; let angle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x) * (180 / Math.PI); if (angle > 90 || angle < -90) angle += 180;
-            doc.setTextColor(0, 0, 0); doc.setFontSize(8); doc.text(`${dist} M`, midX, midY - 2, { angle: angle, align: 'center' });
-        }
-    });
-    allPoints.forEach(p => {
-        if(isNaN(p.lat)) return;
-        const pt = getPt(p.lat, p.lng);
-        if(p.code && p.name && p.name.includes("Substation")) { doc.setFillColor(185, 28, 28); doc.rect(pt.x - 6, pt.y - 6, 12, 12, 'FD'); doc.setTextColor(255, 255, 255); doc.setFontSize(6); doc.text("GSS", pt.x, pt.y + 2, {align:'center'}); } 
-        else if(p.rating) { doc.setFillColor(245, 158, 11); doc.rect(pt.x - 5, pt.y - 5, 10, 10, 'FD'); doc.setTextColor(0, 0, 0); doc.setFontSize(7); const numOnly = String(p.rating).replace(/[^0-9]/g, ''); doc.text(numOnly, pt.x, pt.y + 2.5, {align:'center'}); } 
-        else if(p.lineType !== 'LT') { doc.setFillColor(253, 224, 71); doc.circle(pt.x, pt.y, 3, 'FD'); }
-    });
-    let t11 = 0, dt1ph = 0, dt3ph = 0; net.lines.forEach(l => { if(!l.type.includes('LT')) t11 += (l.distanceMeters||0); }); net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
-    doc.setFillColor(255, 255, 255); doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); doc.rect(1189 - 160, 841 - 70, 150, 60, 'FD'); doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.text("DISCOM SLD REPORT", 1189 - 155, 841 - 55); doc.setFontSize(12); doc.text(`Feeder: ${net.feeder.name} (${net.feeder.code})`, 1189 - 155, 841 - 45); doc.text(`Total HT Line: ${(t11/1000).toFixed(3)} KM`, 1189 - 155, 841 - 35); doc.text(`1-Phase DTs: ${dt1ph}`, 1189 - 155, 841 - 25); doc.text(`3-Phase DTs: ${dt3ph}`, 1189 - 155, 841 - 15);
-    await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, doc.output('blob'), "application/pdf");
+    window.toggleSidebar(false); const net = getActiveNetwork(); if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator error."); showToast("Generating A0 SLD PDF..."); const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' }); let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = []; if(appState.gssNodes[net.feeder.parentGss]) allPoints.push(appState.gssNodes[net.feeder.parentGss]); net.poles.forEach(p => { if(p.lineType !== 'LT') allPoints.push(p); }); net.dts.forEach(d => allPoints.push(d)); if(allPoints.length === 0) return alert("No HT nodes found to plot!"); allPoints.forEach(p => { if(p.lat < minLat) minLat = p.lat; if(p.lat > maxLat) maxLat = p.lat; if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng; }); const margin = 50; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2); const latDiff = maxLat - minLat || 0.01; const lngDiff = maxLng - minLng || 0.01; const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; const scale = Math.min(scaleX, scaleY); const offsetX = margin + (pdfW - (lngDiff * scale)) / 2; const offsetY = margin + (pdfH - (latDiff * scale)) / 2; function getPt(lat, lng) { return { x: offsetX + (lng - minLng) * scale, y: 841 - (offsetY + (lat - minLat) * scale) }; } doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5); net.lines.forEach(l => { if(!l.type.includes('11 KV')) return; const c1 = getNodeCoords(l.fromNode), c2 = getNodeCoords(l.toNode); if(c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { const pt1 = getPt(c1.lat, c1.lng), pt2 = getPt(c2.lat, c2.lng); doc.line(pt1.x, pt1.y, pt2.x, pt2.y); const dist = (l.distanceMeters || window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng)).toFixed(0); const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2; let angle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x) * (180 / Math.PI); if (angle > 90 || angle < -90) angle += 180; doc.setTextColor(0, 0, 0); doc.setFontSize(8); doc.text(`${dist} M`, midX, midY - 2, { angle: angle, align: 'center' }); } }); allPoints.forEach(p => { if(isNaN(p.lat)) return; const pt = getPt(p.lat, p.lng); if(p.code && p.name && p.name.includes("Substation")) { doc.setFillColor(185, 28, 28); doc.rect(pt.x - 6, pt.y - 6, 12, 12, 'FD'); doc.setTextColor(255, 255, 255); doc.setFontSize(6); doc.text("GSS", pt.x, pt.y + 2, {align:'center'}); } else if(p.rating) { doc.setFillColor(245, 158, 11); doc.rect(pt.x - 5, pt.y - 5, 10, 10, 'FD'); doc.setTextColor(0, 0, 0); doc.setFontSize(7); const numOnly = String(p.rating).replace(/[^0-9]/g, ''); doc.text(numOnly, pt.x, pt.y + 2.5, {align:'center'}); } else if(p.lineType !== 'LT') { doc.setFillColor(253, 224, 71); doc.circle(pt.x, pt.y, 3, 'FD'); } }); let t11 = 0, dt1ph = 0, dt3ph = 0; net.lines.forEach(l => { if(!l.type.includes('LT')) t11 += (l.distanceMeters||0); }); net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; }); doc.setFillColor(255, 255, 255); doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); doc.rect(1189 - 160, 841 - 70, 150, 60, 'FD'); doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.text("DISCOM SLD REPORT", 1189 - 155, 841 - 55); doc.setFontSize(12); doc.text(`Feeder: ${net.feeder.name} (${net.feeder.code})`, 1189 - 155, 841 - 45); doc.text(`Total HT Line: ${(t11/1000).toFixed(3)} KM`, 1189 - 155, 841 - 35); doc.text(`1-Phase DTs: ${dt1ph}`, 1189 - 155, 841 - 25); doc.text(`3-Phase DTs: ${dt3ph}`, 1189 - 155, 841 - 15); await smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, doc.output('blob'), "application/pdf");
 }
 
 /* ====== PERMISSIONS & STARTUP ====== */
