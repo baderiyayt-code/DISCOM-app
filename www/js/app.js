@@ -912,26 +912,35 @@ async function initializeAppPostPermissions() {
             }
         });
         
-        // Hide erection loader after 2 seconds
-        setTimeout(() => {
-            const loader = document.getElementById('erection-loader');
-            if(loader) loader.style.display = 'none';
-            if(appState.user.isLoggedIn) map.invalidateSize(); // Ensure map tiles load perfectly
-        }, 2000);
+        if(appState.user.isLoggedIn) map.invalidateSize(); // Ensure map tiles load perfectly
         
     } catch (e) { console.error("Init Error:", e); }
 }
 
-document.addEventListener('deviceready', function() {
-    if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
-        var permissions = cordova.plugins.permissions;
-        permissions.hasPermission(permissions.ACCESS_FINE_LOCATION, function(status) {
-            if (status.hasPermission) initializeAppPostPermissions();
-            else document.getElementById('permission-overlay').style.display = 'flex';
-        });
-    } else {
-        initializeAppPostPermissions();
-    }
-}, false); 
+// FIX: Run animation for 2 seconds, THEN hide it and show permissions overlay
+function startAppStartupSequence() {
+    setTimeout(() => {
+        // 1. Loading screen ko hamesha hide karein 2 second baad
+        const loader = document.getElementById('erection-loader');
+        if(loader) loader.style.display = 'none';
+        
+        // 2. Uske baad permissions check karein
+        if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
+            var permissions = cordova.plugins.permissions;
+            permissions.hasPermission(permissions.ACCESS_FINE_LOCATION, function(status) {
+                if (status.hasPermission) {
+                    initializeAppPostPermissions();
+                } else {
+                    document.getElementById('permission-overlay').style.display = 'flex';
+                }
+            }, function() {
+                document.getElementById('permission-overlay').style.display = 'flex';
+            });
+        } else {
+            initializeAppPostPermissions();
+        }
+    }, 2000);
+}
 
-if (!window.cordova) { window.addEventListener('DOMContentLoaded', initializeAppPostPermissions); }
+document.addEventListener('deviceready', startAppStartupSequence, false); 
+if (!window.cordova) { window.addEventListener('DOMContentLoaded', startAppStartupSequence); }
