@@ -17,7 +17,7 @@ body.dark-mode {
 }
 body.dark-mode #map { filter: brightness(0.85) invert(1) contrast(1.2) hue-rotate(200deg); }
 body.dark-mode .settings-card, body.dark-mode .dial-card { background: #1e293b; }
-body.dark-mode .pole-marker-icon span { background: #e2e8f0; color: #0f172a; }
+body.dark-mode .form-input, body.dark-mode .form-select { background: #0f172a; color: #f8fafc; border-color: rgba(255,255,255,0.2); }
 
 * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
 body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-base); color: var(--text-main); transition: background 0.3s, color 0.3s; }
@@ -96,18 +96,15 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 
 .floating-action-bar { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 12px; right: 12px; z-index: 2500; background: var(--bg-sheet); border-radius: var(--radius-lg); padding: 16px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: none; flex-direction: column; gap: 12px; }
 
-/* MAP MARKER ICONS - High Visibility Outlines Added */
+/* MAP MARKER ICONS - General */
 .gss-square-icon, .dt-square-icon, .pole-marker-icon, .consumer-marker-icon { transition: opacity 0.25s ease; }
 .gss-square-icon { background: #b91c1c; color: white; border: 3px solid white; border-radius: 8px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);}
-.dt-square-icon { background-color: #f59e0b !important; color: #1e293b !important; border: 3px solid white; border-radius: 6px; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5); }
-.consumer-marker-icon { background: #3b82f6; color: white; border: 2.5px solid white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 9px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); }
-
-/* SVG Pole Icon Container */
-.pole-marker-icon { display: flex; align-items: center; justify-content: center; flex-direction: column; width: 44px; height: 50px; filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.6)); }
-.pole-marker-icon span { background: #ffffff; color: #0f172a; font-size: 8px; padding: 2px 5px; border-radius: 4px; margin-top: -2px; font-weight: 900; border: 1px solid #cbd5e1;}
+.pole-marker-icon, .dt-square-icon, .consumer-marker-icon { display: flex; align-items: center; justify-content: center; flex-direction: column; background: transparent; border: none; }
+.pole-marker-icon span { background: #ffffff; color: #0f172a; font-size: 9px; padding: 2px 5px; border-radius: 4px; margin-top: -4px; font-weight: 900; border: 1px solid #cbd5e1; box-shadow: 0 2px 4px rgba(0,0,0,0.3);}
+body.dark-mode .pole-marker-icon span { background: #1e293b; color: #f8fafc; border-color:#475569; }
 
 .orphan-pulse { animation: redGlow 1s infinite !important; }
-.orphan-pulse svg path, .orphan-pulse svg rect, .orphan-pulse svg polygon { fill: #ef4444 !important; stroke: #ef4444 !important;}
+.orphan-pulse svg path, .orphan-pulse svg rect, .orphan-pulse svg polygon { fill: #ef4444 !important; stroke: #b91c1c !important;}
 @keyframes redGlow { 0% { filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.8)); } 100% { filter: drop-shadow(0 0 10px rgba(239, 68, 68, 1)); } }
 
 .live-human-icon { font-size: 32px; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #ffffff; border-radius: 50%; border: 3px solid #ef4444; box-shadow: 0px 4px 12px rgba(239, 68, 68, 0.8); z-index: 5000 !important; animation: liveBlink 1s infinite alternate; }
@@ -139,7 +136,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .sheet-title { font-size: 1.1rem; font-weight: 800; display: flex; align-items: center; gap: 8px;}
 .sheet-close-btn { background: var(--bg-glass); border: 1px solid var(--border); width: 44px; height: 44px; border-radius: 50%; font-size: 1.2rem; color: var(--text-sub); cursor: pointer; }
 
-/* FIX: Refined Form UI */
+/* REFINED FORM UI */
 .form-row { margin-bottom: 15px; }
 .form-row label { display: block; font-size: 0.75rem; font-weight: 800; color: var(--text-sub); margin-bottom: 6px; text-transform: uppercase; }
 .form-input, .form-select { 
@@ -148,6 +145,7 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
     outline: none; transition: all 0.2s ease; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
 }
 .form-input:focus, .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); }
+.form-input:disabled { background: var(--bg-glass); cursor: not-allowed; opacity: 0.7; }
 
 .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .btn-action-primary { width: 100%; padding: 16px; background: var(--accent); color: white; border: none; border-radius: 12px; font-weight: 800; font-size: 1rem; cursor: pointer; margin-top: 10px; box-shadow: 0 4px 12px var(--accent-glow);}
