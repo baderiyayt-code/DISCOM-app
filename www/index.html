@@ -69,18 +69,20 @@
 <div id="app-container">
     <div id="app-toast"><i class="fa-solid fa-circle-check" style="color:#4ade80;"></i> <span id="toast-msg">Success</span></div>
 
+    <!-- REFINED TOP BAR WITH LIVE SEARCH -->
     <div id="top-bar">
         <div class="header-glass" style="flex-direction: column; align-items: stretch; gap: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <div class="action-btn-sm" onclick="window.toggleSidebar(true)"><i class="fa-solid fa-bars"></i></div>
-                    <div id="activeFeederLabel" style="font-weight: 800; font-size: 1.05rem; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No Feeder Selected</div>
+                    <div id="activeFeederLabel" style="font-weight: 800; font-size: 1.05rem; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No Feeder</div>
                 </div>
                 <div class="header-actions">
                     <div id="sync-indicator" onclick="window.syncToSupabase()" style="cursor:pointer;"><i class="fa-solid fa-cloud"></i></div>
                     <button class="action-btn-sm bg" onclick="window.runOrphanNodeChecker()"><i class="fa-solid fa-network-wired" style="color:#ea580c;"></i></button>
                 </div>
             </div>
+            <!-- ALWAYS VISIBLE LIVE SEARCH -->
             <div class="top-search-container" style="position: relative;">
                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
                 <input type="text" id="appSearchBar" class="search-input-full" placeholder="Search Consumer, DT, Pole..." oninput="window.handleSearch(event)" autocomplete="off">
@@ -101,7 +103,7 @@
     <div id="map" class="map-container"></div>
     <div id="reticle-coordinates">0.000000, 0.000000</div>
     
-    <!-- FIX 5: Live Floating Nearest Distance Indicator -->
+    <!-- Floating Nearest Distance Indicator -->
     <div id="center-placement-pin">
         📍
         <div id="live-distance-indicator">Nearest: --</div>
@@ -126,8 +128,9 @@
         </div>
     </div>
 
-    <div id="bottom-single-action">
-        <div class="center-plus-fab" id="mainFabBtn" onclick="window.toggleSpeedDial()"><i class="fa-solid fa-plus"></i></div>
+    <!-- FIXED: Added explicit styling to prevent blocking of FAB clicks -->
+    <div id="bottom-single-action" style="pointer-events: auto;">
+        <div class="center-plus-fab" id="mainFabBtn" onclick="window.toggleSpeedDial(event)"><i class="fa-solid fa-plus"></i></div>
     </div>
 
     <div id="placement-confirm-bar" class="floating-action-bar">
@@ -151,6 +154,7 @@
     <div class="sheet-drag-handle"></div>
     
     <div style="display:flex; gap:15px;">
+        <!-- PHOTO PREVIEW AREA -->
         <div id="objPhotoPreviewContainer" style="width:100px; height:100px; background:var(--bg-glass); border-radius:12px; border:2px dashed var(--border); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; cursor:pointer;" onclick="document.getElementById('objPhotoInput').click()">
             <i class="fa-solid fa-camera" id="objPhotoPlaceholder" style="font-size:2rem; color:var(--text-sub);"></i>
             <img id="objPhotoImg" src="" style="width:100%; height:100%; object-fit:cover; display:none;">
