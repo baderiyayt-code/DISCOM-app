@@ -79,8 +79,8 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .round-tool-btn { width: 44px; height: 44px; background: var(--bg-sheet); color: var(--text-main); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; box-shadow: var(--shadow-sm); border: 1px solid var(--border); cursor: pointer; }
 .undo-btn { background: #ea580c; color: white; border-color: #ea580c; }
 
-#bottom-single-action { position: absolute; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 1002; }
-.center-plus-fab { width: 60px; height: 60px; border-radius: 50%; background: var(--accent); color: white; border: 3px solid var(--bg-sheet); box-shadow: 0 8px 25px var(--accent-glow); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; cursor: pointer; transition: transform 0.2s; }
+#bottom-single-action { position: absolute; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 1002; pointer-events: auto; }
+.center-plus-fab { width: 60px; height: 60px; border-radius: 50%; background: var(--accent); color: white; border: 3px solid var(--bg-sheet); box-shadow: 0 8px 25px var(--accent-glow); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; cursor: pointer; transition: transform 0.2s; pointer-events: auto; }
 .center-plus-fab.open { transform: rotate(45deg); background: #ef4444; }
 #speed-dial-menu { position: absolute; bottom: calc(95px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%) scale(0.9); width: calc(100% - 24px); max-width: 450px; background: var(--bg-glass); backdrop-filter: blur(20px); border-radius: var(--radius-lg); padding: 14px; box-shadow: var(--shadow-md); opacity: 0; pointer-events: none; transition: all 0.2s; z-index: 1001; }
 #speed-dial-menu.active { opacity: 1; pointer-events: auto; transform: translateX(-50%) scale(1); }
@@ -94,11 +94,9 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .gss-square-icon { background: #b91c1c; color: white; border: 3px solid white; border-radius: 8px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);}
 .pole-marker-icon, .dt-square-icon, .consumer-marker-icon { display: flex; align-items: center; justify-content: center; flex-direction: column; background: transparent; border: none; }
 
-/* Pole Number floating above the pole */
 .pole-marker-icon span { position: absolute; top: -18px; background: #ffffff; color: #0f172a; font-size: 11px; padding: 2px 6px; border-radius: 6px; font-weight: 900; border: 2px solid #0f172a; box-shadow: 0 3px 6px rgba(0,0,0,0.5); z-index: 10;}
 body.dark-mode .pole-marker-icon span { background: #1e293b; color: #f8fafc; border-color:#94a3b8; }
 
-/* Orphan Red Blinking Animation */
 .orphan-pulse { animation: redGlow 0.8s infinite alternate !important; }
 .orphan-pulse svg path, .orphan-pulse svg rect, .orphan-pulse svg polygon, .orphan-pulse svg circle { fill: #ef4444 !important; stroke: #b91c1c !important;}
 @keyframes redGlow { 0% { filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.8)); } 100% { filter: drop-shadow(0 0 12px rgba(239, 68, 68, 1)); } }
@@ -106,7 +104,6 @@ body.dark-mode .pole-marker-icon span { background: #1e293b; color: #f8fafc; bor
 .live-human-icon { font-size: 32px; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #ffffff; border-radius: 50%; border: 3px solid #ef4444; box-shadow: 0px 4px 12px rgba(239, 68, 68, 0.8); z-index: 5000 !important; animation: liveBlink 1s infinite alternate; }
 @keyframes liveBlink { 0% { transform: scale(1); box-shadow: 0 0 10px rgba(239,68,68,0.5); } 100% { transform: scale(1.15); box-shadow: 0 0 25px rgba(239,68,68,1); border-color: #b91c1c; } }
 
-/* RYB LINE TRICK FIX */
 .ryb-line-path { filter: drop-shadow(4px 4px 0px #ef4444) drop-shadow(-4px -4px 0px #3b82f6); }
 
 .hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { opacity: 0 !important; pointer-events: none !important; display: none !important; }
