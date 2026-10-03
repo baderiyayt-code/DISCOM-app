@@ -909,6 +909,135 @@ window.closeModal = function() {
     if (distInd) distInd.style.display = 'none'; 
     if(appState.user && appState.user.isLoggedIn) { setTimeout(window.checkOnboardingFlow, 400); } 
 };
+/* ====== ADD FORMS (RESTORED MISSING LOGIC) ====== */
+const getCameraFormHtml = () => `
+    <div style="margin-top:15px; margin-bottom:5px; padding:10px; background:var(--bg-glass); border-radius:12px; border:1px dashed var(--border); text-align:center;">
+        <img id="formTempPhoto" src="" style="width:100%; height:120px; object-fit:cover; border-radius:8px; display:none; margin-bottom:8px;">
+        <button type="button" class="btn-action-primary" style="padding:10px; width:100%; background:#0f172a; margin:0;" onclick="window.captureTempPhoto()">
+            <i class="fa-solid fa-camera"></i> Capture Photo
+        </button>
+    </div>
+`;
+
+window.openAddForm = function(type) { window.toggleSpeedDial(false); if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; const confirmBar = document.getElementById('placement-confirm-bar'); if(confirmBar) confirmBar.style.display = 'flex'; } else window.showFormModal(type, null, null); }
+
+window.confirmPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; const distInd = document.getElementById('live-distance-indicator'); if(distInd) distInd.style.display='none'; const confirmBar = document.getElementById('placement-confirm-bar'); if(confirmBar) confirmBar.style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); }
+
+window.cancelPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; const distInd = document.getElementById('live-distance-indicator'); if(distInd) distInd.style.display='none'; const confirmBar = document.getElementById('placement-confirm-bar'); if(confirmBar) confirmBar.style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; }
+
+window.togglePccConfig = function(id = 'inpMainPoleType', targetId = 'pccConfigDiv') { const pType = document.getElementById(id).value; const configDiv = document.getElementById(targetId); if(pType === 'PCC') configDiv.style.display = 'block'; else configDiv.style.display = 'none'; };
+
+window.toggleLineConductor = function(id = 'inpLineType', targetId = 'inpConductor') { 
+    const lType = document.getElementById(id).value; const sel = document.getElementById(targetId); 
+    if(lType === '11 KV LINE') {
+        sel.innerHTML = `<option value="Weasel">Weasel</option><option value="Rabbit">Rabbit</option><option value="Dog">Dog</option><option value="Underground Cable">Underground Cable</option>`; 
+        if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'block'; 
+    } else {
+        sel.innerHTML = `<option value="Single Phase">Single Phase</option><option value="Three Phase">Three Phase</option>`; 
+        if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'none'; 
+    }
+};
+
+window.showFormModal = function(type, snapLat, snapLng) {
+    const net = getActiveNetwork(); if(!net) return; 
+    let center = { lat: 26.91, lng: 75.78 }; if(map) center = map.getCenter();
+    snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
+    window.tempPhotoUrl = null;
+
+    if (type === 'POLE' || type === 'LTPOLE') {
+        const isHT = type === 'POLE';
+        let dtSelectHtml = ''; let nextNo = '';
+        if(isHT) { let maxHtNo = 0; net.poles.filter(p => p.lineType !== 'LT').forEach(p => { const num = parseInt(p.poleNo); if(!isNaN(num) && num > maxHtNo) maxHtNo = num; }); nextNo = maxHtNo + 1; } 
+        else {
+            if (net.dts.length === 0) return alert("Add a DT first!");
+            let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); 
+            dtSelectHtml = `<div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select">${sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id.replace('DT_','')} (${window.getDistStr(d.lat, d.lng)})</option>`).join('')}</select></div>`;
+        }
+        openModal(`
+            <div class="sheet-head"><div class="sheet-title">Add ${isHT?'HT':'LT'} Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+            ${dtSelectHtml}
+            ${isHT ? `<div class="form-row"><label>Pole Number*</label><input type="number" id="inpPoleNo" class="form-input" value="${nextNo}"></div>` : ''}
+            <div class="form-grid-2">
+                <div class="form-row"><label>Pole Type*</label><select id="inpMainPoleType" class="form-select" onchange="window.togglePccConfig('inpMainPoleType', 'pccConfigDiv')"><option value="PCC" selected>PCC</option><option value="TOWER">TOWER</option><option value="RAIL POLE">RAIL POLE</option></select></div>
+                <div class="form-row"><label>Condition</label><select id="inpPoleCondition" class="form-select"><option value="Good" selected>Good</option><option value="Tilted">Tilted</option><option value="Damaged">Damaged</option></select></div>
+            </div>
+            <div class="form-row" id="pccConfigDiv" style="display:block;"><label>PCC Configuration</label><select id="inpPccConfig" class="form-select"><option value="Single Pole" selected>Single Pole</option><option value="Double Pole">Double Pole</option></select></div>
+            <input type="hidden" id="inpPoleCategory" value="${isHT?'HT':'LT'}"><input type="hidden" id="inpLat" value="${snapLat}"><input type="hidden" id="inpLng" value="${snapLng}">
+            ${getCameraFormHtml()}
+            <button class="btn-action-primary" onclick="${isHT?'window.saveNewPole()':'window.saveNewLTPole()'}">Save Pole</button>`);
+    } else if (type === 'LINE') {
+        if (net.poles.length === 0) return alert("Add at least one pole first!");
+        window.filterLineNodes = function() {
+            const type = document.getElementById('inpLineType').value, fromSel = document.getElementById('inpFromNode'), dtSelectorBox = document.getElementById('ltLineDTSelector');
+            let nodes = [];
+            if (type.includes('LT')) {
+                dtSelectorBox.style.display = 'block'; const targetDTElem = document.getElementById('inpTargetDT'), selectedDT = targetDTElem ? targetDTElem.value : ''; 
+                if(!selectedDT) { fromSel.innerHTML=''; document.getElementById('inpToNode').innerHTML=''; return; }
+                const cleanDT = selectedDT.replace('DT_', '');
+                nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(cleanDT)).map(p => ({id: 'POLE_' + p.poleNo, title: 'LT Pole: '+p.poleNo, lat: p.lat, lng: p.lng}));
+                const dtObj = net.dts.find(d => String(d.code) === String(cleanDT)); if(dtObj) nodes.push({id: 'DT_'+cleanDT, title: 'DT: '+cleanDT, lat: dtObj.lat, lng: dtObj.lng});
+            } else {
+                dtSelectorBox.style.display = 'none'; nodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: 'POLE_' + p.poleNo, title: 'HT Pole '+p.poleNo, lat: p.lat, lng: p.lng}));
+                const parentGss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; 
+                if (parentGss) nodes.push({id: 'GSS_'+parentGss.code, title: 'GSS ('+parentGss.code+')', lat: parentGss.lat, lng: parentGss.lng});
+            }
+            nodes = window.sortByDistance(nodes, map.getCenter().lat, map.getCenter().lng); let defaultFrom = nodes.length > 0 ? nodes[0].id : '';
+            fromSel.innerHTML = nodes.map(n => `<option value="${n.id}" ${n.id === defaultFrom ? 'selected' : ''}>${n.title} (${window.getDistStr(n.lat, n.lng)})</option>`).join(''); window.syncLineToSelect(); window.toggleLineConductor('inpLineType', 'inpConductor');
+        };
+        window.syncLineToSelect = function() {
+            const type = document.getElementById('inpLineType').value, fromVal = document.getElementById('inpFromNode').value, toSel = document.getElementById('inpToNode'); let nodes = [];
+            if (type.includes('LT')) {
+                const selectedDT = document.getElementById('inpTargetDT') ? String(document.getElementById('inpTargetDT').value) : '';
+                const cleanDT = selectedDT.replace('DT_', '');
+                nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === cleanDT).map(p => ({id: 'POLE_' + p.poleNo, title: 'LT Pole: '+p.poleNo, lat: p.lat, lng: p.lng}));
+                if(cleanDT) { const dtObj = net.dts.find(d => String(d.code) === cleanDT); if(dtObj) nodes.push({id: 'DT_'+cleanDT, title: 'DT: '+cleanDT, lat: dtObj.lat, lng: dtObj.lng}); }
+            } else {
+                nodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: 'POLE_' + p.poleNo, title: 'HT Pole '+p.poleNo, lat: p.lat, lng: p.lng}));
+                const parentGss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; 
+                if (parentGss && ('GSS_'+parentGss.code) !== fromVal) nodes.push({id: 'GSS_'+parentGss.code, title: 'GSS ('+parentGss.code+')', lat: parentGss.lat, lng: parentGss.lng});
+            }
+            nodes = nodes.filter(n => n.id !== fromVal);
+            nodes = window.sortByDistance(nodes, map.getCenter().lat, map.getCenter().lng); toSel.innerHTML = nodes.map(n => `<option value="${n.id}">${n.title} (${window.getDistStr(n.lat, n.lng)})</option>`).join(''); 
+        };
+        const htNodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: 'POLE_'+p.poleNo, lat: p.lat, lng: p.lng}));
+        const feederGss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; 
+        if(feederGss) htNodes.push({id: 'GSS_'+feederGss.code, lat: feederGss.lat, lng: feederGss.lng});
+        let sortedHT = window.sortByDistance(htNodes, snapLat, snapLng); let initialDefaultFrom = sortedHT.length > 0 ? sortedHT[0].id : '';
+
+        openModal(`<div class="sheet-head"><div class="sheet-title">Add Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="form-grid-2">
+                <div class="form-row"><label>Voltage Type*</label><select id="inpLineType" class="form-select" onchange="window.filterLineNodes(); window.toggleLineConductor('inpLineType', 'inpConductor');"><option value="11 KV LINE" selected>11 KV (HT)</option><option value="LT LINE">LT Line</option></select></div>
+                <div class="form-row" id="linePhaseRow"><label>Phase Type (HT)*</label><select id="inpLinePhase" class="form-select"><option value="Three Phase" selected>Three Phase</option><option value="Single Phase">Single Phase</option></select></div>
+            </div>
+            <div class="form-row"><label>Conductor*</label><select id="inpConductor" class="form-select"></select></div>
+            <div id="ltLineDTSelector" style="display:none; background:var(--bg-glass); padding:8px; border-radius:8px; margin-bottom:12px;"><label>Select DT for LT Route*</label><select id="inpTargetDT" class="form-select" onchange="window.filterLineNodes()"></select></div>
+            <div class="form-grid-2"><div class="form-row"><label>From Node*</label><select id="inpFromNode" class="form-select" onchange="window.syncLineToSelect()"></select></div><div class="form-row"><label>To Node*</label><select id="inpToNode" class="form-select"></select></div></div>
+            ${getCameraFormHtml()}
+            <button class="btn-action-primary" onclick="window.saveNewLine()">Save Line</button>`);
+        setTimeout(() => { let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: 'DT_'+d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); document.getElementById('inpTargetDT').innerHTML = sortedDTs.map(d => `<option value="${d.id}">${d.id.replace('_', ': ')}</option>`).join(''); window.filterLineNodes(); window.toggleLineConductor('inpLineType', 'inpConductor'); }, 30);
+    } else if (type === 'DT') {
+        let parentNodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: 'POLE_'+p.poleNo, title: 'HT Pole '+p.poleNo, lat: p.lat, lng: p.lng})); 
+        const feederGss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; 
+        if(feederGss) parentNodes.push({id: 'GSS_'+feederGss.code, title: 'GSS '+feederGss.code, lat: feederGss.lat, lng: feederGss.lng});
+        parentNodes = window.sortByDistance(parentNodes, snapLat, snapLng); const parentOpts = parentNodes.map(p => `<option value="${p.id}">${p.title} (${window.getDistStr(p.lat, p.lng)})</option>`).join('');
+        openModal(`<div class="sheet-head"><div class="sheet-title">Add DT</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="form-row"><label>Connected To (HT Node)*</label><select id="inpDTParent" class="form-select">${parentOpts}</select></div>
+            <div class="form-row"><label>Mounted On (Structure)*</label><select id="inpDTMounted" class="form-select"><option value="Double Pole (DP)" selected>Double Pole (DP)</option><option value="Single Pole (SP)">Single Pole (SP)</option><option value="Plinth">Plinth</option></select></div>
+            <div class="form-grid-2"><div class="form-row"><label>DT Code*</label><input type="number" id="inpDTCode" class="form-input" value="${Math.floor(Math.random()*9000)}"></div><div class="form-row"><label>Phase*</label><select id="inpDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating')"><option value="Three Phase" selected>Three Phase</option><option value="Single Phase">Single Phase</option></select></div></div><div class="form-row"><label>Rating (kVA)*</label><select id="inpDTRating" class="form-select"></select></div><div class="form-row"><label>Location / Landmark</label><input type="text" id="inpDTLocation" class="form-input" placeholder="e.g. Near Main Market"></div>
+            ${getCameraFormHtml()}
+            <button class="btn-action-primary" onclick="window.saveNewDT()">Save DT</button>`);
+        setTimeout(() => window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating'), 30);
+    } else if (type === 'CONSUMER') {
+        if (net.dts.length === 0) return alert("Must have at least one DT!"); let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: 'DT_'+d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); const dtOpts = sortedDTs.map(d => `<option value="${d.id}">${d.id.replace('_', ': ')} (${window.getDistStr(d.lat, d.lng)})</option>`).join('');
+        openModal(`<div class="sheet-head"><div class="sheet-title">Add Consumer</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+            <div class="form-grid-2"><div class="form-row"><label>Parent DT*</label><select id="inpConsDT" class="form-select" onchange="window.filterConsumerPoles()">${dtOpts}</select></div><div class="form-row"><label>Connects To*</label><select id="inpConsParent" class="form-select"></select></div></div>
+            <div class="form-grid-2"><div class="form-row"><label>Status</label><select id="inpConsStatus" class="form-select"><option value="Regular" selected>Regular</option><option value="DC">DC</option><option value="PDC">PDC</option></select></div><div class="form-row"><label>Type</label><select id="inpConsType" class="form-select"><option value="Domestic" selected>Domestic</option><option value="NonDomestic">NonDomestic</option><option value="Agriculture">Agriculture</option><option value="Govt.">Govt.</option><option value="SIP MIP">SIP MIP</option><option value="Other">Other</option></select></div></div>
+            <div class="form-grid-2"><div class="form-row"><label>K-Number*</label><input type="number" id="inpConsKno" class="form-input"></div><div class="form-row"><label>Load</label><input type="text" id="inpConsLoad" class="form-input" value="1 kW"></div></div><div class="form-row"><label>Consumer Name*</label><input type="text" id="inpConsName" class="form-input"></div><input type="hidden" id="inpLat" value="${snapLat}"><input type="hidden" id="inpLng" value="${snapLng}">
+            ${getCameraFormHtml()}
+            <button class="btn-action-primary" onclick="window.saveNewConsumer()">Save Consumer</button>`);
+        setTimeout(() => window.filterConsumerPoles(), 30);
+    }
+}
 
 window.saveNewPole = function() { 
     try {
