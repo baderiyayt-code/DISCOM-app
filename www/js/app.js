@@ -46,7 +46,10 @@ window.getDistStr = (lat, lng) => {
 function initMapLayers() {
     if (typeof L === 'undefined') return; 
     map = L.map('map', { 
-        zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
+        zoomControl: false, 
+        attributionControl: false, 
+        preferCanvas: false, // FIX: Set to false to force SVG rendering (CSS shadows work here)
+        rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
         zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false
     }).setView([26.9150, 75.7830], 16);
 
@@ -380,26 +383,28 @@ const C_YELLOW = '#facc15'; const W_BASE = '#ffffff';
 function getPoleSVG(type, config, isOrphan) {
     const fill = isOrphan ? '#ef4444' : C_YELLOW;
     
-    // TOWER (A shape)
-    if(type === 'TOWER') return `<svg viewBox="0 0 60 80" style="width:36px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><line x1="18" y1="40" x2="42" y2="40" stroke="#1e293b" stroke-width="4"/><line x1="12" y1="60" x2="48" y2="60" stroke="#1e293b" stroke-width="4"/><circle cx="30" cy="5" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
+    // TOWER (A shape - No white background)
+    if(type === 'TOWER') return `<svg viewBox="0 0 60 80" style="width:30px;height:45px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><line x1="18" y1="40" x2="42" y2="40" stroke="#1e293b" stroke-width="4"/><line x1="12" y1="60" x2="48" y2="60" stroke="#1e293b" stroke-width="4"/><circle cx="30" cy="5" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
     
-    // RAIL POLE (|| shape)
-    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 80" style="width:24px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><rect x="12" y="10" width="16" height="65" fill="${fill}" stroke="#1e293b" stroke-width="3"/><line x1="5" y1="20" x2="35" y2="20" stroke="#1e293b" stroke-width="4"/><circle cx="12" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/><circle cx="28" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`;
+    // RAIL POLE (|| shape - No white background)
+    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 80" style="width:20px;height:40px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><rect x="12" y="10" width="16" height="65" fill="${fill}" stroke="#1e293b" stroke-width="3"/><line x1="5" y1="20" x2="35" y2="20" stroke="#1e293b" stroke-width="4"/><circle cx="12" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/><circle cx="28" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`;
     
-    // PCC DOUBLE POLE (|-| shape)
-    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 70 80" style="width:40px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><line x1="20" y1="15" x2="20" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="20" y1="15" x2="20" y2="75" stroke="${fill}" stroke-width="4"/><line x1="50" y1="15" x2="50" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="50" y1="15" x2="50" y2="75" stroke="${fill}" stroke-width="4"/><line x1="10" y1="25" x2="60" y2="25" stroke="#1e293b" stroke-width="5"/><line x1="10" y1="45" x2="60" y2="45" stroke="#1e293b" stroke-width="4"/><circle cx="15" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="35" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="55" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
+    // PCC DOUBLE POLE (|-| shape - No white background)
+    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 70 80" style="width:34px;height:42px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><line x1="20" y1="15" x2="20" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="20" y1="15" x2="20" y2="75" stroke="${fill}" stroke-width="4"/><line x1="50" y1="15" x2="50" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="50" y1="15" x2="50" y2="75" stroke="${fill}" stroke-width="4"/><line x1="10" y1="25" x2="60" y2="25" stroke="#1e293b" stroke-width="5"/><line x1="10" y1="45" x2="60" y2="45" stroke="#1e293b" stroke-width="4"/><circle cx="15" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="35" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="55" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
     
-    // PCC SINGLE POLE (Y shape)
-    return `<svg viewBox="0 0 50 80" style="width:30px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><line x1="25" y1="20" x2="25" y2="75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><line x1="25" y1="20" x2="25" y2="75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><path d="M 8 15 L 25 25 L 42 15" fill="none" stroke="#1e293b" stroke-width="5" stroke-linejoin="round"/><circle cx="8" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="42" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="25" cy="14" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
+    // PCC SINGLE POLE (Y shape - No white background)
+    return `<svg viewBox="0 0 50 80" style="width:26px;height:42px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><line x1="25" y1="20" x2="25" y2="75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><line x1="25" y1="20" x2="25" y2="75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><path d="M 8 15 L 25 25 L 42 15" fill="none" stroke="#1e293b" stroke-width="5" stroke-linejoin="round"/><circle cx="8" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="42" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="25" cy="14" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
 }
 
 function getDTSVG(phase, rating) {
     const numRating = String(rating).replace(/[^0-9]/g, '');
-    const lightOrange = '#f97316';
-    // Single Phase (Cylindrical logic, strictly rectangular but 1 bushing)
-    if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:24px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="23" y="2" width="4" height="8" fill="#cbd5e1" stroke="#000" stroke-width="1"/><rect x="10" y="10" width="30" height="40" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><text x="25" y="35" font-size="14" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
-    // Three Phase (Square, 3 bushings)
-    return `<svg viewBox="0 0 70 70" style="width:32px;height:32px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="18" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="32" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="46" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="12" y="15" width="46" height="45" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2.5"/><text x="35" y="44" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
+    const lightOrange = '#fdba74'; // Light orange colour
+    
+    // Single Phase (Rectangular shape, 1 bushing)
+    if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:24px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="23" y="2" width="4" height="8" fill="#cbd5e1" stroke="#000" stroke-width="1"/><rect x="10" y="10" width="30" height="40" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><text x="25" y="35" font-size="14" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
+    
+    // Three Phase (Square shape, 3 bushings)
+    return `<svg viewBox="0 0 70 70" style="width:32px;height:32px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="18" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="32" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="46" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="12" y="15" width="46" height="45" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2.5"/><text x="35" y="44" font-size="16" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
 }
 
 function getConsumerSVG(cType, status) {
@@ -409,7 +414,10 @@ function getConsumerSVG(cType, status) {
     else if(cType === 'SIP MIP') iconClass = 'fa-industry';
     else if(cType === 'Other') iconClass = 'fa-house';
 
-    let bgColor = '#10b981'; if(status === 'DC') bgColor = '#facc15'; else if(status === 'PDC') bgColor = '#ef4444';
+    let bgColor = '#10b981'; // Regular = Green
+    if(status === 'DC') bgColor = '#facc15'; // DC = Yellow
+    else if(status === 'PDC') bgColor = '#ef4444'; // PDC = Red
+
     const iconColor = status === 'DC' ? '#000' : '#fff';
 
     return `
@@ -425,14 +433,15 @@ function getLineSpec(type, phase, conductor) {
     const t = (type || '').toUpperCase();
     const cond = (conductor || '').toUpperCase();
     
-    if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 3, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
+    if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 4, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
     
     let lineClass = 'ht-line-path'; let color = '#3b82f6'; let weight = 3; let strokeColor = '#ffffff';
     
     if (cond.includes('UNDERGROUND') || cond.includes('UG')) {
         color = '#000000'; weight = 5; strokeColor = '#ffffff'; lineClass = 'ug-line-path';
     } else if (phase === 'Three Phase') {
-        lineClass = 'ryb-line-path'; color = '#3b82f6'; 
+        // Parallel RYB lines using CSS shadow
+        lineClass = 'ryb-line-path'; color = '#eab308'; // Main line Yellow, shadows will be Red & Blue
     }
     return { name: '11 KV LINE', color: color, weight: weight, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: strokeColor };
 }
