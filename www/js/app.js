@@ -842,6 +842,13 @@ window.saveNewLTPole = function() {
         showToast("LT Pole added!");
     } catch(err) { console.error(err); alert("Error saving LT pole: " + err.message); }
 }
+function attachTempPhoto(type, id) {
+    if(window.tempPhotoUrl) {
+        if(!appState.photos) appState.photos = [];
+        appState.photos.push({ id: 'PH_' + Date.now(), object_type: type, object_id: id, photo_url: window.tempPhotoUrl, synced: false });
+        window.tempPhotoUrl = null;
+    }
+}
 
 window.saveNewLine = function() { 
     try {
