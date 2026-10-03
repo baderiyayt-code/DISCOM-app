@@ -1088,49 +1088,33 @@ window.requestAppPermissions = function() {
     if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
         var permissions = cordova.plugins.permissions;
         
-        // Added Photo & Video permissions for Android 13+ (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO)
+        // Android 13+ compatible list
         var list = [ 
             permissions.ACCESS_FINE_LOCATION, 
             permissions.CAMERA,
-            permissions.READ_EXTERNAL_STORAGE, 
-            permissions.WRITE_EXTERNAL_STORAGE,
-            'android.permission.READ_MEDIA_IMAGES',
-            'android.permission.READ_MEDIA_VIDEO'
+            permissions.READ_EXTERNAL_STORAGE,
+            'android.permission.READ_MEDIA_IMAGES'
         ];
         
         permissions.requestPermissions(list, function(status) {
-            // 1. Verify Location Permission
+            // Check ONLY Location strictly. Camera plugin will auto-ask later if needed.
             permissions.checkPermission(permissions.ACCESS_FINE_LOCATION, function(locStatus) {
-                if (!locStatus.hasPermission) {
+                if (locStatus.hasPermission) {
+                    document.getElementById('permission-overlay').style.display = 'none'; 
+                    initializeAppPostPermissions();
+                } else {
                     document.getElementById('permission-overlay').style.display = 'flex';
-                    showToast("Location permission is required!");
-                    return;
+                    showToast("Location permission is strictly required!");
                 }
-                
-                // 2. Verify Camera Permission
-                permissions.checkPermission(permissions.CAMERA, function(camStatus) {
-                    if (!camStatus.hasPermission) {
-                        document.getElementById('permission-overlay').style.display = 'flex';
-                        showToast("Camera permission is required!");
-                        return;
-                    }
-
-                    // 3. Verify Photo/Video Storage Permission (Handles old Android + New Android 13+)
-                    permissions.checkPermission(permissions.READ_EXTERNAL_STORAGE, function(storeStatus) {
-                        permissions.checkPermission('android.permission.READ_MEDIA_IMAGES', function(mediaStatus) {
-                            if (storeStatus.hasPermission || mediaStatus.hasPermission) {
-                                document.getElementById('permission-overlay').style.display = 'none'; 
-                                initializeAppPostPermissions();
-                            } else {
-                                document.getElementById('permission-overlay').style.display = 'flex';
-                                showToast("Photo & Video permission is required!");
-                            }
-                        }, null);
-                    }, null);
-                }, null);
             }, null);
-        }, function() { document.getElementById('permission-overlay').style.display = 'flex'; });
-    } else { document.getElementById('permission-overlay').style.display = 'none'; initializeAppPostPermissions(); }
+        }, function() { 
+            document.getElementById('permission-overlay').style.display = 'flex'; 
+            showToast("Permissions were denied.");
+        });
+    } else { 
+        document.getElementById('permission-overlay').style.display = 'none'; 
+        initializeAppPostPermissions(); 
+    }
 }
 
 async function initializeAppPostPermissions() {
@@ -1165,10 +1149,10 @@ function startAppStartupSequence() {
         const loader = document.getElementById('erection-loader'); if(loader) loader.style.display = 'none';
         if(navigator.splashscreen) navigator.splashscreen.hide();
         if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
-            // Automatically ask for all permissions on startup
-            window.requestAppPermissions();
+            window.requestAppPermissions(); // Ask seamlessly
         } else initializeAppPostPermissions();
     }, 2000);
 }
 document.addEventListener('deviceready', startAppStartupSequence, false); 
 if (!window.cordova) { window.addEventListener('DOMContentLoaded', startAppStartupSequence); }
+
