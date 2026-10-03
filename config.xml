@@ -15,10 +15,20 @@
     
     <icon src="res/icon.png" />
     
+    <!-- Splash Screen Preferences -->
+    <preference name="SplashScreen" value="screen" />
+    <preference name="SplashScreenDelay" value="2500" />
+    <preference name="SplashMaintainAspectRatio" value="true" />
+    <preference name="AutoHideSplashScreen" value="true" />
+    <preference name="ShowSplashScreenSpinner" value="false" />
+    <preference name="FadeSplashScreen" value="true" />
+    <preference name="FadeSplashScreenDuration" value="500" />
+    
     <preference name="AndroidXEnabled" value="true" />
     
     <platform name="android">
         <allow-intent href="market:*" />
+        <splash src="res/splash.png" />
     </platform>
 
     <!-- Required Plugins -->
@@ -26,4 +36,5 @@
     <plugin name="cordova-plugin-android-permissions" />
     <plugin name="cordova-plugin-camera" />
     <plugin name="cordova-plugin-file" />
+    <plugin name="cordova-plugin-splashscreen" />
 </widget>
