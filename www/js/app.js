@@ -19,9 +19,22 @@ let historyStack = [];
 let map = null; let tileLayers = {}; let currentTileIndex = 0; let layerKeys = []; let featureGroups = {};
 window.isSetupModalOpen = false; window.tempPhotoUrl = null;
 
+// EXPANDED TRANSLATIONS FOR FULL APP
 const i18n = {
-    en: { appLanguage: "App Language", distUnit: "Distance Unit", theme: "Theme Mode", settings: "Settings", save: "Save", edit: "Edit", delete: "Delete", mapSetup: "Network Setup Required", htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer", permReq: "Permissions Required", permDesc: "This app strictly requires <b>Location, Camera</b> and <b>Storage</b> permissions to function.", grantPerm: "Grant Permissions" },
-    hi: { appLanguage: "ऐप की भाषा", distUnit: "दूरी की इकाई", theme: "थीम मोड", settings: "सेटिंग्स", save: "सेव करें", edit: "बदलें", delete: "डिलीट", mapSetup: "नेटवर्क सेटअप ज़रूरी है", htPole: "HT पोल", ltPole: "LT पोल", line: "लाइन", dt: "डी.टी", consumer: "कंज्यूमर", permReq: "अनुमति आवश्यक है", permDesc: "इस ऐप को चलाने के लिए <b>Location, Camera</b> और <b>Storage</b> की अनुमति देना अनिवार्य है।", grantPerm: "अनुमति दें" }
+    en: { 
+        appLanguage: "Language", distUnit: "Distance Unit", theme: "Theme", settings: "Settings", save: "Save", edit: "Edit", delete: "Delete", 
+        mapSetup: "Network Setup Required", htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer", 
+        permReq: "Permissions Required", permDesc: "This app requires Location, Camera and Storage permissions.", grantPerm: "Grant Permissions",
+        kpi11: "11 KV LINE", kpiLT: "LT LINE", kpi3Ph: "3-PH DT", kpi1Ph: "1-PH DT", kpiCons: "CONSUMERS",
+        searchPla: "Search Consumer, DT, Pole..."
+    },
+    hi: { 
+        appLanguage: "ऐप की भाषा", distUnit: "दूरी की इकाई", theme: "थीम मोड", settings: "सेटिंग्स", save: "सेव करें", edit: "बदलें", delete: "डिलीट", 
+        mapSetup: "नेटवर्क सेटअप ज़रूरी है", htPole: "HT पोल", ltPole: "LT पोल", line: "लाइन", dt: "डी.टी", consumer: "कंज्यूमर", 
+        permReq: "अनुमति आवश्यक है", permDesc: "इस ऐप को चलाने के लिए Location, Camera और Storage की अनुमति दें।", grantPerm: "अनुमति दें",
+        kpi11: "11 KV लाइन", kpiLT: "LT लाइन", kpi3Ph: "3-फेज़ DT", kpi1Ph: "1-फेज़ DT", kpiCons: "कंज्यूमर",
+        searchPla: "सर्च करें: पोल, डी.टी, उपभोक्ता..."
+    }
 };
 
 function applyTranslations() {
@@ -30,7 +43,16 @@ function applyTranslations() {
         const key = el.getAttribute('data-i18n');
         if(i18n[lang] && i18n[lang][key]) { if(el.tagName === 'INPUT' && el.type === 'text') el.placeholder = i18n[lang][key]; else el.innerHTML = i18n[lang][key]; }
     });
+    // Fallback manual translations for critical UI elements if attributes are missing
+    const t = i18n[lang];
+    if(document.getElementById('kpi11Label')) document.getElementById('kpi11Label').innerText = t.kpi11;
+    if(document.getElementById('kpiLTLabel')) document.getElementById('kpiLTLabel').innerText = t.kpiLT;
+    if(document.getElementById('kpi3PhLabel')) document.getElementById('kpi3PhLabel').innerText = t.kpi3Ph;
+    if(document.getElementById('kpi1PhLabel')) document.getElementById('kpi1PhLabel').innerText = t.kpi1Ph;
+    if(document.getElementById('kpiConsLabel')) document.getElementById('kpiConsLabel').innerText = t.kpiCons;
+    if(document.getElementById('appSearchBar')) document.getElementById('appSearchBar').placeholder = t.searchPla;
 }
+
 function applyTheme() {
     if(appState.settings.theme === 'dark') document.body.classList.add('dark-mode');
     else document.body.classList.remove('dark-mode');
@@ -50,6 +72,7 @@ function initMapLayers() {
     }).setView([26.9150, 75.7830], 16);
 
     map.on('zoomend', updateMapZoomClasses); 
+    
     map.on('move', () => { 
         const c = map.getCenter(); 
         document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
@@ -85,6 +108,16 @@ function initMapLayers() {
         gss: L.featureGroup().addTo(map), lines: L.featureGroup().addTo(map), consumerLines: L.featureGroup().addTo(map),
         poles: L.featureGroup().addTo(map), dts: L.featureGroup().addTo(map), consumers: L.featureGroup().addTo(map) 
     };
+    
+    // Inject Live Search Icon Button Top Right
+    const headerActions = document.querySelector('.header-actions');
+    if(headerActions) {
+        const searchBtn = document.createElement('button');
+        searchBtn.className = 'action-btn-sm';
+        searchBtn.innerHTML = '<i class="fa-solid fa-search"></i>';
+        searchBtn.onclick = window.toggleSearchBox;
+        headerActions.insertBefore(searchBtn, headerActions.firstChild);
+    }
 }
 
 function updateMapZoomClasses() {
@@ -132,11 +165,30 @@ function showToast(msg) { const toast = document.getElementById('app-toast'); co
 function setSyncStatus(status) { const ind = document.getElementById('sync-indicator'); if(!navigator.onLine) status = 'offline'; if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>'; else if(status === 'synced') ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>'; else ind.innerHTML = '<i class="fa-solid fa-cloud-xmark sync-error"></i>'; }
 function getPhotoUrl(objId) { if(!appState.photos) return null; const p = appState.photos.find(x => x.object_id === objId); return p ? p.photo_url : null; }
 
+function updateUnsyncedBadge() {
+    let unsyncCount = 0;
+    if(appState.photos) unsyncCount += appState.photos.filter(p => !p.synced).length;
+    for(let fCode in appState.feeders) {
+        let f = appState.feeders[fCode];
+        if(f.poles) unsyncCount += f.poles.filter(p => !p.synced).length;
+        if(f.lines) unsyncCount += f.lines.filter(l => !l.synced).length;
+        if(f.dts) unsyncCount += f.dts.filter(d => !d.synced).length;
+        if(f.consumers) unsyncCount += f.consumers.filter(c => !c.synced).length;
+    }
+    let badge = document.getElementById('unsync-badge');
+    const syncBtn = document.getElementById('sync-indicator');
+    if(!badge && syncBtn) {
+        badge = document.createElement('div'); badge.id = 'unsync-badge';
+        badge.style.cssText = 'position:absolute; top:-5px; right:-5px; background:#ef4444; color:white; font-size:10px; font-weight:900; padding:2px 6px; border-radius:10px; border:2px solid white; z-index:10; pointer-events:none;';
+        syncBtn.style.position = 'relative'; syncBtn.appendChild(badge);
+    }
+    if(badge) { badge.innerText = unsyncCount; badge.style.display = unsyncCount > 0 ? 'block' : 'none'; }
+}
+
 /* ====== RELATIONAL DATABASE SYNC LOGIC ====== */
 window.syncToSupabase = async function() {
     if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
     try {
-        // 1. Process Permanent Deletions Online
         if (appState.deletedObjectIds && appState.deletedObjectIds.length > 0) {
             await supabaseClient.from('object_photos').delete().in('object_id', appState.deletedObjectIds);
             await supabaseClient.from('survey_objects').delete().in('id', appState.deletedObjectIds);
@@ -147,40 +199,19 @@ window.syncToSupabase = async function() {
             appState.deletedFeederCodes = []; 
         }
 
-/* ====== RELATIONAL DATABASE SYNC LOGIC ====== */
-window.syncToSupabase = async function() {
-    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
-    try {
-        // 1. Process Permanent Deletions Online
-        if (appState.deletedObjectIds && appState.deletedObjectIds.length > 0) {
-            await supabaseClient.from('object_photos').delete().in('object_id', appState.deletedObjectIds);
-            await supabaseClient.from('survey_objects').delete().in('id', appState.deletedObjectIds);
-            appState.deletedObjectIds = []; 
-        }
-        if (appState.deletedFeederCodes && appState.deletedFeederCodes.length > 0) {
-            await supabaseClient.from('feeders').delete().in('code', appState.deletedFeederCodes);
-            appState.deletedFeederCodes = []; 
-        }
-
-        // 2. Sync Basic Metadata & GSS (survey_data)
         const metaData = { settings: appState.settings, filters: appState.filters, currentFeederCode: appState.currentFeederCode, gssNodes: appState.gssNodes };
         const { error: metaErr } = await supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: metaData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
         if(metaErr) { alert("Survey Data Error: " + metaErr.message); throw metaErr; }
 
-        // 3. Separate Relational Payload for Feeders and Objects
-        let feedersPayload = [];
-        let objectsPayload = [];
-        
+        let feedersPayload = []; let objectsPayload = [];
         for (let fCode in appState.feeders) {
-            let f = appState.feeders[fCode];
-            let gCode = f.feeder.parentGss || 'UNKNOWN';
-            
+            let f = appState.feeders[fCode]; let gCode = f.feeder.parentGss || 'UNKNOWN';
             feedersPayload.push({ code: fCode, user_id: appState.user.id, gss_code: gCode, name: f.feeder.name, details: f.feeder });
 
-            f.poles.forEach(p => objectsPayload.push({ id: p.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'POLE', details: p }));
-            f.dts.forEach(d => objectsPayload.push({ id: d.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'DT', details: d }));
-            f.lines.forEach(l => objectsPayload.push({ id: l.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'LINE', details: l }));
-            f.consumers.forEach(c => objectsPayload.push({ id: c.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'CONSUMER', details: c }));
+            f.poles.filter(p=>!p.synced).forEach(p => objectsPayload.push({ id: p.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'POLE', details: p }));
+            f.dts.filter(d=>!d.synced).forEach(d => objectsPayload.push({ id: d.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'DT', details: d }));
+            f.lines.filter(l=>!l.synced).forEach(l => objectsPayload.push({ id: l.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'LINE', details: l }));
+            f.consumers.filter(c=>!c.synced).forEach(c => objectsPayload.push({ id: c.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'CONSUMER', details: c }));
         }
 
         if (feedersPayload.length > 0) {
@@ -193,9 +224,15 @@ window.syncToSupabase = async function() {
                 const { error: objErr } = await supabaseClient.from('survey_objects').upsert(objectsPayload.slice(i, i + 200), { onConflict: 'id' });
                 if(objErr) { alert("Objects Save Error: " + objErr.message); throw objErr; }
             }
+            // Mark as synced locally
+            for (let fCode in appState.feeders) {
+                appState.feeders[fCode].poles.forEach(p => p.synced = true);
+                appState.feeders[fCode].dts.forEach(d => d.synced = true);
+                appState.feeders[fCode].lines.forEach(l => l.synced = true);
+                appState.feeders[fCode].consumers.forEach(c => c.synced = true);
+            }
         }
 
-        // 4. Safely sync Photos in chunks
         if (appState.photos && appState.photos.length > 0) {
             const unsyncedPhotos = appState.photos.filter(p => !p.synced);
             if (unsyncedPhotos.length > 0) {
@@ -209,23 +246,13 @@ window.syncToSupabase = async function() {
         }
 
         if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState);
-        setSyncStatus('synced'); 
-    } catch (err) { 
-        console.warn("Sync error", err); 
-        setSyncStatus('offline'); 
-    }
-}
-
-
-        if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState);
-        setSyncStatus('synced'); 
-    } catch (err) { console.warn("Sync error", err); setSyncStatus('offline'); }
+        setSyncStatus('synced'); updateUnsyncedBadge();
+    } catch (err) { console.warn("Sync error", err); setSyncStatus('offline'); updateUnsyncedBadge(); }
 }
 
 async function pullFromSupabase() {
     if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
     try {
-        // 1. Pull Metadata
         const { data: metaData } = await supabaseClient.from('survey_data').select('data').eq('user_id', appState.user.id);
         if(metaData && metaData.length > 0) {
             const cd = metaData[0].data;
@@ -235,21 +262,16 @@ async function pullFromSupabase() {
             appState.currentFeederCode = cd.currentFeederCode || null;
         }
 
-        // 2. Pull Relational Feeders
         const { data: feedersData } = await supabaseClient.from('feeders').select('*').eq('user_id', appState.user.id);
         appState.feeders = {};
-        if(feedersData) {
-            feedersData.forEach(f => {
-                appState.feeders[f.code] = { feeder: f.details, poles: [], dts: [], lines: [], consumers: [] };
-            });
-        }
+        if(feedersData) { feedersData.forEach(f => { appState.feeders[f.code] = { feeder: f.details, poles: [], dts: [], lines: [], consumers: [] }; }); }
 
-        // 3. Pull Survey Objects & Merge into arrays
         const { data: objData } = await supabaseClient.from('survey_objects').select('*').eq('user_id', appState.user.id);
         if(objData) {
             objData.forEach(row => {
                 const fCode = row.feeder_code;
                 if(appState.feeders[fCode]) {
+                    row.details.synced = true;
                     if(row.object_type === 'POLE') appState.feeders[fCode].poles.push(row.details);
                     if(row.object_type === 'DT') appState.feeders[fCode].dts.push(row.details);
                     if(row.object_type === 'LINE') appState.feeders[fCode].lines.push(row.details);
@@ -258,29 +280,30 @@ async function pullFromSupabase() {
             });
         }
 
-        // 4. Pull Photos Reference
         const { data: photoData } = await supabaseClient.from('object_photos').select('id, object_type, object_id, photo_url').eq('user_id', appState.user.id);
-        if(photoData) {
-            appState.photos = photoData.map(p => ({ id: p.id, object_type: p.object_type, object_id: p.object_id, photo_url: p.photo_url, synced: true }));
-        } else appState.photos = [];
+        if(photoData) { appState.photos = photoData.map(p => ({ id: p.id, object_type: p.object_type, object_id: p.object_id, photo_url: p.photo_url, synced: true })); } else appState.photos = [];
 
         if(typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState); 
         applyTranslations(); applyTheme(); if(map) map.invalidateSize();
-        renderEntireNetwork(); window.updateFeederDropdown(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow();
-    } catch (err) { console.error("Sync error:", err); setSyncStatus('offline'); if(map) map.invalidateSize(); checkOnboardingFlow(); }
+        renderEntireNetwork(); window.updateFeederDropdown(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow(); updateUnsyncedBadge();
+    } catch (err) { console.error("Sync error:", err); setSyncStatus('offline'); if(map) map.invalidateSize(); checkOnboardingFlow(); updateUnsyncedBadge(); }
 }
+
+window.closeModal = function() { 
+    document.getElementById('formModalOverlay').classList.remove('open'); 
+    window.isSetupModalOpen = false; 
+    const distInd = document.getElementById('live-distance-indicator');
+    if (distInd) distInd.style.display = 'none'; 
+    if(appState.user && appState.user.isLoggedIn) { setTimeout(window.checkOnboardingFlow, 400); } 
+};
 
 function triggerPersistence() { 
     try {
-        if(typeof localforage !== 'undefined') {
-            localforage.setItem(DB_KEY, appState).catch((err) => console.log("LocalForage Error:", err)); 
-        } else {
-            localStorage.setItem(DB_KEY, JSON.stringify(appState));
-        }
+        if(typeof localforage !== 'undefined') { localforage.setItem(DB_KEY, appState).catch((err) => console.log("LocalForage Error:", err)); } 
+        else { localStorage.setItem(DB_KEY, JSON.stringify(appState)); }
+        updateUnsyncedBadge();
         if(appState.settings && appState.settings.liveSync) { window.syncToSupabase(); }
-    } catch(err) {
-        console.error("Persistence Error:", err);
-    }
+    } catch(err) { console.error("Persistence Error:", err); }
 }
 
 let authMode = 'login';
@@ -291,8 +314,7 @@ window.toggleAuthMode = function() {
 
 function applyAuthUIVisuals() {
     document.getElementById('auth-screen').style.display = 'none'; document.getElementById('app-container').style.display = 'flex';
-    setTimeout(() => { if(map) map.invalidateSize(); }, 100);
-    document.getElementById('userNameDisplay').innerText = appState.user.name; 
+    setTimeout(() => { if(map) map.invalidateSize(); }, 100); document.getElementById('userNameDisplay').innerText = appState.user.name; 
 }
 
 window.checkOnboardingFlow = function() {
@@ -337,8 +359,7 @@ window.executeFactoryReset = async function() {
     showToast("Erasing all data...");
     if(supabaseClient) await supabaseClient.auth.signOut();
     if(typeof localforage !== 'undefined') await localforage.clear();
-    localStorage.clear();
-    setTimeout(() => location.reload(), 1000);
+    localStorage.clear(); setTimeout(() => location.reload(), 1000);
 }
 
 function centerMapOnGSS() {
@@ -382,10 +403,58 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
     if(photoUrl) { imgEl.src = photoUrl; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; } else { imgEl.style.display = 'none'; imgEl.src = ''; placeholderEl.style.display = 'block'; }
     document.getElementById('object-bottom-sheet').classList.add('open');
     document.getElementById('btnObjEdit').onclick = () => window.openEditModal(type.toLowerCase(), id);
+    
+    // GSS restriction for Delete button
+    document.getElementById('btnObjDelete').style.display = (type === 'GSS') ? 'none' : 'block';
+    // Move restrictions
     document.getElementById('btnObjMove').style.display = (type === 'DT') ? 'none' : 'block';
+    
     document.getElementById('btnObjMove').onclick = () => window.startObjectMove(type, id, title);
     document.getElementById('btnObjDelete').onclick = () => { window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
 };
+
+// FIX 1: Object Move Logic
+window.startObjectMove = function(type, id, title) {
+    window.closeObjectSheet();
+    appState.activeMove = { type: type, id: id };
+    document.getElementById('center-placement-pin').style.display = 'block';
+    document.getElementById('bottom-single-action').style.display = 'none';
+    
+    let moveBar = document.getElementById('move-confirm-bar');
+    if(!moveBar) {
+        moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar';
+        moveBar.style.cssText = 'position:absolute; bottom:20px; left:50%; transform:translateX(-50%); z-index:4000; display:flex; gap:10px; width:90%; max-width:400px;';
+        moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white;" onclick="window.cancelMove()">Cancel</button>
+                             <button class="btn-action-primary" style="margin-top:0;" onclick="window.confirmMove()">Confirm Move</button>`;
+        document.getElementById('app-container').appendChild(moveBar);
+    }
+    moveBar.style.display = 'flex';
+    renderEntireNetwork(); 
+}
+window.cancelMove = function() {
+    appState.activeMove = null;
+    document.getElementById('center-placement-pin').style.display = 'none';
+    const moveBar = document.getElementById('move-confirm-bar'); if(moveBar) moveBar.style.display = 'none';
+    document.getElementById('bottom-single-action').style.display = 'block';
+    renderEntireNetwork();
+}
+window.confirmMove = function() {
+    if(!appState.activeMove) return;
+    const net = getActiveNetwork(); const center = map.getCenter();
+    const { type, id } = appState.activeMove;
+    
+    let objList = null;
+    if(type === 'POLE') objList = net.poles;
+    else if(type === 'DT') objList = net.dts;
+    else if(type === 'CONSUMER') objList = net.consumers;
+    else if(type === 'GSS') { if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } }
+    
+    if(objList) {
+        const obj = objList.find(x => x.id === id);
+        if(obj) { obj.lat = center.lat; obj.lng = center.lng; obj.synced = false; }
+    }
+    saveSnapshot(); triggerPersistence(); window.cancelMove(); showToast("Location Updated!");
+}
 
 window.captureTempPhoto = function() {
     if (typeof navigator.camera === 'undefined') return alert("Camera plugin not found.");
@@ -411,20 +480,23 @@ window.captureObjectPhoto = function() {
     }, function(message) { alert('Camera cancelled or failed: ' + message); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false });
 };
 
+/* ====== THICKER REFINED REAL-LIFE SVGS ====== */
 const C_YELLOW = '#facc15'; const W_BASE = '#ffffff';
 
 function getPoleSVG(type, config, isOrphan) {
     const fill = isOrphan ? '#ef4444' : C_YELLOW;
-    if(type === 'TOWER') return `<svg viewBox="0 0 60 80" style="width:36px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><line x1="18" y1="40" x2="42" y2="40" stroke="#1e293b" stroke-width="4"/><line x1="12" y1="60" x2="48" y2="60" stroke="#1e293b" stroke-width="4"/><circle cx="30" cy="5" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
-    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 80" style="width:24px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><rect x="12" y="10" width="16" height="65" fill="${fill}" stroke="#1e293b" stroke-width="3"/><line x1="5" y1="20" x2="35" y2="20" stroke="#1e293b" stroke-width="4"/><circle cx="12" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/><circle cx="28" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`;
-    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 70 80" style="width:40px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><line x1="20" y1="15" x2="20" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="20" y1="15" x2="20" y2="75" stroke="${fill}" stroke-width="4"/><line x1="50" y1="15" x2="50" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="50" y1="15" x2="50" y2="75" stroke="${fill}" stroke-width="4"/><line x1="10" y1="25" x2="60" y2="25" stroke="#1e293b" stroke-width="5"/><line x1="10" y1="45" x2="60" y2="45" stroke="#1e293b" stroke-width="4"/><circle cx="15" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="35" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="55" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
-    return `<svg viewBox="0 0 50 80" style="width:30px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><line x1="25" y1="20" x2="25" y2="75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><line x1="25" y1="20" x2="25" y2="75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><path d="M 8 15 L 25 25 L 42 15" fill="none" stroke="#1e293b" stroke-width="5" stroke-linejoin="round"/><circle cx="8" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="42" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="25" cy="14" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
+    if(type === 'TOWER') return `<svg viewBox="0 0 60 80" style="width:36px;height:54px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="#1e293b" stroke-width="8" stroke-linecap="round"/><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="${fill}" stroke-width="5" stroke-linecap="round"/><line x1="18" y1="40" x2="42" y2="40" stroke="#1e293b" stroke-width="5"/><line x1="12" y1="60" x2="48" y2="60" stroke="#1e293b" stroke-width="5"/><circle cx="30" cy="5" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
+    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 80" style="width:24px;height:54px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><rect x="12" y="10" width="16" height="65" fill="${fill}" stroke="#1e293b" stroke-width="4"/><line x1="5" y1="20" x2="35" y2="20" stroke="#1e293b" stroke-width="5"/><circle cx="12" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/><circle cx="28" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`;
+    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 70 80" style="width:40px;height:54px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><line x1="20" y1="15" x2="20" y2="75" stroke="#1e293b" stroke-width="8"/><line x1="20" y1="15" x2="20" y2="75" stroke="${fill}" stroke-width="5"/><line x1="50" y1="15" x2="50" y2="75" stroke="#1e293b" stroke-width="8"/><line x1="50" y1="15" x2="50" y2="75" stroke="${fill}" stroke-width="5"/><line x1="10" y1="25" x2="60" y2="25" stroke="#1e293b" stroke-width="6"/><line x1="10" y1="45" x2="60" y2="45" stroke="#1e293b" stroke-width="5"/><circle cx="15" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="35" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="55" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
+    return `<svg viewBox="0 0 50 80" style="width:30px;height:54px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><line x1="25" y1="20" x2="25" y2="75" stroke="#1e293b" stroke-width="8" stroke-linecap="round"/><line x1="25" y1="20" x2="25" y2="75" stroke="${fill}" stroke-width="5" stroke-linecap="round"/><path d="M 8 15 L 25 25 L 42 15" fill="none" stroke="#1e293b" stroke-width="6" stroke-linejoin="round"/><circle cx="8" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="42" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="25" cy="14" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
 }
+
 function getDTSVG(phase, rating) {
     const numRating = String(rating).replace(/[^0-9]/g, ''); const lightOrange = '#f97316';
     if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:24px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="23" y="2" width="4" height="8" fill="#cbd5e1" stroke="#000" stroke-width="1"/><rect x="10" y="10" width="30" height="40" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><text x="25" y="35" font-size="14" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
     return `<svg viewBox="0 0 70 70" style="width:32px;height:32px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="18" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="32" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="46" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="12" y="15" width="46" height="45" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2.5"/><text x="35" y="44" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
 }
+
 function getConsumerSVG(cType, status) {
     let iconClass = 'fa-house'; 
     if(cType === 'NonDomestic') iconClass = 'fa-building'; else if(cType === 'Agriculture') iconClass = 'fa-leaf'; else if(cType === 'SIP MIP') iconClass = 'fa-industry'; else if(cType === 'Other') iconClass = 'fa-house';
@@ -432,6 +504,7 @@ function getConsumerSVG(cType, status) {
     const iconColor = status === 'DC' ? '#000' : '#fff';
     return `<div style="position:relative; width:26px; height:26px; display:flex; align-items:center; justify-content:center;"><div style="background:${bgColor}; border:2.5px solid #fff; border-radius:50%; width:100%; height:100%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.8); z-index:2;"><i class="fa-solid ${iconClass}" style="color:${iconColor}; font-size:12px;"></i></div><div style="position:absolute; bottom:-6px; width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:8px solid ${bgColor}; z-index:1; filter:drop-shadow(0 2px 2px rgba(0,0,0,0.4));"></div></div>`;
 }
+
 function getLineSpec(type, phase, conductor) {
     const t = (type || '').toUpperCase(); const cond = (conductor || '').toUpperCase();
     if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 3, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
@@ -440,6 +513,7 @@ function getLineSpec(type, phase, conductor) {
     else if (phase === 'Three Phase') { lineClass = 'ryb-line-path'; color = '#2563eb'; }
     return { name: '11 KV LINE', color: color, weight: weight, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: strokeColor };
 }
+
 window.getOffsetCoords = function(coords, offsetMeters) {
     if(!coords || !coords[0] || !coords[1]) return coords;
     const lat1 = coords[0][0], lng1 = coords[0][1]; const lat2 = coords[1][0], lng2 = coords[1][1];
@@ -473,7 +547,8 @@ function renderEntireNetwork() {
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
                 const svgHtml = getPoleSVG(p.poleType, p.poleConfig, isOrphan);
                 const poleClass = isLT ? 'lt-pole' : 'ht-pole';
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: `pole-marker-icon ${poleClass} ${isOrphan ? 'orphan-pulse' : ''}`, html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [40, 56], iconAnchor: [20, 10] }), zIndexOffset: 200 });
+                // FIX 3: Bottom Anchor for Poles (Makes them planted, lines drawn here natively stay at bottom)
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: `pole-marker-icon ${poleClass} ${isOrphan ? 'orphan-pulse' : ''}`, html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [40, 56], iconAnchor: [20, 50] }), zIndexOffset: 200 });
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'} ${p.poleConfig&&p.poleConfig!=='N/A'?'('+p.poleConfig+')':''}</b><br>Condition: <b>${p.condition||'Good'}</b><br>Parent: <b>${p.dtCode || 'Feeder'}</b>`); }); 
                 featureGroups.poles.addLayer(m);
             });
@@ -483,7 +558,7 @@ function renderEntireNetwork() {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => x.poleNo == d.parentPole); if (p) { d.lat = p.lat; d.lng = p.lng; } }
                 if (d.lat && d.lng && !isNaN(d.lat)) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const svgHtml = getDTSVG(d.phase, d.rating);
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [36, 36], iconAnchor: [18, 6] }), zIndexOffset: 400 });
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [36, 36], iconAnchor: [18, 18] }), zIndexOffset: 400 });
                     m.on('click', () => { window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b>`); }); 
                     featureGroups.dts.addLayer(m);
                 }
@@ -531,14 +606,6 @@ function renderEntireNetwork() {
     } catch(err) { console.error("Rendering error:", err); }
 }
 
-window.closeModal = function() { 
-    document.getElementById('formModalOverlay').classList.remove('open'); 
-    window.isSetupModalOpen = false; 
-    const distInd = document.getElementById('live-distance-indicator');
-    if (distInd) distInd.style.display = 'none'; 
-    if(appState.user && appState.user.isLoggedIn) { setTimeout(window.checkOnboardingFlow, 400); } 
-};
-
 function saveSnapshot() { const net = getActiveNetwork(); if(!net) return; historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); if (historyStack.length > 15) historyStack.shift(); }
 window.undoLastAction = function() { if (historyStack.length === 0) return showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = getActiveNetwork(); if(!net) return; net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺"); }
 
@@ -557,7 +624,6 @@ window.openFilterModal = function() {
 window.saveFilters = function() { appState.filters.lines11 = document.getElementById('flt11').checked; appState.filters.linesLT = document.getElementById('fltLT').checked; appState.filters.poles = document.getElementById('fltPoles').checked; appState.filters.dts = document.getElementById('fltDTs').checked; appState.filters.consumers = document.getElementById('fltCons').checked; window.closeModal(); renderEntireNetwork(); showToast("Filters Updated"); }
 
 window.toggleSidebar = function(open) { document.getElementById('sidebar-drawer').classList.toggle('open', open); document.getElementById('sidebarBackdrop').classList.toggle('open', open); if(open) { window.renderGssSidebarList(); window.renderFeederSidebarList(); } }
-
 window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); window.tempPhotoUrl = null; }
 
 window.autoSaveSettings = function() { appState.settings.unit = document.getElementById('setUnit').value; appState.settings.language = document.getElementById('setLanguage').value; appState.settings.theme = document.getElementById('setTheme').value; appState.settings.liveSync = document.getElementById('setLiveSync').checked; applyTranslations(); applyTheme(); triggerPersistence(); renderEntireNetwork(); showToast("Settings Saved!"); }
@@ -634,7 +700,6 @@ window.deleteFeederStrict = function(code) {
         const ids = [...f.poles, ...f.lines, ...f.dts, ...f.consumers].map(x=>x.id);
         if(!appState.deletedObjectIds) appState.deletedObjectIds = [];
         appState.deletedObjectIds.push(...ids);
-        
         if(!appState.deletedFeederCodes) appState.deletedFeederCodes = [];
         appState.deletedFeederCodes.push(code);
     }
@@ -665,7 +730,27 @@ function updateOrphanStatus() {
     net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
 }
 
-window.toggleSearchBox = function() { const box = document.getElementById('searchBoxOverlay'); if (box.style.display === 'none') { box.style.display = 'flex'; document.getElementById('appSearchBar').focus(); } else { box.style.display = 'none'; window.clearSearch(); } }
+// FIX 5: Dynamic Top Layer Search Toggle
+window.toggleSearchBox = function() {
+    let box = document.getElementById('searchBoxOverlay');
+    if(!box) {
+        box = document.createElement('div'); box.id = 'searchBoxOverlay';
+        box.style.cssText = 'position:absolute; top:65px; left:12px; right:12px; z-index:9000; background:var(--bg-glass); backdrop-filter:blur(10px); padding:10px; border-radius:12px; box-shadow:var(--shadow-md); display:flex; flex-direction:column; gap:10px; border:1px solid var(--border);';
+        box.innerHTML = `
+            <div style="display:flex; gap:10px; align-items:center;">
+                <input type="text" id="appSearchBar" class="search-input-full" placeholder="Search Consumer, DT, Pole..." onkeyup="window.handleSearch(event)">
+                <button class="action-btn-sm" onclick="window.toggleSearchBox()"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div id="searchSuggestions" class="suggestions-panel" style="position:relative; box-shadow:none; border:none; top:0;"></div>
+        `;
+        document.getElementById('app-container').appendChild(box);
+    } else {
+        box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+        if(box.style.display === 'none') window.clearSearch();
+    }
+    if(box.style.display === 'flex') { document.getElementById('appSearchBar').focus(); applyTranslations(); }
+}
+
 window.handleSearch = function(e) {
     const query = e.target.value.toLowerCase().trim(), suggPanel = document.getElementById('searchSuggestions');
     if(query.length === 0) { suggPanel.classList.remove('active'); return; }
@@ -678,7 +763,7 @@ window.handleSearch = function(e) {
         suggPanel.classList.add('active');
     } else { suggPanel.innerHTML = `<div style="padding:10px 12px; font-size:0.8rem; color:#64748b;">No results found</div>`; suggPanel.classList.add('active'); }
 }
-window.clearSearch = function() { document.getElementById('appSearchBar').value = ''; document.getElementById('searchSuggestions').classList.remove('active'); }
+window.clearSearch = function() { const bar = document.getElementById('appSearchBar'); if(bar) bar.value = ''; const sugg = document.getElementById('searchSuggestions'); if(sugg) sugg.classList.remove('active'); }
 window.selectSearchResult = function(type, id) {
     const net = getActiveNetwork(); if(!net) return; window.clearSearch(); window.toggleSearchBox(); let target = null, popupHtml = '';
     if(type === 'CONSUMER') { target = net.consumers.find(c => c.id === id); if(target) popupHtml = `K-No: <b>${target.kno}</b><br>Connected to: <b>${target.parentRef}</b>`; } 
@@ -686,22 +771,10 @@ window.selectSearchResult = function(type, id) {
     else if(type === 'POLE') { target = net.poles.find(p => p.id === id); if(target) popupHtml = `Type: <b>${target.lineType}</b><br>Condition: <b>${target.condition || 'Good'}</b>`; }
     if(target && target.lat) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { window.openObjectSheet(type, id, type === 'CONSUMER' ? target.name : (type === 'DT' ? `DT: ${target.code}` : `Pole: ${target.poleNo}`), popupHtml); }, 1000); }
 }
-/* ====== ADD FORMS ====== */
-const getCameraFormHtml = () => `
-    <div style="margin-top:15px; margin-bottom:5px; padding:10px; background:var(--bg-glass); border-radius:12px; border:1px dashed var(--border); text-align:center;">
-        <img id="formTempPhoto" src="" style="width:100%; height:120px; object-fit:cover; border-radius:8px; display:none; margin-bottom:8px;">
-        <button type="button" class="btn-action-primary" style="padding:10px; width:100%; background:#0f172a; margin:0;" onclick="window.captureTempPhoto()">
-            <i class="fa-solid fa-camera"></i> Capture Photo
-        </button>
-    </div>
-`;
 
 window.openAddForm = function(type) { window.toggleSpeedDial(false); if (type === 'POLE' || type === 'LTPOLE' || type === 'CONSUMER') { appState.placementType = type; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none'; document.getElementById('placement-confirm-bar').style.display = 'flex'; } else window.showFormModal(type, null, null); }
-
 window.confirmPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('live-distance-indicator').style.display='none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); }
-
 window.cancelPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('live-distance-indicator').style.display='none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; }
-
 window.togglePccConfig = function(id = 'inpMainPoleType', targetId = 'pccConfigDiv') { const pType = document.getElementById(id).value; const configDiv = document.getElementById(targetId); if(pType === 'PCC') configDiv.style.display = 'block'; else configDiv.style.display = 'none'; };
 
 window.toggleLineConductor = function(id = 'inpLineType', targetId = 'inpConductor') { 
@@ -815,13 +888,11 @@ window.showFormModal = function(type, snapLat, snapLng) {
         setTimeout(() => window.filterConsumerPoles(), 30);
     }
 }
-
 window.updateDTRatingDropdowns = function(phaseId, ratingId) {
     const phase = document.getElementById(phaseId).value, ratingSel = document.getElementById(ratingId);
     if(phase === 'Single Phase') ratingSel.innerHTML = `<option value="5">5 kVA</option><option value="10">10 kVA</option><option value="16" selected>16 kVA</option><option value="25">25 kVA</option>`;
     else ratingSel.innerHTML = `<option value="10">10 kVA</option><option value="16">16 kVA</option><option value="25" selected>25 kVA</option><option value="40">40 kVA</option><option value="63">63 kVA</option><option value="100">100 kVA</option><option value="160">160 kVA</option><option value="250">250 kVA</option><option value="315">315 kVA</option><option value="500">500 kVA</option>`;
 }
-
 window.filterConsumerPoles = function() {
     const net = getActiveNetwork(), selectedDT = document.getElementById('inpConsDT').value; 
     if(!selectedDT) return; const cleanDT = selectedDT.replace('DT_', '');
@@ -830,6 +901,14 @@ window.filterConsumerPoles = function() {
     const dtObj = net.dts.find(d => String(d.code) === String(cleanDT)); if(dtObj) nodes.push({id: 'DT_' + cleanDT, title: 'Direct to DT: '+cleanDT, lat: dtObj.lat, lng: dtObj.lng});
     nodes = window.sortByDistance(nodes, centerLat, centerLng); document.getElementById('inpConsParent').innerHTML = nodes.map(n => `<option value="${n.id}">${n.title} (${window.getDistStr(n.lat, n.lng)})</option>`).join('');
 }
+
+window.closeModal = function() { 
+    document.getElementById('formModalOverlay').classList.remove('open'); 
+    window.isSetupModalOpen = false; 
+    const distInd = document.getElementById('live-distance-indicator');
+    if (distInd) distInd.style.display = 'none'; 
+    if(appState.user && appState.user.isLoggedIn) { setTimeout(window.checkOnboardingFlow, 400); } 
+};
 
 window.saveNewPole = function() { 
     try {
@@ -848,7 +927,7 @@ window.saveNewPole = function() {
         
         saveSnapshot(); 
         const objId = 'P_'+Date.now();
-        net.poles.push({ id: objId, poleNo: no, lineType: category, poleType: pType, poleConfig: pConfig, condition: condition, lat, lng }); 
+        net.poles.push({ id: objId, poleNo: no, lineType: category, poleType: pType, poleConfig: pConfig, condition: condition, lat, lng, synced: false }); 
         
         attachTempPhoto('POLE', objId);
         window.closeModal(); 
@@ -881,7 +960,7 @@ window.saveNewLTPole = function() {
         
         saveSnapshot(); 
         const objId = 'P_'+Date.now();
-        net.poles.push({ id: objId, poleNo: finalPoleNo, lineType: category, dtCode: dtCode, poleType: pType, poleConfig: pConfig, condition: condition, lat, lng }); 
+        net.poles.push({ id: objId, poleNo: finalPoleNo, lineType: category, dtCode: dtCode, poleType: pType, poleConfig: pConfig, condition: condition, lat, lng, synced: false }); 
         
         attachTempPhoto('POLE', objId);
         window.closeModal(); 
@@ -890,6 +969,7 @@ window.saveNewLTPole = function() {
         showToast("LT Pole added!");
     } catch(err) { console.error(err); alert("Error saving LT pole: " + err.message); }
 }
+
 function attachTempPhoto(type, id) {
     if(window.tempPhotoUrl) {
         if(!appState.photos) appState.photos = [];
@@ -922,7 +1002,7 @@ window.saveNewLine = function() {
         saveSnapshot(); 
         const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); 
         const objId = 'LN_'+Date.now();
-        net.lines.push({ id: objId, type: spec.name, conductor: conductor, phase: phase, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]] }); 
+        net.lines.push({ id: objId, type: spec.name, conductor: conductor, phase: phase, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]], synced: false }); 
         
         attachTempPhoto('LINE', objId);
         window.closeModal(); 
@@ -956,7 +1036,7 @@ window.saveNewDT = function() {
 
         saveSnapshot(); 
         const objId = 'DT_' + Date.now();
-        net.dts.push({ id: objId, parentPole: rawParentRef, mountedOn: mountedOn, code, rating, phase, location, lat: lat, lng: lng }); 
+        net.dts.push({ id: objId, parentPole: rawParentRef, mountedOn: mountedOn, code, rating, phase, location, lat: lat, lng: lng, synced: false }); 
         
         attachTempPhoto('DT', objId);
         window.closeModal(); 
@@ -990,7 +1070,7 @@ window.saveNewConsumer = function() {
         
         saveSnapshot(); 
         const objId = 'CS_'+Date.now();
-        net.consumers.push({ id: objId, parentRef: rawParentRef, parentType, kno, name, load, status, cType, lat, lng }); 
+        net.consumers.push({ id: objId, parentRef: rawParentRef, parentType, kno, name, load, status, cType, lat, lng, synced: false }); 
         
         attachTempPhoto('CONSUMER', objId);
         window.closeModal(); 
@@ -1036,10 +1116,10 @@ window.openEditModal = function(type, id) {
             <button class="btn-action-primary" onclick="window.saveEditedLine('${l.id}')">Save Changes</button>`); 
     }
 }
-window.saveEditedPole = function(id) { const net = getActiveNetwork(); const p = net.poles.find(x => x.id === id); if(!p) return; p.poleType = document.getElementById('editMainPoleType').value; p.poleConfig = p.poleType === 'PCC' ? document.getElementById('editPccConfig').value : 'N/A'; p.condition = document.getElementById('editPoleCondition').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Pole Settings Updated"); }
-window.saveEditedDT = function(id) { const net = getActiveNetwork(); const d = net.dts.find(x => x.id === id); if (!d) return; d.phase = document.getElementById('editDTPhase').value; d.mountedOn = document.getElementById('editDTMounted').value; d.rating = parseFloat(document.getElementById('editDTRating').value); d.location = document.getElementById('editDTLocation').value.trim(); saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("DT Updated"); }
-window.saveEditedConsumer = function(id) { const net = getActiveNetwork(); const c = net.consumers.find(x => x.id === id); if (!c) return; c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value.trim(); c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Consumer Updated"); }
-window.saveEditedLine = function(id) { const net = getActiveNetwork(); const l = net.lines.find(x => x.id === id); if (!l) return; if(l.type.includes('11')) l.phase = document.getElementById('editLinePhase').value; l.conductor = document.getElementById('editLineConductor').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Line Updated"); }
+window.saveEditedPole = function(id) { const net = getActiveNetwork(); const p = net.poles.find(x => x.id === id); if(!p) return; p.poleType = document.getElementById('editMainPoleType').value; p.poleConfig = p.poleType === 'PCC' ? document.getElementById('editPccConfig').value : 'N/A'; p.condition = document.getElementById('editPoleCondition').value; p.synced = false; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Pole Settings Updated"); }
+window.saveEditedDT = function(id) { const net = getActiveNetwork(); const d = net.dts.find(x => x.id === id); if (!d) return; d.phase = document.getElementById('editDTPhase').value; d.mountedOn = document.getElementById('editDTMounted').value; d.rating = parseFloat(document.getElementById('editDTRating').value); d.location = document.getElementById('editDTLocation').value.trim(); d.synced = false; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("DT Updated"); }
+window.saveEditedConsumer = function(id) { const net = getActiveNetwork(); const c = net.consumers.find(x => x.id === id); if (!c) return; c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value.trim(); c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; c.synced = false; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Consumer Updated"); }
+window.saveEditedLine = function(id) { const net = getActiveNetwork(); const l = net.lines.find(x => x.id === id); if (!l) return; if(l.type.includes('11')) l.phase = document.getElementById('editLinePhase').value; l.conductor = document.getElementById('editLineConductor').value; l.synced = false; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Line Updated"); }
 
 function deleteDTLogic(dtId, net) {
     const d = net.dts.find(x => x.id === dtId); if(!d) return;
@@ -1150,7 +1230,7 @@ async function initializeAppPostPermissions() {
         applyTranslations(); applyTheme();
         
         if (appState.user && appState.user.isLoggedIn) { 
-            applyAuthUIVisuals(); setTimeout(() => { if(map) map.invalidateSize(); renderEntireNetwork(); centerMapOnGSS(); checkOnboardingFlow(); }, 100);
+            applyAuthUIVisuals(); setTimeout(() => { if(map) map.invalidateSize(); renderEntireNetwork(); centerMapOnGSS(); checkOnboardingFlow(); updateUnsyncedBadge(); }, 100);
         } else { document.getElementById('app-container').style.display = 'none'; document.getElementById('auth-screen').style.display = 'flex'; }
         
         if (supabaseClient) {
