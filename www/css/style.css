@@ -103,15 +103,8 @@ body.dark-mode .pole-marker-icon span { background: #1e293b; color: #f8fafc; bor
 .live-human-icon { font-size: 32px; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #ffffff; border-radius: 50%; border: 3px solid #ef4444; box-shadow: 0px 4px 12px rgba(239, 68, 68, 0.8); z-index: 5000 !important; animation: liveBlink 1s infinite alternate; }
 @keyframes liveBlink { 0% { transform: scale(1); box-shadow: 0 0 10px rgba(239,68,68,0.5); } 100% { transform: scale(1.15); box-shadow: 0 0 25px rgba(239,68,68,1); border-color: #b91c1c; } }
 
-/* ====== VISUAL LINE ATTACHMENT OFFSETS ====== */
-/* Overhead Lines go to TOP of the Pole */
-.ht-line-path, .lt-line-path, .ryb-line-path, .consumer-line-path {
-    transform: translateY(-22px);
-}
-/* Underground Cables go to BOTTOM of the Pole */
-.ug-line-path {
-    transform: translateY(24px);
-}
+/* CSS TRICK TO SHIFT UNDERGROUND CABLES TO THE BOTTOM OF THE POLE */
+.ug-line-path { transform: translateY(46px); }
 
 /* ====== PROPER ZOOM HIDE LOGIC ====== */
 .hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; stroke-opacity: 0 !important; }
@@ -121,7 +114,6 @@ body.dark-mode .pole-marker-icon span { background: #1e293b; color: #f8fafc; bor
 .hide-ht-lines .ht-line-path, .hide-ht-lines .ryb-line-path, .hide-ht-lines .ug-line-path { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; stroke-opacity: 0 !important; }
 .hide-dt .dt-square-icon { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
 .hide-gss .gss-square-icon { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
-
 
 /* MODALS & FORMS */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 3000; display: none; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.2s; }
