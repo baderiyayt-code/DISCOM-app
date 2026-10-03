@@ -1,3 +1,320 @@
+const DB_KEY = "DISCOM_ENTERPRISE_DB";
+
+const SUPABASE_URL = 'https://sxfyeublvtisndnzycib.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN4ZnlldWJsdnRpc25kbnp5Y2liIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMjkzOTEsImV4cCI6MjEwNDgwNTM5MX0.FENa8zOaDzlYZJI_HfWtallAkWukxSiM52-RGQ-CUmA';
+let supabaseClient = null;
+const ADMIN_EMAIL = 'admin@discom.com';
+
+let appState = {
+    settings: { checkOrphanNode: true, unit: 'm', gpsInterval: 3, gpsAccuracy: 10, language: 'en', theme: 'light', liveSync: true }, 
+    user: { isLoggedIn: false, name: "", email: "", id: null },
+    filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true },
+    currentFeederCode: null,
+    gssNodes: {}, feeders: {},  
+    orphanPoleIds: new Set(), activeMove: null, placementType: null, photos: [],
+    deletedObjectIds: []
+};
+
+let historyStack = [];
+let map = null; let tileLayers = {}; let currentTileIndex = 0; let layerKeys = []; let featureGroups = {};
+window.isSetupModalOpen = false; window.tempPhotoUrl = null;
+
+const i18n = {
+    en: { appLanguage: "App Language", distUnit: "Distance Unit", theme: "Theme Mode", settings: "Settings", save: "Save", edit: "Edit", delete: "Delete", mapSetup: "Network Setup Required", htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer", permReq: "Permissions Required", permDesc: "This app strictly requires <b>Location, Camera</b> and <b>Storage</b> permissions to function.", grantPerm: "Grant Permissions" },
+    hi: { appLanguage: "ऐप की भाषा", distUnit: "दूरी की इकाई", theme: "थीम मोड", settings: "सेटिंग्स", save: "सेव करें", edit: "बदलें", delete: "डिलीट", mapSetup: "नेटवर्क सेटअप ज़रूरी है", HT_Pole: "HT पोल", LT_Pole: "LT पोल", line: "लाइन", dt: "डी.टी", consumer: "कंज्यूमर", permReq: "अनुमति आवश्यक है", permDesc: "इस ऐप को चलाने के लिए <b>Location, Camera</b> और <b>Storage</b> की अनुमति देना अनिवार्य है।", grantPerm: "अनुमति दें" }
+};
+
+function applyTranslations() {
+    const lang = appState.settings.language || 'en';
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if(i18n[lang] && i18n[lang][key]) { if(el.tagName === 'INPUT' && el.type === 'text') el.placeholder = i18n[lang][key]; else el.innerHTML = i18n[lang][key]; }
+    });
+}
+function applyTheme() {
+    if(appState.settings.theme === 'dark') document.body.classList.add('dark-mode');
+    else document.body.classList.remove('dark-mode');
+}
+
+window.getDistStr = (lat, lng) => {
+    if(!lat || !lng || isNaN(lat)) return '';
+    if(!map) return ''; const c = map.getCenter();
+    return window.formatDistance(window.calcDistance(c.lat, c.lng, lat, lng));
+};
+
+function initMapLayers() {
+    if (typeof L === 'undefined') return; 
+    map = L.map('map', { 
+        zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
+        zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false
+    }).setView([26.9150, 75.7830], 16);
+
+    map.on('zoomend', updateMapZoomClasses); 
+    
+    map.on('move', () => { 
+        const c = map.getCenter(); 
+        document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
+        
+        if (appState.placementType && document.getElementById('center-placement-pin').style.display === 'block') {
+            const net = getActiveNetwork();
+            if (net) {
+                let nearestDist = Infinity; let nearestName = 'None';
+                const checkNode = (lat, lng, name) => {
+                    if(lat && lng && !isNaN(lat) && !isNaN(lng)) {
+                        const d = window.calcDistance(c.lat, c.lng, lat, lng);
+                        if(d < nearestDist) { nearestDist = d; nearestName = name; }
+                    }
+                };
+                net.poles.forEach(p => checkNode(p.lat, p.lng, `Pole ${p.poleNo}`));
+                net.dts.forEach(d => checkNode(d.lat, d.lng, `DT ${d.code}`));
+                const gss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null;
+                if(gss) checkNode(gss.lat, gss.lng, 'GSS');
+                
+                const ind = document.getElementById('live-distance-indicator');
+                if (nearestDist === Infinity) { ind.style.display = 'none'; } 
+                else { ind.style.display = 'block'; ind.innerText = `Nearest: ${nearestName} (${window.formatDistance(nearestDist)})`; }
+            }
+        }
+    });
+
+    tileLayers = { 
+        osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22 }) },
+        hybrid: { name: 'Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
+        street: { name: 'Google Street Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22 }) }
+    };
+    layerKeys = Object.keys(tileLayers); tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
+
+    featureGroups = { 
+        gss: L.featureGroup().addTo(map), lines: L.featureGroup().addTo(map), consumerLines: L.featureGroup().addTo(map),
+        poles: L.featureGroup().addTo(map), dts: L.featureGroup().addTo(map), consumers: L.featureGroup().addTo(map) 
+    };
+}
+
+function updateMapZoomClasses() {
+    if(!map) return;
+    const z = map.getZoom(); const mapEl = document.getElementById('map');
+    mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-ht-lines', 'hide-dt', 'hide-gss');
+    if (z <= 18) mapEl.classList.add('hide-consumers'); 
+    if (z <= 17) mapEl.classList.add('hide-lt-poles'); 
+    if (z <= 16) mapEl.classList.add('hide-lt-lines'); 
+    if (z <= 15) mapEl.classList.add('hide-ht-poles'); 
+    if (z <= 14) mapEl.classList.add('hide-ht-lines'); 
+    if (z <= 13) mapEl.classList.add('hide-dt'); 
+    if (z <= 12) mapEl.classList.add('hide-gss'); 
+}
+
+window.toggleMapLayer = function() { 
+    if(!map) return;
+    map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; 
+    tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
+}
+
+window.updateFeederDropdown = function() {
+    const header = document.getElementById('activeFeederLabel');
+    if(!header) return;
+    const keys = Object.keys(appState.feeders || {});
+    if(keys.length === 0) {
+        header.innerText = 'No Feeder';
+        appState.currentFeederCode = null;
+    } else {
+        if(!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode]) { appState.currentFeederCode = keys[0]; }
+        const currentFeeder = appState.feeders[appState.currentFeederCode];
+        header.innerText = (currentFeeder && currentFeeder.feeder && currentFeeder.feeder.name) ? currentFeeder.feeder.name : 'Unnamed Feeder';
+    }
+};
+
+window.switchFeeder = function(code) { 
+    if (appState.feeders[code]) { 
+        appState.currentFeederCode = code; 
+        window.updateFeederDropdown();
+        renderEntireNetwork(); 
+        triggerPersistence(); 
+        centerMapOnGSS(); 
+        window.toggleSidebar(false); 
+    } 
+}
+
+function getActiveNetwork() {
+    let keys = Object.keys(appState.feeders || {});
+    if (keys.length > 0 && (!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode])) appState.currentFeederCode = keys[0];
+    let net = appState.feeders[appState.currentFeederCode];
+    if (!net) return null; 
+    if (!Array.isArray(net.poles)) net.poles = []; if (!Array.isArray(net.lines)) net.lines = []; if (!Array.isArray(net.dts)) net.dts = []; if (!Array.isArray(net.consumers)) net.consumers = [];
+    return net;
+}
+
+function showToast(msg) {
+    const toast = document.getElementById('app-toast'); const msgElem = document.getElementById('toast-msg');
+    if (!toast || !msgElem) return; msgElem.innerText = msg;
+    toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+function setSyncStatus(status) {
+    const ind = document.getElementById('sync-indicator'); if(!navigator.onLine) status = 'offline';
+    if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
+    else if(status === 'synced') ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>';
+    else ind.innerHTML = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
+}
+
+function getPhotoUrl(objId) {
+    if(!appState.photos) return null;
+    const p = appState.photos.find(x => x.object_id === objId);
+    return p ? p.photo_url : null;
+}
+
+window.syncToSupabase = async function() {
+    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
+    try {
+        const dataToSync = JSON.parse(JSON.stringify(appState)); delete dataToSync.user; delete dataToSync.orphanPoleIds; delete dataToSync.photos; 
+        await supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: dataToSync, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        
+        if (appState.deletedObjectIds && appState.deletedObjectIds.length > 0) {
+            const {error: delErr} = await supabaseClient.from('survey_objects').delete().in('id', appState.deletedObjectIds);
+            if (!delErr) { appState.deletedObjectIds = []; if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState); }
+        }
+
+        if (appState.photos && appState.photos.length > 0) {
+            const unsyncedPhotos = appState.photos.filter(p => !p.synced);
+            if (unsyncedPhotos.length > 0) {
+                const photoPayload = unsyncedPhotos.map(p => ({ user_id: appState.user.id, object_type: p.object_type, object_id: p.object_id, photo_url: p.photo_url }));
+                const {error: photoErr} = await supabaseClient.from('object_photos').upsert(photoPayload, { onConflict: 'id' });
+                if (!photoErr) { unsyncedPhotos.forEach(p => p.synced = true); if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState); }
+            }
+        }
+
+        let objectsPayload = [];
+        for (let fCode in appState.feeders) {
+            let f = appState.feeders[fCode];
+            let gCode = f.feeder.parentGss || 'UNKNOWN';
+
+            f.poles.forEach(p => objectsPayload.push({ id: p.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'POLE', details: p, photo_url: getPhotoUrl(p.id) }));
+            f.dts.forEach(d => objectsPayload.push({ id: d.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'DT', details: d, photo_url: getPhotoUrl(d.id) }));
+            f.lines.forEach(l => objectsPayload.push({ id: l.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'LINE', details: l, photo_url: getPhotoUrl(l.id) }));
+            f.consumers.forEach(c => objectsPayload.push({ id: c.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'CONSUMER', details: c, photo_url: getPhotoUrl(c.id) }));
+        }
+
+        if (objectsPayload.length > 0) {
+            for (let i = 0; i < objectsPayload.length; i += 100) {
+                const batch = objectsPayload.slice(i, i + 100);
+                await supabaseClient.from('survey_objects').upsert(batch, { onConflict: 'id' });
+            }
+        }
+        setSyncStatus('synced'); 
+    } catch (err) { console.warn("Sync error", err); setSyncStatus('offline'); }
+}
+
+async function pullFromSupabase() {
+    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
+    let query = supabaseClient.from('survey_data').select('data').eq('user_id', appState.user.id);
+    try {
+        const { data, error } = await query; if (error) throw error;
+        if (data && data.length > 0) {
+            const cloudData = data[0].data; 
+            if(cloudData.feeders) appState.feeders = cloudData.feeders; 
+            if(cloudData.gssNodes) appState.gssNodes = cloudData.gssNodes; 
+            if(cloudData.currentFeederCode) appState.currentFeederCode = cloudData.currentFeederCode;
+            if(cloudData.photos) appState.photos = cloudData.photos;
+            if(cloudData.settings) appState.settings = { ...appState.settings, ...cloudData.settings };
+            if(cloudData.deletedObjectIds) appState.deletedObjectIds = cloudData.deletedObjectIds;
+            
+            if(typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState); 
+            applyTranslations(); applyTheme(); if(map) map.invalidateSize();
+            renderEntireNetwork(); window.updateFeederDropdown(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow();
+        } else checkOnboardingFlow();
+    } catch (err) { console.error("Sync error:", err); setSyncStatus('offline'); if(map) map.invalidateSize(); checkOnboardingFlow(); }
+}
+
+function triggerPersistence() { 
+    if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState).catch(() => localStorage.setItem(DB_KEY, JSON.stringify(appState))); 
+    else localStorage.setItem(DB_KEY, JSON.stringify(appState));
+    if(appState.settings.liveSync) { window.syncToSupabase(); }
+}
+
+let authMode = 'login';
+window.toggleAuthMode = function() {
+    authMode = authMode === 'login' ? 'signup' : 'login';
+    document.getElementById('loginBtn').style.display = authMode === 'login' ? 'inline-block' : 'none'; document.getElementById('signupBtn').style.display = authMode === 'signup' ? 'inline-block' : 'none'; document.getElementById('signupNameField').style.display = authMode === 'signup' ? 'block' : 'none'; document.getElementById('authToggleText').innerText = authMode === 'login' ? "Need an account? Sign Up" : "Already have an account? Login";
+}
+
+function applyAuthUIVisuals() {
+    document.getElementById('auth-screen').style.display = 'none'; document.getElementById('app-container').style.display = 'flex';
+    setTimeout(() => { if(map) map.invalidateSize(); }, 100);
+    document.getElementById('userNameDisplay').innerText = appState.user.name; 
+}
+
+window.checkOnboardingFlow = function() {
+    if(window.isSetupModalOpen) return;
+    if(Object.keys(appState.gssNodes || {}).length === 0) {
+        document.getElementById('onboarding-overlay').style.display = 'flex';
+        document.getElementById('onboarding-title').innerText = "Network Setup Required";
+        document.getElementById('onboarding-desc').innerText = "Please add your first GSS to begin mapping.";
+        document.getElementById('onboarding-btn').onclick = function() { document.getElementById('onboarding-overlay').style.display = 'none'; window.isSetupModalOpen = true; window.openAddGssModal(); };
+    } else if (Object.keys(appState.feeders || {}).length === 0) {
+        document.getElementById('onboarding-overlay').style.display = 'flex';
+        document.getElementById('onboarding-title').innerText = "Create Feeder";
+        document.getElementById('onboarding-desc').innerText = "You must create a Feeder linked to your GSS to continue.";
+        document.getElementById('onboarding-btn').onclick = function() { document.getElementById('onboarding-overlay').style.display = 'none'; window.isSetupModalOpen = true; window.openFeederConfigModal(); };
+    } else { document.getElementById('onboarding-overlay').style.display = 'none'; renderEntireNetwork(); }
+};
+
+window.handleSupabaseAuth = async function(mode) {
+    if(!supabaseClient) return alert("Network Error. Supabase not initialized.");
+    const email = document.getElementById('authEmail').value.trim(), password = document.getElementById('authPassword').value.trim(), name = document.getElementById('authName').value.trim();
+    if(!email || !password) return alert("Email and Password required"); showToast("Processing..."); let response;
+    if (mode === 'signup') { if(!name) return alert("Enter Full Name"); response = await supabaseClient.auth.signUp({ email, password, options: { data: { full_name: name } } }); } else response = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (response.error) alert(response.error.message);
+    else if (response.data.user) {
+        appState.user.isLoggedIn = true; appState.user.email = response.data.user.email; appState.user.id = response.data.user.id;
+        appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0];
+        applyAuthUIVisuals(); await pullFromSupabase(); showToast("Login Successful!");
+    }
+}
+window.handleSupabaseLogout = async function() { if(supabaseClient) await supabaseClient.auth.signOut(); if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.clear(); location.reload(); }
+
+window.openResetConfirmationModal = function() {
+    window.toggleSidebar(false); window.closeSettingsPage();
+    openModal(`<div class="sheet-head"><div class="sheet-title" style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Factory Reset</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+        <p style="font-size:0.9rem; color:var(--text-main); margin-bottom:15px; line-height:1.5;">This will permanently wipe all local database records, logs, and settings. This action cannot be undone.</p>
+        <div class="form-row"><label>Type "RESET" to confirm</label><input type="text" id="inpResetConfirm" class="form-input" placeholder="Type RESET here"></div>
+        <button class="btn-action-primary" style="background:#ef4444;" onclick="window.executeFactoryReset()">Erase All Data</button>`);
+};
+window.executeFactoryReset = async function() {
+    const val = document.getElementById('inpResetConfirm').value;
+    if(val !== 'RESET') return alert("Confirmation text does not match 'RESET'.");
+    showToast("Erasing all data...");
+    if(supabaseClient) await supabaseClient.auth.signOut();
+    if(typeof localforage !== 'undefined') await localforage.clear();
+    localStorage.clear();
+    setTimeout(() => location.reload(), 1000);
+}
+
+function centerMapOnGSS() {
+    if(!map) return; map.invalidateSize();
+    const net = getActiveNetwork(); if(!net) return;
+    const gss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null;
+    if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false});
+}
+
+window.liveTrackingId = null; window.liveUserMarker = null; window.isFirstLocationLock = true;
+window.toggleLiveTracking = function() {
+    if (!navigator.geolocation) return alert("Geolocation API not found.");
+    if (window.liveTrackingId) {
+        navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
+        if (window.liveUserMarker && map) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
+        document.getElementById('liveTrackBtn').style.color = '#ef4444'; showToast("Live tracking disabled.");
+    } else {
+        showToast("Fetching location..."); window.isFirstLocationLock = true; 
+        window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
+            const lat = pos.coords.latitude, lng = pos.coords.longitude; if(!map) return;
+            if (!window.liveUserMarker) {
+                const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [44,44] });
+                window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
+            } else window.liveUserMarker.setLatLng([lat, lng]);
+            if (window.isFirstLocationLock) { map.setView([lat, lng], 18); window.isFirstLocationLock = false; }
+            document.getElementById('liveTrackBtn').style.color = '#10b981';
+        }, (err) => alert("GPS Error."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    }
+}
 // MODAL CLOSE ON OUTSIDE CLICK
 document.getElementById('formModalOverlay').addEventListener('click', function(e) {
     if(e.target === this) { window.closeModal(); }
