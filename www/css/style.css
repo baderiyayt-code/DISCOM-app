@@ -107,13 +107,14 @@ body.dark-mode .pole-marker-icon span { background: #1e293b; color: #f8fafc; bor
 .ryb-line-path { 
     stroke: transparent;
 }
-/* FIX 5: Proper Hide Logic */
-.hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { opacity: 0 !important; pointer-events: none !important; display: none !important; }
-.hide-lt-poles .pole-marker-icon.lt-pole { opacity: 0 !important; pointer-events: none !important; display: none !important; }
-.hide-lt-lines .lt-line-path { display: none !important; pointer-events: none !important; }
-.hide-ht-poles .pole-marker-icon.ht-pole { opacity: 0 !important; pointer-events: none !important; display: none !important; }
-.hide-dt .dt-square-icon { opacity: 0 !important; pointer-events: none !important; display: none !important; }
-.hide-gss .gss-square-icon { opacity: 0 !important; pointer-events: none !important; display: none !important; }
+/* ====== PROPER ZOOM HIDE LOGIC ====== */
+.hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+.hide-lt-poles .lt-pole { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+.hide-lt-lines .lt-line-path { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+.hide-ht-poles .ht-pole { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+.hide-ht-lines .ht-line-path, .hide-ht-lines .ryb-line-path, .hide-ht-lines .ug-line-path { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+.hide-dt .dt-square-icon { display: none !important; opacity: 0 !important; pointer-events: none !important; }
+.hide-gss .gss-square-icon { display: none !important; opacity: 0 !important; pointer-events: none !important; }
 
 /* MODALS & FORMS */
 .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 3000; display: none; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.2s; }
