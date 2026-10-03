@@ -13,14 +13,16 @@
     "cordova-plugin-geolocation": "^5.0.0",
     "cordova-plugin-android-permissions": "^1.1.5",
     "cordova-plugin-camera": "^7.0.0",
-    "cordova-plugin-file": "^8.0.0"
+    "cordova-plugin-file": "^8.0.0",
+    "cordova-plugin-splashscreen": "^6.0.2"
   },
   "cordova": {
     "plugins": {
       "cordova-plugin-geolocation": {},
       "cordova-plugin-android-permissions": {},
       "cordova-plugin-camera": {},
-      "cordova-plugin-file": {}
+      "cordova-plugin-file": {},
+      "cordova-plugin-splashscreen": {}
     },
     "platforms": [
       "android"
