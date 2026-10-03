@@ -447,6 +447,20 @@ function getLineSpec(type, phase, conductor) {
 }
 
 /* ====== GIS CORE LOGIC ====== */
+// NEW HELPER: For creating parallel gaps
+window.getOffsetCoords = function(coords, offsetMeters) {
+    const lat1 = coords[0][0], lng1 = coords[0][1];
+    const lat2 = coords[1][0], lng2 = coords[1][1];
+    const dx = (lng2 - lng1) * 111139 * Math.cos(lat1 * Math.PI / 180);
+    const dy = (lat2 - lat1) * 111139;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return coords;
+    const nx = -dy / len; const ny = dx / len;
+    const dLng = (nx * offsetMeters) / (111139 * Math.cos(lat1 * Math.PI / 180));
+    const dLat = (ny * offsetMeters) / 111139;
+    return [[lat1 + dLat, lng1 + dLng], [lat2 + dLat, lng2 + dLng]];
+};
+/* ====== GIS CORE LOGIC ====== */
 function renderEntireNetwork() {
     if(!map) return; window.updateFeederDropdown();
     try {
@@ -496,10 +510,16 @@ function renderEntireNetwork() {
             if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
             const spec = getLineSpec(line.type, line.phase, line.conductor); if (!f[spec.filterKey]) return;
             
-            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 25, className: spec.lineClass }).addTo(featureGroups.lines);
+            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 35, className: spec.lineClass }).addTo(featureGroups.lines);
             
+            // FIX: Real Mathematical Offset for RYB Parallel Lines
             if(spec.lineClass === 'ryb-line-path') { 
-                L.polyline(line.coords, { color: 'transparent', weight: 3, className: 'ryb-line-path', interactive: false }).addTo(featureGroups.lines); 
+                const coordsR = window.getOffsetCoords(line.coords, 2); // Red shifted by 2 meters
+                const coordsB = window.getOffsetCoords(line.coords, -2); // Blue shifted by -2 meters
+                
+                L.polyline(coordsR, { color: '#ef4444', weight: 2, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: '#facc15', weight: 2, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(coordsB, { color: '#3b82f6', weight: 2, interactive: false }).addTo(featureGroups.lines); 
             } else if (spec.lineClass === 'ug-line-path') {
                 L.polyline(line.coords, { color: '#ffffff', weight: spec.weight + 4, interactive: false }).addTo(featureGroups.lines); 
                 L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: '8, 8', interactive: false }).addTo(featureGroups.lines); 
@@ -521,7 +541,7 @@ function renderEntireNetwork() {
                 m.on('click', () => { window.openObjectSheet('CONSUMER', c.id, c.name, `Type: <b>${c.cType||'Domestic'}</b><br>Status: <b>${c.status||'Regular'}</b><br>K-No: <b>${c.kno}</b><br>Load: <b>${c.load||'N/A'}</b>`); }); 
                 featureGroups.consumers.addLayer(m);
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
-                if (pCoords && !isNaN(pCoords.lat)) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: (appState.settings.theme==='dark'?'#f8fafc':'#0f172a'), weight: 1.2, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
+                if (pCoords && !isNaN(pCoords.lat)) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: (appState.settings.theme==='dark'?'#f8fafc':'#0f172a'), weight: 1.5, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
             });
         }
         updateMapZoomClasses();
@@ -535,6 +555,8 @@ function renderEntireNetwork() {
         
     } catch(err) { console.error("Rendering error:", err); }
 }
+
+
 
 function saveSnapshot() { const net = getActiveNetwork(); if(!net) return; historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); if (historyStack.length > 15) historyStack.shift(); }
 window.undoLastAction = function() { if (historyStack.length === 0) return showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = getActiveNetwork(); if(!net) return; net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺"); }
