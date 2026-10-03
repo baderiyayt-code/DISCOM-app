@@ -12,7 +12,7 @@ let appState = {
     currentFeederCode: null,
     gssNodes: {}, feeders: {},  
     orphanPoleIds: new Set(), activeMove: null, placementType: null, photos: [],
-    deletedObjectIds: [] // FIX: Track items to delete from Supabase DB
+    deletedObjectIds: [] // FIX: Tracks deleted items for Supabase DB
 };
 
 let historyStack = [];
@@ -154,14 +154,14 @@ function getPhotoUrl(objId) {
     return p ? p.photo_url : null;
 }
 
-// FIX: DB Delete & Sync Logic Structure
+// FIX: DB Delete Sync Logic
 window.syncToSupabase = async function() {
     if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
     try {
         const dataToSync = JSON.parse(JSON.stringify(appState)); delete dataToSync.user; delete dataToSync.orphanPoleIds; delete dataToSync.photos; 
         await supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: dataToSync, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
         
-        // Delete items flagged for deletion
+        // Execute pending deletions in cloud database
         if (appState.deletedObjectIds && appState.deletedObjectIds.length > 0) {
             const {error: delErr} = await supabaseClient.from('survey_objects').delete().in('id', appState.deletedObjectIds);
             if (!delErr) {
@@ -365,12 +365,15 @@ window.captureObjectPhoto = function() {
             showToast("Saving photo...");
             const base64Data = "data:image/jpeg;base64," + imageData;
             if(!appState.photos) appState.photos = [];
+            // Delete old photo if exists
             appState.photos = appState.photos.filter(x => x.object_id !== window.currentSelectedObj.id);
+            
             appState.photos.push({ id: 'PH_' + Date.now(), object_type: window.currentSelectedObj.type, object_id: window.currentSelectedObj.id, photo_url: base64Data, synced: false });
             
             const imgEl = document.getElementById('objPhotoImg');
             const placeholderEl = document.getElementById('objPhotoPlaceholder');
             imgEl.src = base64Data; imgEl.style.display = 'block'; placeholderEl.style.display = 'none';
+            
             triggerPersistence();
         }, 
         function(message) { alert('Camera cancelled or failed: ' + message); }, 
@@ -400,6 +403,7 @@ function getConsumerSVG(cType) {
     if(cType === 'NonDomestic') iconClass = 'fa-building';
     else if(cType === 'Agriculture') iconClass = 'fa-leaf';
     else if(cType === 'SIP MIP') iconClass = 'fa-industry';
+    // Offset margins dynamically or rely on exact map lat/lng precision
     return `<div style="background:#2563eb; border:2.5px solid #fff; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 6px rgba(0,0,0,0.6);"><i class="fa-solid ${iconClass}" style="color:#fff; font-size:11px;"></i></div>`;
 }
 
@@ -497,6 +501,10 @@ function renderEntireNetwork() {
         document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph;
         document.getElementById('kpiCons').innerText = net.consumers.length;
         
+        const topLabel = document.getElementById('activeFeederLabel');
+        if(topLabel) topLabel.innerText = appState.feeders[appState.currentFeederCode]?.feeder.name || "No Feeder Selected";
+        if(document.getElementById('feederListContainer')) window.renderFeederSidebarList();
+        
     } catch(err) { console.error("Rendering error:", err); }
 }
 
@@ -573,26 +581,6 @@ window.openEditFeederModal = function(code) {
 }
 window.saveEditedFeeder = function(code) { const newName = document.getElementById('editFeederName').value.trim(); if(!newName) return alert("Enter new name"); if(appState.feeders[code]) { appState.feeders[code].feeder.name = newName; triggerPersistence(); window.closeModal(); renderEntireNetwork(); showToast("Feeder Updated!"); } }
 
-// FIX 2: DB Wipe Helper Method
-window.deleteFeederStrict = function(code) { 
-    if(!confirm(`WARNING: Deleting Feeder ${code} will destroy all data inside it. Continue?`)) return; 
-    const net = appState.feeders[code];
-    if(net) {
-        if(!appState.deletedObjectIds) appState.deletedObjectIds = [];
-        const ids = [...net.poles, ...net.lines, ...net.dts, ...net.consumers].map(x=>x.id);
-        appState.deletedObjectIds.push(...ids);
-    }
-    delete appState.feeders[code]; 
-    if(appState.currentFeederCode === code) { const remaining = Object.keys(appState.feeders); appState.currentFeederCode = remaining.length > 0 ? remaining[0] : null; } 
-    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Feeder Deleted!"); window.checkOnboardingFlow(); 
-}
-window.deleteGssAndFeederStrict = function(code) { 
-    const conf1 = confirm(`WARNING: You are about to delete GSS ${code} and ALL its associated feeders! This cannot be undone. Continue?`); if (!conf1) return; const conf2 = prompt(`Type GSS code "${code}" to confirm:`); if (conf2 !== code) return alert("Cancelled"); saveSnapshot(); 
-    if (appState.gssNodes[code]) delete appState.gssNodes[code]; 
-    const feedersToDelete = []; Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].feeder.parentGss === code) feedersToDelete.push(fCode); }); 
-    feedersToDelete.forEach(fCode => window.deleteFeederStrict(fCode)); 
-    renderEntireNetwork(); triggerPersistence(); window.renderGssSidebarList(); showToast("Deleted completely!"); window.checkOnboardingFlow(); 
-}
 window.openAddGssModal = function() { window.toggleSidebar(false); openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> Add New GSS</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>GSS Code*</label><input type="text" id="inpGssCode" class="form-input" placeholder="e.g. 132"></div><div class="form-row"><label>GSS Name*</label><input type="text" id="inpGssName" class="form-input" placeholder="e.g. 132/33 kV Substation"></div><button class="btn-action-primary" onclick="window.saveNewGss()">Save GSS at Map Center</button>`); };
 window.saveNewGss = function() { const code = document.getElementById('inpGssCode').value.trim(), name = document.getElementById('inpGssName').value.trim(); if (!code || !name) return alert("Enter GSS Code and Name"); if (appState.gssNodes[code]) return alert("GSS Code already exists!"); const center = map.getCenter(); appState.gssNodes[code] = { code, name, lat: parseFloat(center.lat.toFixed(6)), lng: parseFloat(center.lng.toFixed(6)) }; window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("New GSS added successfully!"); window.checkOnboardingFlow(); };
 window.relocateGss = function(gssCode) { window.closeObjectSheet(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
@@ -636,10 +624,16 @@ window.openAddForm = function(type) { window.toggleSpeedDial(false); if (type ==
 window.confirmPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('live-distance-indicator').style.display='none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; const center = map.getCenter(); window.showFormModal(appState.placementType, parseFloat(center.lat.toFixed(6)), parseFloat(center.lng.toFixed(6))); }
 window.cancelPlacement = function() { document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('live-distance-indicator').style.display='none'; document.getElementById('placement-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; }
 window.togglePccConfig = function(id = 'inpMainPoleType', targetId = 'pccConfigDiv') { const pType = document.getElementById(id).value; const configDiv = document.getElementById(targetId); if(pType === 'PCC') configDiv.style.display = 'block'; else configDiv.style.display = 'none'; };
+
 window.toggleLineConductor = function(id = 'inpLineType', targetId = 'inpConductor') { 
     const lType = document.getElementById(id).value; const sel = document.getElementById(targetId); 
-    if(lType === '11 KV LINE') { sel.innerHTML = `<option value="Weasel">Weasel</option><option value="Rabbit">Rabbit</option><option value="Dog">Dog</option><option value="Underground Cable">Underground Cable</option>`; if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'block'; } 
-    else { sel.innerHTML = `<option value="Single Phase">Single Phase</option><option value="Three Phase">Three Phase</option>`; if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'none'; }
+    if(lType === '11 KV LINE') {
+        sel.innerHTML = `<option value="Weasel">Weasel</option><option value="Rabbit">Rabbit</option><option value="Dog">Dog</option><option value="Underground Cable">Underground Cable</option>`; 
+        if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'block'; 
+    } else {
+        sel.innerHTML = `<option value="Single Phase">Single Phase</option><option value="Three Phase">Three Phase</option>`; 
+        if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'none'; 
+    }
 };
 
 window.showFormModal = function(type, snapLat, snapLng) {
@@ -660,7 +654,10 @@ window.showFormModal = function(type, snapLat, snapLng) {
             <div class="sheet-head"><div class="sheet-title">Add ${isHT?'HT':'LT'} Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             ${dtSelectHtml}
             ${isHT ? `<div class="form-row"><label>Pole Number*</label><input type="number" id="inpPoleNo" class="form-input" value="${nextNo}"></div>` : ''}
-            <div class="form-grid-2"><div class="form-row"><label>Pole Type*</label><select id="inpMainPoleType" class="form-select" onchange="window.togglePccConfig('inpMainPoleType', 'pccConfigDiv')"><option value="PCC" selected>PCC</option><option value="TOWER">TOWER</option><option value="RAIL POLE">RAIL POLE</option></select></div><div class="form-row"><label>Condition</label><select id="inpPoleCondition" class="form-select"><option value="Good" selected>Good</option><option value="Tilted">Tilted</option><option value="Damaged">Damaged</option></select></div></div>
+            <div class="form-grid-2">
+                <div class="form-row"><label>Pole Type*</label><select id="inpMainPoleType" class="form-select" onchange="window.togglePccConfig('inpMainPoleType', 'pccConfigDiv')"><option value="PCC" selected>PCC</option><option value="TOWER">TOWER</option><option value="RAIL POLE">RAIL POLE</option></select></div>
+                <div class="form-row"><label>Condition</label><select id="inpPoleCondition" class="form-select"><option value="Good" selected>Good</option><option value="Tilted">Tilted</option><option value="Damaged">Damaged</option></select></div>
+            </div>
             <div class="form-row" id="pccConfigDiv" style="display:block;"><label>PCC Configuration</label><select id="inpPccConfig" class="form-select"><option value="Single Pole" selected>Single Pole</option><option value="Double Pole">Double Pole</option></select></div>
             <input type="hidden" id="inpPoleCategory" value="${isHT?'HT':'LT'}"><input type="hidden" id="inpLat" value="${snapLat}"><input type="hidden" id="inpLng" value="${snapLng}">
             <button class="btn-action-primary" onclick="${isHT?'window.saveNewPole()':'window.saveNewLTPole()'}">Save Pole</button>`);
@@ -677,7 +674,6 @@ window.showFormModal = function(type, snapLat, snapLng) {
                 dtSelectorBox.style.display = 'none'; nodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({...p, title: 'HT Pole '+p.poleNo, id: 'POLE_' + p.poleNo}));
                 const parentGss = appState.gssNodes[net.feeder.parentGss]; if (parentGss) nodes.push({id: 'GSS_'+parentGss.code, title: 'GSS ('+parentGss.code+')', lat: parentGss.lat, lng: parentGss.lng});
             }
-            // FIX 1: Add Dropdown distance safely.
             nodes = window.sortByDistance(nodes, map.getCenter().lat, map.getCenter().lng); let defaultFrom = nodes.length > 0 ? nodes[0].id : '';
             fromSel.innerHTML = nodes.map(n => `<option value="${n.id}" ${n.id === defaultFrom ? 'selected' : ''}>${n.title} (${window.getDistStr(n.lat, n.lng)})</option>`).join(''); window.syncLineToSelect(); window.toggleLineConductor('inpLineType', 'inpConductor');
         };
@@ -707,7 +703,7 @@ window.showFormModal = function(type, snapLat, snapLng) {
             <div class="form-grid-2"><div class="form-row"><label>From Node*</label><select id="inpFromNode" class="form-select" onchange="window.syncLineToSelect()"></select></div><div class="form-row"><label>To Node*</label><select id="inpToNode" class="form-select"></select></div></div><button class="btn-action-primary" onclick="window.saveNewLine()">Save Line</button>`);
         setTimeout(() => { let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); document.getElementById('inpTargetDT').innerHTML = sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id}</option>`).join(''); window.filterLineNodes(); window.toggleLineConductor('inpLineType', 'inpConductor'); }, 30);
     } else if (type === 'DT') {
-        let parentNodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: p.poleNo, title: 'HT Pole '+p.poleNo, lat: p.lat, lng: p.lng})); const feederGss = appState.gssNodes[net.feeder.parentGss]; if(feederGss) parentNodes.push({id: feederGss.code, title: 'GSS '+feederGss.code, lat: feederGss.lat, lng: feederGss.lng});
+        let parentNodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: 'POLE_'+p.poleNo, title: 'HT Pole '+p.poleNo, lat: p.lat, lng: p.lng})); const feederGss = appState.gssNodes[net.feeder.parentGss]; if(feederGss) parentNodes.push({id: 'GSS_'+feederGss.code, title: 'GSS '+feederGss.code, lat: feederGss.lat, lng: feederGss.lng});
         parentNodes = window.sortByDistance(parentNodes, snapLat, snapLng); const parentOpts = parentNodes.map(p => `<option value="${p.id}">${p.title} (${window.getDistStr(p.lat, p.lng)})</option>`).join('');
         openModal(`<div class="sheet-head"><div class="sheet-title">Add DT</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>Connected To (HT Node)*</label><select id="inpDTParent" class="form-select">${parentOpts}</select></div><div class="form-grid-2"><div class="form-row"><label>DT Code*</label><input type="number" id="inpDTCode" class="form-input" value="${Math.floor(Math.random()*9000)}"></div><div class="form-row"><label>Phase*</label><select id="inpDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating')"><option value="Three Phase" selected>Three Phase</option><option value="Single Phase">Single Phase</option></select></div></div><div class="form-row"><label>Rating (kVA)*</label><select id="inpDTRating" class="form-select"></select></div><div class="form-row"><label>Location / Landmark</label><input type="text" id="inpDTLocation" class="form-input" placeholder="e.g. Near Main Market"></div><button class="btn-action-primary" onclick="window.saveNewDT()">Save DT</button>`);
         setTimeout(() => window.updateDTRatingDropdowns('inpDTPhase', 'inpDTRating'), 30);
@@ -729,7 +725,29 @@ window.filterConsumerPoles = function() {
     const net = getActiveNetwork(), selectedDT = document.getElementById('inpConsDT').value, centerLat = parseFloat(document.getElementById('inpLat').value), centerLng = parseFloat(document.getElementById('inpLng').value);
     let nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(selectedDT)).map(p => ({...p, title: 'LT Pole: '+p.poleNo, id: p.poleNo}));
     const dtObj = net.dts.find(d => String(d.code) === String(selectedDT)); if(dtObj) nodes.push({id: selectedDT, title: 'Direct to DT: '+selectedDT, lat: dtObj.lat, lng: dtObj.lng});
-    nodes = window.sortByDistance(nodes, centerLat, centerLng); document.getElementById('inpConsParent').innerHTML = nodes.map(n => `<option value="${n.id}">${n.title}</option>`).join('');
+    nodes = window.sortByDistance(nodes, centerLat, centerLng); document.getElementById('inpConsParent').innerHTML = nodes.map(n => `<option value="${n.id}">${n.title} (${window.getDistStr(n.lat, n.lng)})</option>`).join('');
+}
+
+/* FIX 1: DT Coordinate assignment & DB ID Matching Fix */
+window.saveNewDT = function() { 
+    saveSnapshot(); 
+    const parentRef = document.getElementById('inpDTParent').value, 
+          code = document.getElementById('inpDTCode').value.trim(), 
+          rating = parseFloat(document.getElementById('inpDTRating').value), 
+          phase = document.getElementById('inpDTPhase').value, 
+          location = document.getElementById('inpDTLocation').value.trim();
+    if (!code) return alert("Enter DT Code"); 
+    const net = getActiveNetwork();
+    
+    const coords = getNodeCoords(parentRef);
+    if(!coords || isNaN(coords.lat)) return alert("Parent node coordinates missing!");
+    
+    let rawParentRef = parentRef;
+    if(parentRef.startsWith('POLE_')) rawParentRef = parentRef.replace('POLE_', '');
+    if(parentRef.startsWith('GSS_')) rawParentRef = parentRef.replace('GSS_', '');
+
+    net.dts.push({ id: 'DT_'+Date.now(), parentPole: rawParentRef, code, rating, phase, location, lat: coords.lat, lng: coords.lng }); 
+    window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("DT added!");
 }
 
 window.saveNewPole = function() { 
@@ -749,25 +767,15 @@ window.saveNewLTPole = function() {
 window.saveNewLine = function() { 
     saveSnapshot(); const from = document.getElementById('inpFromNode').value, to = document.getElementById('inpToNode').value, type = document.getElementById('inpLineType').value, conductor = document.getElementById('inpConductor').value; 
     const phase = type === '11 KV LINE' ? document.getElementById('inpLinePhase').value : 'N/A';
-    if (!from || !to) return alert("Select both From and To nodes!");
+    if (!from || !to) return alert("Please select both From and To nodes!"); 
     if (from === to) return alert("Cannot connect node to itself!");
     const net = getActiveNetwork(), spec = getLineSpec(type, phase), existingLine = net.lines.find(l => (l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from));
     if(existingLine) return alert("Line already exists!");
-    const c1 = getNodeCoords(from), c2 = getNodeCoords(to); if(!c1 || !c2) return alert("Invalid node coordinates! (Lat/Lng missing)"); const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); 
+    const c1 = getNodeCoords(from), c2 = getNodeCoords(to); 
+    if(!c1 || !c2 || isNaN(c1.lat) || isNaN(c2.lat)) return alert("Invalid node coordinates! Check map placements."); 
+    const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); 
     net.lines.push({ id: 'LN_'+Date.now(), type: spec.name, conductor: conductor, phase: phase, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]] }); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Line added!");
 }
-
-// FIX 1: SaveNewDT correct coordinates mapping
-window.saveNewDT = function() { 
-    saveSnapshot(); const parentRef = document.getElementById('inpDTParent').value, code = document.getElementById('inpDTCode').value.trim(), rating = parseFloat(document.getElementById('inpDTRating').value), phase = document.getElementById('inpDTPhase').value, location = document.getElementById('inpDTLocation').value.trim();
-    if (!code) return alert("Enter DT Code"); const net = getActiveNetwork();
-    const p = net.poles.find(x => String(x.poleNo) === String(parentRef)); 
-    let lat = 0, lng = 0; 
-    if (p) { lat = p.lat; lng = p.lng; } 
-    else { const gss = appState.gssNodes[net.feeder.parentGss]; if(gss) { lat = gss.lat; lng = gss.lng; } }
-    net.dts.push({ id: 'DT_'+Date.now(), parentPole: parentRef, code, rating, phase, location, lat, lng }); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("DT added!");
-}
-
 window.saveNewConsumer = function() { 
     saveSnapshot(); const parentRef = document.getElementById('inpConsParent').value, kno = document.getElementById('inpConsKno').value.trim(), name = document.getElementById('inpConsName').value.trim(), load = document.getElementById('inpConsLoad').value.trim();
     const status = document.getElementById('inpConsStatus').value, cType = document.getElementById('inpConsType').value; const lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value); 
@@ -777,7 +785,7 @@ window.saveNewConsumer = function() {
     net.consumers.push({ id: 'CS_'+Date.now(), parentRef, parentType, kno, name, load, status, cType, lat, lng }); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Consumer added!");
 }
 
-/* FULL OBJECT EDITING FORMS */
+/* ====== FULL OBJECT EDITING FORMS ====== */
 window.openEditModal = function(type, id) {
     window.closeObjectSheet(); const net = getActiveNetwork();
     if (type === 'pole') { 
@@ -818,7 +826,7 @@ window.saveEditedDT = function(id) { const net = getActiveNetwork(); const d = n
 window.saveEditedConsumer = function(id) { const net = getActiveNetwork(); const c = net.consumers.find(x => x.id === id); if (!c) return; c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value.trim(); c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Consumer Updated"); }
 window.saveEditedLine = function(id) { const net = getActiveNetwork(); const l = net.lines.find(x => x.id === id); if (!l) return; if(l.type.includes('11')) l.phase = document.getElementById('editLinePhase').value; l.conductor = document.getElementById('editLineConductor').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Line Updated"); }
 
-/* ====== FIX 2: ROBUST ENTITY DELETION (TRACKS IDs FOR SUPABASE) ====== */
+/* ====== ENTITY DELETION (FIX 2: DB Wipe Support) ====== */
 function deleteDTLogic(dtId, net) {
     const d = net.dts.find(x => x.id === dtId); if(!d) return;
     const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn);
@@ -831,7 +839,7 @@ function deleteLTPoleLogic(p, net) { net.consumers = net.consumers.filter(c => !
 window.deleteEntity = function(type, id) {
     const net = getActiveNetwork(); if(!confirm(`Delete this ${type.toUpperCase()}?`)) return; saveSnapshot();
     
-    // Capture state before deletion to find exactly which IDs are removed
+    // Capture state to find all items that get removed (cascading delete tracking)
     const beforeIds = [...net.poles, ...net.lines, ...net.dts, ...net.consumers].map(x=>x.id);
 
     if (type === 'line') net.lines = net.lines.filter(x => x.id !== id); 
@@ -840,7 +848,6 @@ window.deleteEntity = function(type, id) {
     else if (type === 'pole') { const p = net.poles.find(x => x.id === id); if (p) { if (p.lineType === 'LT') deleteLTPoleLogic(p, net); else { const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); dtsOnPole.forEach(dt => deleteDTLogic(dt.id, net)); net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== id); } } } 
     else if (type === 'gss') { if (appState.gssNodes[id]) delete appState.gssNodes[id]; }
     
-    // Compare after state, push missing IDs to deletedObjectIds
     const afterIds = new Set([...net.poles, ...net.lines, ...net.dts, ...net.consumers].map(x=>x.id));
     if(!appState.deletedObjectIds) appState.deletedObjectIds = [];
     beforeIds.forEach(bId => { if(!afterIds.has(bId)) appState.deletedObjectIds.push(bId); });
