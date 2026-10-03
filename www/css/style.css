@@ -52,7 +52,6 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .action-btn-sm { width: 44px; height: 44px; border-radius: var(--radius-md); background: transparent; color: var(--accent); border: none; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; pointer-events: auto; }
 .action-btn-sm.bg { background: var(--bg-base); color: var(--text-main); font-size: 1rem; }
 
-/* Purani search bar ko hide kiya */
 .top-search-container { display: none !important; }
 .search-input-full { border: none; background: transparent; width: 100%; outline: none; font-size: 0.95rem; font-weight: 600; color: var(--text-main); }
 .search-icon { color: var(--text-sub); }
@@ -93,7 +92,6 @@ body, html { width: 100%; height: 100%; overflow: hidden; background: var(--bg-b
 .gss-square-icon { background: #b91c1c; color: white; border: 3px solid white; border-radius: 8px; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);}
 .pole-marker-icon, .dt-square-icon, .consumer-marker-icon { display: flex; align-items: center; justify-content: center; flex-direction: column; background: transparent; border: none; }
 
-/* Text Anchor Fix for bottom planted pole */
 .pole-marker-icon span { position: absolute; top: -15px; background: #ffffff; color: #0f172a; font-size: 11px; padding: 2px 6px; border-radius: 6px; font-weight: 900; border: 2px solid #0f172a; box-shadow: 0 3px 6px rgba(0,0,0,0.5); z-index: 10;}
 body.dark-mode .pole-marker-icon span { background: #1e293b; color: #f8fafc; border-color:#94a3b8; }
 
@@ -104,10 +102,10 @@ body.dark-mode .pole-marker-icon span { background: #1e293b; color: #f8fafc; bor
 .live-human-icon { font-size: 32px; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #ffffff; border-radius: 50%; border: 3px solid #ef4444; box-shadow: 0px 4px 12px rgba(239, 68, 68, 0.8); z-index: 5000 !important; animation: liveBlink 1s infinite alternate; }
 @keyframes liveBlink { 0% { transform: scale(1); box-shadow: 0 0 10px rgba(239,68,68,0.5); } 100% { transform: scale(1.15); box-shadow: 0 0 25px rgba(239,68,68,1); border-color: #b91c1c; } }
 
-/* CSS TRICK TO SHIFT LINES RELATIVE TO ANCHORS */
-.ht-line-path, .lt-line-path, .ryb-line-path { transform: translateY(-40px); }
+/* CSS TRICK TO SHIFT LINES RELATIVE TO ANCHORS - REMOVED FOR CENTERED POLES */
+.ht-line-path, .lt-line-path, .ryb-line-path { transform: none; }
 .ug-line-path { transform: none; }
-.consumer-line-path { transform: translateY(-20px); }
+.consumer-line-path { transform: none; }
 
 /* ====== PROPER ZOOM HIDE LOGIC ====== */
 .hide-consumers .consumer-marker-icon, .hide-consumers .consumer-line-path { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; stroke-opacity: 0 !important; }
