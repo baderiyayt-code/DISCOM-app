@@ -844,7 +844,78 @@ window.saveNewConsumer = function() {
     net.consumers.push({ id: objId, parentRef: rawParentRef, parentType, kno, name, load, status, cType, lat, lng }); 
     attachTempPhoto('CONSUMER', objId); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Consumer added!");
 }
+/* ====== PERMISSIONS & STARTUP ====== */
+window.requestAppPermissions = function() {
+    if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
+        var permissions = cordova.plugins.permissions;
+        
+        // Android 13+ Support added
+        var list = [ 
+            permissions.ACCESS_FINE_LOCATION, 
+            permissions.CAMERA,
+            permissions.READ_EXTERNAL_STORAGE, 
+            permissions.WRITE_EXTERNAL_STORAGE,
+            'android.permission.READ_MEDIA_IMAGES'
+        ];
+        
+        permissions.requestPermissions(list, function(status) {
+            // Android 13 silences WRITE_EXTERNAL_STORAGE, so we only strictly block if Location & Camera fail
+            permissions.checkPermission(permissions.ACCESS_FINE_LOCATION, function(locStatus) {
+                permissions.checkPermission(permissions.CAMERA, function(camStatus) {
+                    if(locStatus.hasPermission && camStatus.hasPermission) {
+                        document.getElementById('permission-overlay').style.display = 'none'; 
+                        initializeAppPostPermissions();
+                    } else {
+                        document.getElementById('permission-overlay').style.display = 'flex';
+                    }
+                }, null);
+            }, null);
+        }, function() { document.getElementById('permission-overlay').style.display = 'flex'; });
+    } else { document.getElementById('permission-overlay').style.display = 'none'; initializeAppPostPermissions(); }
+}
 
+async function initializeAppPostPermissions() {
+    try {
+        initMapLayers();
+        if (typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let data = null; if (typeof localforage !== 'undefined') data = await localforage.getItem(DB_KEY); 
+        if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
+        if (data && data.feeders) appState = data; 
+        
+        applyTranslations(); applyTheme();
+        
+        if (appState.user && appState.user.isLoggedIn) { 
+            applyAuthUIVisuals(); setTimeout(() => { if(map) map.invalidateSize(); renderEntireNetwork(); centerMapOnGSS(); checkOnboardingFlow(); }, 100);
+        } else { document.getElementById('app-container').style.display = 'none'; document.getElementById('auth-screen').style.display = 'flex'; }
+        
+        if (supabaseClient) {
+            supabaseClient.auth.getSession().then(({ data }) => {
+                if (data && data.session && data.session.user) {
+                    appState.user.isLoggedIn = true; appState.user.email = data.session.user.email; appState.user.id = data.session.user.id;
+                    appState.user.name = data.session.user.user_metadata?.full_name || data.session.user.email.split('@')[0];
+                    applyAuthUIVisuals(); pullFromSupabase(); 
+                }
+            }).catch(err => console.log("Offline mode"));
+        }
+    } catch (e) { console.error("Init Error:", e); document.getElementById('app-container').style.display = 'none'; document.getElementById('auth-screen').style.display = 'flex'; showToast("Offline Mode / Load Error"); }
+}
+
+function startAppStartupSequence() {
+    setTimeout(() => {
+        const loader = document.getElementById('erection-loader'); if(loader) loader.style.display = 'none';
+        if(navigator.splashscreen) navigator.splashscreen.hide();
+        if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
+            var permissions = cordova.plugins.permissions;
+            permissions.hasPermission(permissions.ACCESS_FINE_LOCATION, function(status) {
+                if (status.hasPermission) initializeAppPostPermissions();
+                else document.getElementById('permission-overlay').style.display = 'flex';
+            }, function() { document.getElementById('permission-overlay').style.display = 'flex'; });
+        } else initializeAppPostPermissions();
+    }, 2000);
+}
+document.addEventListener('deviceready', startAppStartupSequence, false); 
+if (!window.cordova) { window.addEventListener('DOMContentLoaded', startAppStartupSequence); }
 /* ====== EDIT FORMS ====== */
 window.openEditModal = function(type, id) {
     window.closeObjectSheet(); const net = getActiveNetwork();
