@@ -94,14 +94,22 @@ function initMapLayers() {
     };
 }
 
+
 function updateMapZoomClasses() {
     if(!map) return;
     const z = map.getZoom(); const mapEl = document.getElementById('map');
-    mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-dt', 'hide-gss');
+    
+    // Sabse pehle saari hide classes hatao
+    mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-ht-lines', 'hide-dt', 'hide-gss');
+    
+    // Zoom out ke hisaab se ek-ek karke cheezein hide karo
     if (z <= 18) mapEl.classList.add('hide-consumers'); 
-    if (z <= 16) mapEl.classList.add('hide-lt-poles'); 
-    if (z <= 15) mapEl.classList.add('hide-lt-lines'); 
-    if (z <= 14) mapEl.classList.add('hide-ht-poles'); 
+    if (z <= 17) mapEl.classList.add('hide-lt-poles'); 
+    if (z <= 16) mapEl.classList.add('hide-lt-lines'); 
+    if (z <= 15) mapEl.classList.add('hide-ht-poles'); 
+    if (z <= 14) mapEl.classList.add('hide-ht-lines'); 
+    if (z <= 13) mapEl.classList.add('hide-dt'); 
+    if (z <= 12) mapEl.classList.add('hide-gss'); 
 }
 
 window.toggleMapLayer = function() { 
@@ -486,7 +494,11 @@ function renderEntireNetwork() {
                 
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
                 const svgHtml = getPoleSVG(p.poleType, p.poleConfig, isOrphan);
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pole-marker-icon ' + (isOrphan ? 'orphan-pulse' : ''), html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [40, 56], iconAnchor: [20, 28] }), zIndexOffset: 200 });
+                
+                // FIX: Added 'lt-pole' and 'ht-pole' classes dynamically
+                const poleClass = isLT ? 'lt-pole' : 'ht-pole';
+                
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: `pole-marker-icon ${poleClass} ${isOrphan ? 'orphan-pulse' : ''}`, html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [40, 56], iconAnchor: [20, 28] }), zIndexOffset: 200 });
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'} ${p.poleConfig&&p.poleConfig!=='N/A'?'('+p.poleConfig+')':''}</b><br>Condition: <b>${p.condition||'Good'}</b><br>Parent: <b>${p.dtCode || 'Feeder'}</b>`); }); 
                 featureGroups.poles.addLayer(m);
             });
@@ -510,22 +522,23 @@ function renderEntireNetwork() {
             if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
             const spec = getLineSpec(line.type, line.phase, line.conductor); if (!f[spec.filterKey]) return;
             
+            // Invisible hit box layer
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 35, className: spec.lineClass }).addTo(featureGroups.lines);
             
-            // FIX: Real Mathematical Offset for RYB Parallel Lines
+            // FIX: Ensure spec.lineClass is added to all rendered lines so they can hide
             if(spec.lineClass === 'ryb-line-path') { 
-                const coordsR = window.getOffsetCoords(line.coords, 2); // Red shifted by 2 meters
-                const coordsB = window.getOffsetCoords(line.coords, -2); // Blue shifted by -2 meters
+                const coordsR = window.getOffsetCoords(line.coords, 2); 
+                const coordsB = window.getOffsetCoords(line.coords, -2); 
                 
-                L.polyline(coordsR, { color: '#ef4444', weight: 2, interactive: false }).addTo(featureGroups.lines); 
-                L.polyline(line.coords, { color: '#facc15', weight: 2, interactive: false }).addTo(featureGroups.lines); 
-                L.polyline(coordsB, { color: '#3b82f6', weight: 2, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(coordsR, { color: '#ef4444', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: '#facc15', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(coordsB, { color: '#3b82f6', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
             } else if (spec.lineClass === 'ug-line-path') {
-                L.polyline(line.coords, { color: '#ffffff', weight: spec.weight + 4, interactive: false }).addTo(featureGroups.lines); 
-                L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: '8, 8', interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: '#ffffff', weight: spec.weight + 4, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: '8, 8', className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
             } else { 
-                L.polyline(line.coords, { color: spec.strokeColor, weight: spec.weight + 4, opacity: 0.8, interactive: false }).addTo(featureGroups.lines); 
-                L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: spec.strokeColor, weight: spec.weight + 4, opacity: 0.8, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
             }
             
             hitPoly.on('click', () => {
@@ -541,7 +554,7 @@ function renderEntireNetwork() {
                 m.on('click', () => { window.openObjectSheet('CONSUMER', c.id, c.name, `Type: <b>${c.cType||'Domestic'}</b><br>Status: <b>${c.status||'Regular'}</b><br>K-No: <b>${c.kno}</b><br>Load: <b>${c.load||'N/A'}</b>`); }); 
                 featureGroups.consumers.addLayer(m);
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
-                if (pCoords && !isNaN(pCoords.lat)) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: (appState.settings.theme==='dark'?'#f8fafc':'#0f172a'), weight: 1.5, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
+                if (pCoords && !isNaN(pCoords.lat)) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.5, dashArray: '3, 5', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
             });
         }
         updateMapZoomClasses();
@@ -555,6 +568,7 @@ function renderEntireNetwork() {
         
     } catch(err) { console.error("Rendering error:", err); }
 }
+
 
 
 
