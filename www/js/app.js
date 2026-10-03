@@ -147,9 +147,25 @@ window.syncToSupabase = async function() {
             appState.deletedFeederCodes = []; 
         }
 
+/* ====== RELATIONAL DATABASE SYNC LOGIC ====== */
+window.syncToSupabase = async function() {
+    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
+    try {
+        // 1. Process Permanent Deletions Online
+        if (appState.deletedObjectIds && appState.deletedObjectIds.length > 0) {
+            await supabaseClient.from('object_photos').delete().in('object_id', appState.deletedObjectIds);
+            await supabaseClient.from('survey_objects').delete().in('id', appState.deletedObjectIds);
+            appState.deletedObjectIds = []; 
+        }
+        if (appState.deletedFeederCodes && appState.deletedFeederCodes.length > 0) {
+            await supabaseClient.from('feeders').delete().in('code', appState.deletedFeederCodes);
+            appState.deletedFeederCodes = []; 
+        }
+
         // 2. Sync Basic Metadata & GSS (survey_data)
         const metaData = { settings: appState.settings, filters: appState.filters, currentFeederCode: appState.currentFeederCode, gssNodes: appState.gssNodes };
-        await supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: metaData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        const { error: metaErr } = await supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: metaData, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        if(metaErr) { alert("Survey Data Error: " + metaErr.message); throw metaErr; }
 
         // 3. Separate Relational Payload for Feeders and Objects
         let feedersPayload = [];
@@ -168,12 +184,14 @@ window.syncToSupabase = async function() {
         }
 
         if (feedersPayload.length > 0) {
-            await supabaseClient.from('feeders').upsert(feedersPayload, { onConflict: 'code' });
+            const { error: feedErr } = await supabaseClient.from('feeders').upsert(feedersPayload, { onConflict: 'code' });
+            if(feedErr) { alert("Feeder Save Error: " + feedErr.message); throw feedErr; }
         }
 
         if (objectsPayload.length > 0) {
             for (let i = 0; i < objectsPayload.length; i += 200) {
-                await supabaseClient.from('survey_objects').upsert(objectsPayload.slice(i, i + 200), { onConflict: 'id' });
+                const { error: objErr } = await supabaseClient.from('survey_objects').upsert(objectsPayload.slice(i, i + 200), { onConflict: 'id' });
+                if(objErr) { alert("Objects Save Error: " + objErr.message); throw objErr; }
             }
         }
 
@@ -183,11 +201,21 @@ window.syncToSupabase = async function() {
             if (unsyncedPhotos.length > 0) {
                 const photoPayload = unsyncedPhotos.map(p => ({ id: p.id, user_id: appState.user.id, object_type: p.object_type, object_id: p.object_id, photo_url: p.photo_url }));
                 for(let i=0; i<photoPayload.length; i+=5) {
-                    await supabaseClient.from('object_photos').upsert(photoPayload.slice(i, i+5), { onConflict: 'id' });
+                    const { error: photoErr } = await supabaseClient.from('object_photos').upsert(photoPayload.slice(i, i+5), { onConflict: 'id' });
+                    if(photoErr) { alert("Photo Save Error: " + photoErr.message); throw photoErr; }
                 }
                 unsyncedPhotos.forEach(p => p.synced = true); 
             }
         }
+
+        if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState);
+        setSyncStatus('synced'); 
+    } catch (err) { 
+        console.warn("Sync error", err); 
+        setSyncStatus('offline'); 
+    }
+}
+
 
         if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState);
         setSyncStatus('synced'); 
