@@ -1087,10 +1087,48 @@ window.generateCadSLDPdf = async function() {
 window.requestAppPermissions = function() {
     if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
         var permissions = cordova.plugins.permissions;
-        var list = [ permissions.ACCESS_FINE_LOCATION, permissions.WRITE_EXTERNAL_STORAGE, permissions.READ_EXTERNAL_STORAGE, permissions.CAMERA ];
+        
+        // Added Photo & Video permissions for Android 13+ (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO)
+        var list = [ 
+            permissions.ACCESS_FINE_LOCATION, 
+            permissions.CAMERA,
+            permissions.READ_EXTERNAL_STORAGE, 
+            permissions.WRITE_EXTERNAL_STORAGE,
+            'android.permission.READ_MEDIA_IMAGES',
+            'android.permission.READ_MEDIA_VIDEO'
+        ];
+        
         permissions.requestPermissions(list, function(status) {
-            if(!status.hasPermission) document.getElementById('permission-overlay').style.display = 'flex';
-            else { document.getElementById('permission-overlay').style.display = 'none'; initializeAppPostPermissions(); }
+            // 1. Verify Location Permission
+            permissions.checkPermission(permissions.ACCESS_FINE_LOCATION, function(locStatus) {
+                if (!locStatus.hasPermission) {
+                    document.getElementById('permission-overlay').style.display = 'flex';
+                    showToast("Location permission is required!");
+                    return;
+                }
+                
+                // 2. Verify Camera Permission
+                permissions.checkPermission(permissions.CAMERA, function(camStatus) {
+                    if (!camStatus.hasPermission) {
+                        document.getElementById('permission-overlay').style.display = 'flex';
+                        showToast("Camera permission is required!");
+                        return;
+                    }
+
+                    // 3. Verify Photo/Video Storage Permission (Handles old Android + New Android 13+)
+                    permissions.checkPermission(permissions.READ_EXTERNAL_STORAGE, function(storeStatus) {
+                        permissions.checkPermission('android.permission.READ_MEDIA_IMAGES', function(mediaStatus) {
+                            if (storeStatus.hasPermission || mediaStatus.hasPermission) {
+                                document.getElementById('permission-overlay').style.display = 'none'; 
+                                initializeAppPostPermissions();
+                            } else {
+                                document.getElementById('permission-overlay').style.display = 'flex';
+                                showToast("Photo & Video permission is required!");
+                            }
+                        }, null);
+                    }, null);
+                }, null);
+            }, null);
         }, function() { document.getElementById('permission-overlay').style.display = 'flex'; });
     } else { document.getElementById('permission-overlay').style.display = 'none'; initializeAppPostPermissions(); }
 }
@@ -1127,11 +1165,8 @@ function startAppStartupSequence() {
         const loader = document.getElementById('erection-loader'); if(loader) loader.style.display = 'none';
         if(navigator.splashscreen) navigator.splashscreen.hide();
         if(window.cordova && cordova.plugins && cordova.plugins.permissions) {
-            var permissions = cordova.plugins.permissions;
-            permissions.hasPermission(permissions.ACCESS_FINE_LOCATION, function(status) {
-                if (status.hasPermission) initializeAppPostPermissions();
-                else document.getElementById('permission-overlay').style.display = 'flex';
-            }, function() { document.getElementById('permission-overlay').style.display = 'flex'; });
+            // Automatically ask for all permissions on startup
+            window.requestAppPermissions();
         } else initializeAppPostPermissions();
     }, 2000);
 }
