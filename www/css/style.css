@@ -171,3 +171,39 @@ input:checked + .slider:before { transform: translateX(22px); }
 
 #app-toast { position: fixed; top: 120px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #1e293b; color: #ffffff; padding: 12px 20px; border-radius: 12px; font-size: 0.9rem; font-weight: 600; box-shadow: var(--shadow-md); z-index: 5000; opacity: 0; transition: all 0.3s; display: flex; align-items: center; gap: 10px; width: max-content; max-width: 90%; pointer-events: none; }
 #app-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* ====== LINE TRANSFORM LOGIC (TOP vs BOTTOM) ====== */
+/* Overhead lines shifted to pole top */
+.ht-line-path, .lt-line-path, .ryb-line-path { transform: translateY(-44px); }
+/* Underground lines attach to bottom (0 shift) */
+.ug-line-path { transform: translateY(0px); }
+
+/* ====== SEARCH SUGGESTIONS LAYER FIX ====== */
+.suggestions-panel {
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 12px;
+    right: 12px;
+    background: var(--bg-sheet);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5); /* Deep shadow */
+    max-height: 300px;
+    overflow-y: auto;
+    display: none;
+    z-index: 99999 !important; /* Forces it above KPI and Map */
+}
+
+/* ====== UNSYNC BADGE ====== */
+.unsync-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #ef4444;
+    color: white;
+    font-size: 0.65rem;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 10px;
+    display: none;
+}
+.unsync-badge.active { display: block; }
