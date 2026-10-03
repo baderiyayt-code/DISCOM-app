@@ -42,14 +42,11 @@ window.getDistStr = (lat, lng) => {
     return window.formatDistance(window.calcDistance(c.lat, c.lng, lat, lng));
 };
 
-// FIX 5: preferCanvas is disabled so that DOM hide-classes work on paths
 function initMapLayers() {
     if (typeof L === 'undefined') return; 
+    // FIX: preferCanvas is specifically false to allow SVG class hiding to work on zoom
     map = L.map('map', { 
-        zoomControl: false, 
-        attributionControl: false, 
-        preferCanvas: false, // FIX: Set to false to force SVG rendering (CSS shadows work here)
-        rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
+        zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0,
         zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false
     }).setView([26.9150, 75.7830], 16);
 
@@ -94,15 +91,11 @@ function initMapLayers() {
     };
 }
 
-
 function updateMapZoomClasses() {
     if(!map) return;
     const z = map.getZoom(); const mapEl = document.getElementById('map');
     
-    // Sabse pehle saari hide classes hatao
     mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-ht-lines', 'hide-dt', 'hide-gss');
-    
-    // Zoom out ke hisaab se ek-ek karke cheezein hide karo
     if (z <= 18) mapEl.classList.add('hide-consumers'); 
     if (z <= 17) mapEl.classList.add('hide-lt-poles'); 
     if (z <= 16) mapEl.classList.add('hide-lt-lines'); 
@@ -390,28 +383,16 @@ const C_YELLOW = '#facc15'; const W_BASE = '#ffffff';
 
 function getPoleSVG(type, config, isOrphan) {
     const fill = isOrphan ? '#ef4444' : C_YELLOW;
-    
-    // TOWER (A shape - No white background)
     if(type === 'TOWER') return `<svg viewBox="0 0 60 80" style="width:30px;height:45px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><line x1="18" y1="40" x2="42" y2="40" stroke="#1e293b" stroke-width="4"/><line x1="12" y1="60" x2="48" y2="60" stroke="#1e293b" stroke-width="4"/><circle cx="30" cy="5" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
-    
-    // RAIL POLE (|| shape - No white background)
     if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 80" style="width:20px;height:40px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><rect x="12" y="10" width="16" height="65" fill="${fill}" stroke="#1e293b" stroke-width="3"/><line x1="5" y1="20" x2="35" y2="20" stroke="#1e293b" stroke-width="4"/><circle cx="12" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/><circle cx="28" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`;
-    
-    // PCC DOUBLE POLE (|-| shape - No white background)
     if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 70 80" style="width:34px;height:42px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><line x1="20" y1="15" x2="20" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="20" y1="15" x2="20" y2="75" stroke="${fill}" stroke-width="4"/><line x1="50" y1="15" x2="50" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="50" y1="15" x2="50" y2="75" stroke="${fill}" stroke-width="4"/><line x1="10" y1="25" x2="60" y2="25" stroke="#1e293b" stroke-width="5"/><line x1="10" y1="45" x2="60" y2="45" stroke="#1e293b" stroke-width="4"/><circle cx="15" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="35" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="55" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
-    
-    // PCC SINGLE POLE (Y shape - No white background)
     return `<svg viewBox="0 0 50 80" style="width:26px;height:42px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><line x1="25" y1="20" x2="25" y2="75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><line x1="25" y1="20" x2="25" y2="75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><path d="M 8 15 L 25 25 L 42 15" fill="none" stroke="#1e293b" stroke-width="5" stroke-linejoin="round"/><circle cx="8" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="42" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="25" cy="14" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
 }
 
 function getDTSVG(phase, rating) {
     const numRating = String(rating).replace(/[^0-9]/g, '');
-    const lightOrange = '#fdba74'; // Light orange colour
-    
-    // Single Phase (Rectangular shape, 1 bushing)
+    const lightOrange = '#fdba74'; 
     if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:24px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="23" y="2" width="4" height="8" fill="#cbd5e1" stroke="#000" stroke-width="1"/><rect x="10" y="10" width="30" height="40" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><text x="25" y="35" font-size="14" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
-    
-    // Three Phase (Square shape, 3 bushings)
     return `<svg viewBox="0 0 70 70" style="width:32px;height:32px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="18" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="32" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="46" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="12" y="15" width="46" height="45" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2.5"/><text x="35" y="44" font-size="16" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
 }
 
@@ -422,10 +403,7 @@ function getConsumerSVG(cType, status) {
     else if(cType === 'SIP MIP') iconClass = 'fa-industry';
     else if(cType === 'Other') iconClass = 'fa-house';
 
-    let bgColor = '#10b981'; // Regular = Green
-    if(status === 'DC') bgColor = '#facc15'; // DC = Yellow
-    else if(status === 'PDC') bgColor = '#ef4444'; // PDC = Red
-
+    let bgColor = '#10b981'; if(status === 'DC') bgColor = '#facc15'; else if(status === 'PDC') bgColor = '#ef4444';
     const iconColor = status === 'DC' ? '#000' : '#fff';
 
     return `
@@ -443,20 +421,19 @@ function getLineSpec(type, phase, conductor) {
     
     if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 4, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
     
-    let lineClass = 'ht-line-path'; let color = '#3b82f6'; let weight = 3; let strokeColor = '#ffffff';
+    let lineClass = 'ht-line-path'; let color = '#3b82f6'; let weight = 4; let strokeColor = '#ffffff';
     
     if (cond.includes('UNDERGROUND') || cond.includes('UG')) {
         color = '#000000'; weight = 5; strokeColor = '#ffffff'; lineClass = 'ug-line-path';
     } else if (phase === 'Three Phase') {
-        // Parallel RYB lines using CSS shadow
-        lineClass = 'ryb-line-path'; color = '#eab308'; // Main line Yellow, shadows will be Red & Blue
+        lineClass = 'ryb-line-path'; color = '#eab308'; 
     }
     return { name: '11 KV LINE', color: color, weight: weight, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: strokeColor };
 }
 
-/* ====== GIS CORE LOGIC ====== */
-// NEW HELPER: For creating parallel gaps
-window.getOffsetCoords = function(coords, offsetMeters) {
+// FIX: Safely calculate mathematical parallel offsets for RYB lines
+function getOffsetCoords(coords, offsetMeters) {
+    if(!coords || !coords[0] || !coords[1]) return coords;
     const lat1 = coords[0][0], lng1 = coords[0][1];
     const lat2 = coords[1][0], lng2 = coords[1][1];
     const dx = (lng2 - lng1) * 111139 * Math.cos(lat1 * Math.PI / 180);
@@ -467,7 +444,8 @@ window.getOffsetCoords = function(coords, offsetMeters) {
     const dLng = (nx * offsetMeters) / (111139 * Math.cos(lat1 * Math.PI / 180));
     const dLat = (ny * offsetMeters) / 111139;
     return [[lat1 + dLat, lng1 + dLng], [lat2 + dLat, lng2 + dLng]];
-};
+}
+
 /* ====== GIS CORE LOGIC ====== */
 function renderEntireNetwork() {
     if(!map) return; window.updateFeederDropdown();
@@ -494,8 +472,6 @@ function renderEntireNetwork() {
                 
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
                 const svgHtml = getPoleSVG(p.poleType, p.poleConfig, isOrphan);
-                
-                // FIX: Added 'lt-pole' and 'ht-pole' classes dynamically
                 const poleClass = isLT ? 'lt-pole' : 'ht-pole';
                 
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: `pole-marker-icon ${poleClass} ${isOrphan ? 'orphan-pulse' : ''}`, html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [40, 56], iconAnchor: [20, 28] }), zIndexOffset: 200 });
@@ -522,17 +498,16 @@ function renderEntireNetwork() {
             if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
             const spec = getLineSpec(line.type, line.phase, line.conductor); if (!f[spec.filterKey]) return;
             
-            // Invisible hit box layer
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 35, className: spec.lineClass }).addTo(featureGroups.lines);
             
-            // FIX: Ensure spec.lineClass is added to all rendered lines so they can hide
+            // MATH-BASED RYB LINES (No CSS Hacks)
             if(spec.lineClass === 'ryb-line-path') { 
-                const coordsR = window.getOffsetCoords(line.coords, 2); 
-                const coordsB = window.getOffsetCoords(line.coords, -2); 
+                const coordsR = getOffsetCoords(line.coords, 2.5); // Red shifted by 2.5m
+                const coordsB = getOffsetCoords(line.coords, -2.5); // Blue shifted by -2.5m
                 
-                L.polyline(coordsR, { color: '#ef4444', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
-                L.polyline(line.coords, { color: '#facc15', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
-                L.polyline(coordsB, { color: '#3b82f6', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(coordsR, { color: '#ef4444', weight: 2.5, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: '#facc15', weight: 2.5, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(coordsB, { color: '#3b82f6', weight: 2.5, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
             } else if (spec.lineClass === 'ug-line-path') {
                 L.polyline(line.coords, { color: '#ffffff', weight: spec.weight + 4, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
                 L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: '8, 8', className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
@@ -554,7 +529,7 @@ function renderEntireNetwork() {
                 m.on('click', () => { window.openObjectSheet('CONSUMER', c.id, c.name, `Type: <b>${c.cType||'Domestic'}</b><br>Status: <b>${c.status||'Regular'}</b><br>K-No: <b>${c.kno}</b><br>Load: <b>${c.load||'N/A'}</b>`); }); 
                 featureGroups.consumers.addLayer(m);
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
-                if (pCoords && !isNaN(pCoords.lat)) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.5, dashArray: '3, 5', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
+                if (pCoords && !isNaN(pCoords.lat)) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: (appState.settings.theme==='dark'?'#f8fafc':'#0f172a'), weight: 1.5, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
             });
         }
         updateMapZoomClasses();
@@ -568,9 +543,6 @@ function renderEntireNetwork() {
         
     } catch(err) { console.error("Rendering error:", err); }
 }
-
-
-
 
 function saveSnapshot() { const net = getActiveNetwork(); if(!net) return; historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); if (historyStack.length > 15) historyStack.shift(); }
 window.undoLastAction = function() { if (historyStack.length === 0) return showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = getActiveNetwork(); if(!net) return; net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺"); }
@@ -591,7 +563,6 @@ window.openFilterModal = function() {
 window.saveFilters = function() { appState.filters.lines11 = document.getElementById('flt11').checked; appState.filters.linesLT = document.getElementById('fltLT').checked; appState.filters.poles = document.getElementById('fltPoles').checked; appState.filters.dts = document.getElementById('fltDTs').checked; appState.filters.consumers = document.getElementById('fltCons').checked; window.closeModal(); renderEntireNetwork(); showToast("Filters Updated"); }
 
 window.toggleSidebar = function(open) { document.getElementById('sidebar-drawer').classList.toggle('open', open); document.getElementById('sidebarBackdrop').classList.toggle('open', open); if(open) { window.renderGssSidebarList(); window.renderFeederSidebarList(); } }
-
 window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); window.tempPhotoUrl = null; }
 window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); window.isSetupModalOpen = false; document.getElementById('live-distance-indicator').style.display='none'; if(appState.user.isLoggedIn) { setTimeout(window.checkOnboardingFlow, 400); } }
 
@@ -615,7 +586,6 @@ function getNodeCoords(nodeId) {
     if (idStr === 'GSS' || idStr === net.feeder.code) { const g = appState.gssNodes[net.feeder.parentGss]; if(g) return { lat: g.lat, lng: g.lng }; }
     return null; 
 }
-
 window.runOrphanNodeChecker = function() {
     updateOrphanStatus(); const net = getActiveNetwork(); if(!net) return; const orphanCount = appState.orphanPoleIds.size;
     if (orphanCount === 0) return showToast("No orphan poles or nodes found! Network is fully connected.");
@@ -740,7 +710,7 @@ window.showFormModal = function(type, snapLat, snapLng) {
         else {
             if (net.dts.length === 0) return alert("Add a DT first!");
             let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); 
-            dtSelectHtml = `<div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select">${sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id.replace('DT_','')} (${window.getDistStr(d.lat, d.lng)})</option>`).join('')}</select></div>`;
+            dtSelectHtml = `<div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select">${sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id} (${window.getDistStr(d.lat, d.lng)})</option>`).join('')}</select></div>`;
         }
         openModal(`
             <div class="sheet-head"><div class="sheet-title">Add ${isHT?'HT':'LT'} Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -756,6 +726,7 @@ window.showFormModal = function(type, snapLat, snapLng) {
             <button class="btn-action-primary" onclick="${isHT?'window.saveNewPole()':'window.saveNewLTPole()'}">Save Pole</button>`);
     } else if (type === 'LINE') {
         if (net.poles.length === 0) return alert("Add at least one pole first!");
+        
         window.filterLineNodes = function() {
             const type = document.getElementById('inpLineType').value, fromSel = document.getElementById('inpFromNode'), dtSelectorBox = document.getElementById('ltLineDTSelector');
             let nodes = [];
@@ -766,13 +737,15 @@ window.showFormModal = function(type, snapLat, snapLng) {
                 nodes = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(cleanDT)).map(p => ({id: 'POLE_' + p.poleNo, title: 'LT Pole: '+p.poleNo, lat: p.lat, lng: p.lng}));
                 const dtObj = net.dts.find(d => String(d.code) === String(cleanDT)); if(dtObj) nodes.push({id: 'DT_'+cleanDT, title: 'DT: '+cleanDT, lat: dtObj.lat, lng: dtObj.lng});
             } else {
-                dtSelectorBox.style.display = 'none'; nodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: 'POLE_' + p.poleNo, title: 'HT Pole '+p.poleNo, lat: p.lat, lng: p.lng}));
+                dtSelectorBox.style.display = 'none'; 
+                nodes = net.poles.filter(p => p.lineType !== 'LT').map(p => ({id: 'POLE_' + p.poleNo, title: 'HT Pole '+p.poleNo, lat: p.lat, lng: p.lng}));
                 const parentGss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; 
                 if (parentGss) nodes.push({id: 'GSS_'+parentGss.code, title: 'GSS ('+parentGss.code+')', lat: parentGss.lat, lng: parentGss.lng});
             }
             nodes = window.sortByDistance(nodes, map.getCenter().lat, map.getCenter().lng); let defaultFrom = nodes.length > 0 ? nodes[0].id : '';
             fromSel.innerHTML = nodes.map(n => `<option value="${n.id}" ${n.id === defaultFrom ? 'selected' : ''}>${n.title} (${window.getDistStr(n.lat, n.lng)})</option>`).join(''); window.syncLineToSelect(); window.toggleLineConductor('inpLineType', 'inpConductor');
         };
+        
         window.syncLineToSelect = function() {
             const type = document.getElementById('inpLineType').value, fromVal = document.getElementById('inpFromNode').value, toSel = document.getElementById('inpToNode'); let nodes = [];
             if (type.includes('LT')) {
@@ -827,7 +800,6 @@ window.showFormModal = function(type, snapLat, snapLng) {
         setTimeout(() => window.filterConsumerPoles(), 30);
     }
 }
-
 window.updateDTRatingDropdowns = function(phaseId, ratingId) {
     const phase = document.getElementById(phaseId).value, ratingSel = document.getElementById(ratingId);
     if(phase === 'Single Phase') ratingSel.innerHTML = `<option value="5">5 kVA</option><option value="10">10 kVA</option><option value="16" selected>16 kVA</option><option value="25">25 kVA</option>`;
