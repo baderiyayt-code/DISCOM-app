@@ -77,7 +77,9 @@ function initMapLayers() {
         }
     });
 
+    // NEW OSM LAYER ADDED HERE
     tileLayers = { 
+        osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22 }) },
         hybrid: { name: 'Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, 
         street: { name: 'Google Street Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22 }) }
     };
@@ -89,7 +91,6 @@ function initMapLayers() {
     };
 }
 
-// FIX: Relaxed Zoom Level visibility to ensure Lines draw securely and are visible
 function updateMapZoomClasses() {
     if(!map) return;
     const z = map.getZoom(); const mapEl = document.getElementById('map');
@@ -312,7 +313,7 @@ window.toggleLiveTracking = function() {
         }, (err) => alert("GPS Error."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     }
 }
-// CLOSE MODAL ON OUTSIDE CLICK
+// MODAL CLOSE ON OUTSIDE CLICK
 document.getElementById('formModalOverlay').addEventListener('click', function(e) {
     if(e.target === this) { window.closeModal(); }
 });
@@ -378,20 +379,26 @@ const C_YELLOW = '#facc15'; const W_BASE = '#ffffff';
 
 function getPoleSVG(type, config, isOrphan) {
     const fill = isOrphan ? '#ef4444' : C_YELLOW;
-    if(type === 'TOWER') return `<svg viewBox="0 0 60 80" style="width:30px;height:45px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><path d="M 30 5 L 10 75 M 30 5 L 50 75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><line x1="5" y1="30" x2="55" y2="30" stroke="#1e293b" stroke-width="3.5" stroke-linecap="round"/><line x1="12" y1="50" x2="48" y2="50" stroke="#1e293b" stroke-width="3.5" stroke-linecap="round"/><path d="M 18 30 L 42 50 M 42 30 L 18 50 M 14 50 L 30 75 M 46 50 L 30 75" stroke="#475569" stroke-width="2"/><circle cx="5" cy="34" r="3" fill="#ffffff" stroke="#000"/><circle cx="55" cy="34" r="3" fill="#ffffff" stroke="#000"/><circle cx="12" cy="54" r="3" fill="#ffffff" stroke="#000"/><circle cx="48" cy="54" r="3" fill="#ffffff" stroke="#000"/></svg>`;
     
-    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 80" style="width:20px;height:40px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><rect x="15" y="5" width="10" height="70" fill="${fill}" stroke="#0f172a" stroke-width="1.5"/><line x1="20" y1="5" x2="20" y2="75" stroke="#000000" stroke-width="2" opacity="0.3"/><line x1="8" y1="15" x2="32" y2="15" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/><line x1="8" y1="35" x2="32" y2="35" stroke="#0f172a" stroke-width="3" stroke-linecap="round"/><circle cx="8" cy="11" r="2.5" fill="#fff" stroke="#000"/><circle cx="32" cy="11" r="2.5" fill="#fff" stroke="#000"/></svg>`;
+    // TOWER (A shape)
+    if(type === 'TOWER') return `<svg viewBox="0 0 60 80" style="width:36px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><circle cx="30" cy="40" r="28" fill="rgba(255,255,255,0.85)" /><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><line x1="18" y1="40" x2="42" y2="40" stroke="#1e293b" stroke-width="4"/><line x1="12" y1="60" x2="48" y2="60" stroke="#1e293b" stroke-width="4"/><circle cx="30" cy="5" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
     
-    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 70 80" style="width:34px;height:42px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><polygon points="17,75 23,75 21,15 19,15" fill="${fill}" stroke="#000" stroke-width="1"/><line x1="20" y1="15" x2="20" y2="75" stroke="#000" stroke-width="1" opacity="0.2"/><polygon points="47,75 53,75 51,15 49,15" fill="${fill}" stroke="#000" stroke-width="1"/><line x1="50" y1="15" x2="50" y2="75" stroke="#000" stroke-width="1" opacity="0.2"/><rect x="5" y="30" width="60" height="6" fill="#1e293b" stroke="#000" stroke-width="1"/><rect x="5" y="15" width="60" height="5" fill="#475569" stroke="#000" stroke-width="1"/><path d="M 22 36 L 48 60 M 48 36 L 22 60" stroke="#1e293b" stroke-width="2"/><path d="M 12 15 L 12 5" stroke="#1e293b" stroke-width="3"/><circle cx="12" cy="5" r="3.5" fill="#fff" stroke="#000"/><path d="M 35 15 L 35 5" stroke="#1e293b" stroke-width="3"/><circle cx="35" cy="5" r="3.5" fill="#fff" stroke="#000"/><path d="M 58 15 L 58 5" stroke="#1e293b" stroke-width="3"/><circle cx="58" cy="5" r="3.5" fill="#fff" stroke="#000"/></svg>`;
+    // RAIL POLE (|| shape)
+    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 80" style="width:24px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><rect x="2" y="5" width="36" height="70" rx="10" fill="rgba(255,255,255,0.85)" /><rect x="12" y="10" width="16" height="65" fill="${fill}" stroke="#1e293b" stroke-width="3"/><line x1="5" y1="20" x2="35" y2="20" stroke="#1e293b" stroke-width="4"/><circle cx="12" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/><circle cx="28" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`;
     
-    return `<svg viewBox="0 0 50 80" style="width:26px;height:42px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><polygon points="22,75 28,75 26,10 24,10" fill="${fill}" stroke="#000" stroke-width="1"/><line x1="25" y1="10" x2="25" y2="75" stroke="#000" stroke-width="1" opacity="0.2"/><path d="M 8,20 L 25,30 L 42,20" fill="none" stroke="#1e293b" stroke-width="4" stroke-linejoin="round"/><line x1="25" y1="10" x2="25" y2="30" stroke="#1e293b" stroke-width="4"/><circle cx="8" cy="16" r="3.5" fill="#fff" stroke="#000" stroke-width="1.5"/><circle cx="42" cy="16" r="3.5" fill="#fff" stroke="#000" stroke-width="1.5"/><circle cx="25" cy="6" r="3.5" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`;
+    // PCC DOUBLE POLE (|-| shape)
+    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 70 80" style="width:40px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><rect x="5" y="10" width="60" height="65" rx="10" fill="rgba(255,255,255,0.85)" /><line x1="20" y1="15" x2="20" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="20" y1="15" x2="20" y2="75" stroke="${fill}" stroke-width="4"/><line x1="50" y1="15" x2="50" y2="75" stroke="#1e293b" stroke-width="6"/><line x1="50" y1="15" x2="50" y2="75" stroke="${fill}" stroke-width="4"/><line x1="10" y1="25" x2="60" y2="25" stroke="#1e293b" stroke-width="5"/><line x1="10" y1="45" x2="60" y2="45" stroke="#1e293b" stroke-width="4"/><circle cx="15" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="35" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="55" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
+    
+    // PCC SINGLE POLE (Y shape)
+    return `<svg viewBox="0 0 50 80" style="width:30px;height:48px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><circle cx="25" cy="40" r="24" fill="rgba(255,255,255,0.85)" /><line x1="25" y1="20" x2="25" y2="75" stroke="#1e293b" stroke-width="6" stroke-linecap="round"/><line x1="25" y1="20" x2="25" y2="75" stroke="${fill}" stroke-width="4" stroke-linecap="round"/><path d="M 8 15 L 25 25 L 42 15" fill="none" stroke="#1e293b" stroke-width="5" stroke-linejoin="round"/><circle cx="8" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="42" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="25" cy="14" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
 }
 
 function getDTSVG(phase, rating) {
     const numRating = String(rating).replace(/[^0-9]/g, '');
-    if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:24px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.7));"><rect x="10" y="12" width="30" height="42" rx="4" fill="#065f46" stroke="#0f172a" stroke-width="2"/><line x1="15" y1="12" x2="15" y2="54" stroke="#000" opacity="0.4" stroke-width="2"/><rect x="22" y="2" width="6" height="10" fill="#78350f" stroke="#000" stroke-width="1.5" rx="1"/><path d="M 20 5 h 10 M 20 8 h 10" stroke="#000" stroke-width="1"/><rect x="14" y="28" width="22" height="14" fill="#1e293b" rx="2"/><text x="25" y="39" font-size="11" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
-    
-    return `<svg viewBox="0 0 70 70" style="width:32px;height:32px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.7));"><path d="M 12 25 h -6 M 12 30 h -6 M 12 35 h -6 M 12 40 h -6 M 12 45 h -6 M 12 50 h -6" stroke="#475569" stroke-width="2"/><line x1="6" y1="25" x2="6" y2="50" stroke="#475569" stroke-width="2"/><path d="M 58 25 h 6 M 58 30 h 6 M 58 35 h 6 M 58 40 h 6 M 58 45 h 6 M 58 50 h 6" stroke="#475569" stroke-width="2"/><line x1="64" y1="25" x2="64" y2="50" stroke="#475569" stroke-width="2"/><rect x="12" y="15" width="46" height="50" rx="2" fill="#065f46" stroke="#0f172a" stroke-width="2.5"/><rect x="18" y="3" width="6" height="12" fill="#78350f" stroke="#000" stroke-width="1" rx="1"/><rect x="32" y="3" width="6" height="12" fill="#78350f" stroke="#000" stroke-width="1" rx="1"/><rect x="46" y="3" width="6" height="12" fill="#78350f" stroke="#000" stroke-width="1" rx="1"/><path d="M 16 7 h 10 M 30 7 h 10 M 44 7 h 10 M 16 11 h 10 M 30 11 h 10 M 44 11 h 10" stroke="#000" stroke-width="1"/><rect x="20" y="32" width="30" height="18" fill="#1e293b" rx="2"/><text x="35" y="45" font-size="14" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
+    // Single Phase (Cylindrical)
+    if(phase === 'Single Phase') return `<svg viewBox="0 0 50 70" style="width:26px;height:36px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="10" y="15" width="30" height="45" rx="15" fill="#166534" stroke="#ffffff" stroke-width="2"/><rect x="22" y="5" width="6" height="10" fill="#78350f" stroke="#fff" stroke-width="1.5" rx="2"/><text x="25" y="42" font-size="14" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
+    // Three Phase (Square)
+    return `<svg viewBox="0 0 70 70" style="width:34px;height:34px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="12" y="15" width="46" height="46" rx="2" fill="#166534" stroke="#ffffff" stroke-width="2"/><rect x="18" y="3" width="6" height="12" fill="#78350f" stroke="#fff" stroke-width="1.5" rx="1"/><rect x="32" y="3" width="6" height="12" fill="#78350f" stroke="#fff" stroke-width="1.5" rx="1"/><rect x="46" y="3" width="6" height="12" fill="#78350f" stroke="#fff" stroke-width="1.5" rx="1"/><text x="35" y="45" font-size="16" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
 }
 
 function getConsumerSVG(cType, status) {
@@ -404,13 +411,7 @@ function getConsumerSVG(cType, status) {
     let bgColor = '#10b981'; if(status === 'DC') bgColor = '#facc15'; else if(status === 'PDC') bgColor = '#ef4444';
     const iconColor = status === 'DC' ? '#000' : '#fff';
 
-    return `
-    <div style="position:relative; width:26px; height:26px; display:flex; align-items:center; justify-content:center;">
-        <div style="background:${bgColor}; border:2.5px solid #fff; border-radius:50%; width:100%; height:100%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 8px rgba(0,0,0,0.5); z-index:2;">
-            <i class="fa-solid ${iconClass}" style="color:${iconColor}; font-size:12px;"></i>
-        </div>
-        <div style="position:absolute; bottom:-6px; width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:8px solid ${bgColor}; z-index:1; filter:drop-shadow(0 2px 2px rgba(0,0,0,0.4));"></div>
-    </div>`;
+    return `<div style="position:relative; width:26px; height:26px; display:flex; align-items:center; justify-content:center;"><div style="background:${bgColor}; border:2.5px solid #fff; border-radius:50%; width:100%; height:100%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.8); z-index:2;"><i class="fa-solid ${iconClass}" style="color:${iconColor}; font-size:12px;"></i></div><div style="position:absolute; bottom:-6px; width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:8px solid ${bgColor}; z-index:1; filter:drop-shadow(0 2px 2px rgba(0,0,0,0.4));"></div></div>`;
 }
 
 function getLineSpec(type, phase, conductor) {
@@ -419,12 +420,12 @@ function getLineSpec(type, phase, conductor) {
     
     if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 4, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
     
-    let lineClass = 'ht-line-path'; let color = '#3b82f6'; let weight = 5; let strokeColor = '#ffffff';
+    let lineClass = 'ht-line-path'; let color = '#2563eb'; let weight = 5; let strokeColor = '#ffffff';
     
     if (cond.includes('UNDERGROUND') || cond.includes('UG')) {
-        color = '#0f172a'; weight = 7; strokeColor = '#ffffff';
+        color = '#000000'; weight = 6; strokeColor = '#ffffff'; lineClass = 'ug-line-path';
     } else if (phase === 'Three Phase') {
-        lineClass = 'ryb-line-path'; color = '#3b82f6'; 
+        lineClass = 'ryb-line-path'; color = '#2563eb'; 
     }
     return { name: '11 KV LINE', color: color, weight: weight, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: strokeColor };
 }
@@ -479,13 +480,16 @@ function renderEntireNetwork() {
             if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
             const spec = getLineSpec(line.type, line.phase, line.conductor); if (!f[spec.filterKey]) return;
             
-            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 30, className: spec.lineClass }).addTo(featureGroups.lines);
+            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 35, className: spec.lineClass }).addTo(featureGroups.lines);
             
-            // FIX 5: RYB Layers Draw Native
+            // FIX: RYB Stacked Multi-line Drawing (Guarantees visible RYB parallel lines on any device)
             if(spec.lineClass === 'ryb-line-path') { 
-                L.polyline(line.coords, { color: '#ef4444', weight: 7, interactive: false }).addTo(featureGroups.lines); 
-                L.polyline(line.coords, { color: '#eab308', weight: 7, dashArray: '15, 20', interactive: false }).addTo(featureGroups.lines); 
-                L.polyline(line.coords, { color: '#3b82f6', weight: 7, dashArray: '15, 20', dashOffset: '15', interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: '#2563eb', weight: 11, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: '#facc15', weight: 7, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: '#ef4444', weight: 3, interactive: false }).addTo(featureGroups.lines); 
+            } else if (spec.lineClass === 'ug-line-path') {
+                L.polyline(line.coords, { color: '#ffffff', weight: spec.weight + 4, interactive: false }).addTo(featureGroups.lines); 
+                L.polyline(line.coords, { color: spec.color, weight: spec.weight, interactive: false }).addTo(featureGroups.lines); 
             } else { 
                 L.polyline(line.coords, { color: spec.strokeColor, weight: spec.weight + 4, opacity: 0.8, interactive: false }).addTo(featureGroups.lines); 
                 L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', interactive: false }).addTo(featureGroups.lines); 
@@ -504,7 +508,7 @@ function renderEntireNetwork() {
                 m.on('click', () => { window.openObjectSheet('CONSUMER', c.id, c.name, `Type: <b>${c.cType||'Domestic'}</b><br>Status: <b>${c.status||'Regular'}</b><br>K-No: <b>${c.kno}</b><br>Load: <b>${c.load||'N/A'}</b>`); }); 
                 featureGroups.consumers.addLayer(m);
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = getNodeCoords(parentStr);
-                if (pCoords && !isNaN(pCoords.lat)) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: (appState.settings.theme==='dark'?'#f8fafc':'#0f172a'), weight: 1.5, dashArray: '4, 4', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
+                if (pCoords && !isNaN(pCoords.lat)) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.5, dashArray: '3, 5', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
             });
         }
         updateMapZoomClasses();
@@ -608,7 +612,8 @@ window.openEditFeederModal = function(code) {
         <button class="btn-action-primary" onclick="window.saveEditedFeeder('${code}')">Save Changes</button>`);
 }
 window.saveEditedFeeder = function(code) { const newName = document.getElementById('editFeederName').value.trim(); if(!newName) return alert("Enter new name"); if(appState.feeders[code]) { appState.feeders[code].feeder.name = newName; triggerPersistence(); window.closeModal(); renderEntireNetwork(); showToast("Feeder Updated!"); } }
-
+window.deleteFeederStrict = function(code) { if(!confirm(`WARNING: Deleting Feeder ${code} will destroy all data inside it. Continue?`)) return; delete appState.feeders[code]; if(appState.currentFeederCode === code) { const remaining = Object.keys(appState.feeders); appState.currentFeederCode = remaining.length > 0 ? remaining[0] : null; } window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Feeder Deleted!"); window.checkOnboardingFlow(); }
+window.deleteGssAndFeederStrict = function(code) { const conf1 = confirm(`WARNING: You are about to delete GSS ${code} and ALL its associated feeders! This cannot be undone. Continue?`); if (!conf1) return; const conf2 = prompt(`Type GSS code "${code}" to confirm:`); if (conf2 !== code) return alert("Cancelled"); saveSnapshot(); if (appState.gssNodes[code]) delete appState.gssNodes[code]; const feedersToDelete = []; Object.keys(appState.feeders).forEach(fCode => { if (appState.feeders[fCode].feeder.parentGss === code) feedersToDelete.push(fCode); }); feedersToDelete.forEach(fCode => delete appState.feeders[fCode]); if (!appState.feeders[appState.currentFeederCode] || feedersToDelete.includes(appState.currentFeederCode)) { const remainingFeeders = Object.keys(appState.feeders); appState.currentFeederCode = remainingFeeders.length > 0 ? remainingFeeders[0] : null; } renderEntireNetwork(); triggerPersistence(); window.renderGssSidebarList(); showToast("Deleted completely!"); window.checkOnboardingFlow(); }
 window.openAddGssModal = function() { window.toggleSidebar(false); openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> Add New GSS</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><label>GSS Code*</label><input type="text" id="inpGssCode" class="form-input" placeholder="e.g. 132"></div><div class="form-row"><label>GSS Name*</label><input type="text" id="inpGssName" class="form-input" placeholder="e.g. 132/33 kV Substation"></div><button class="btn-action-primary" onclick="window.saveNewGss()">Save GSS at Map Center</button>`); };
 window.saveNewGss = function() { const code = document.getElementById('inpGssCode').value.trim(), name = document.getElementById('inpGssName').value.trim(); if (!code || !name) return alert("Enter GSS Code and Name"); if (appState.gssNodes[code]) return alert("GSS Code already exists!"); const center = map.getCenter(); appState.gssNodes[code] = { code, name, lat: parseFloat(center.lat.toFixed(6)), lng: parseFloat(center.lng.toFixed(6)) }; window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("New GSS added successfully!"); window.checkOnboardingFlow(); };
 window.relocateGss = function(gssCode) { window.closeObjectSheet(); window.toggleSidebar(false); window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
@@ -647,9 +652,9 @@ window.selectSearchResult = function(type, id) {
     if(target && target.lat) { map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { window.openObjectSheet(type, id, type === 'CONSUMER' ? target.name : (type === 'DT' ? `DT: ${target.code}` : `Pole: ${target.poleNo}`), popupHtml); }, 1000); }
 }
 
-/* ====== ADD FORMS & CAPTURE LOGIC ====== */
+/* ====== ADD FORMS ====== */
 const getCameraFormHtml = () => `
-    <div style="margin-bottom:15px; padding:10px; background:var(--bg-glass); border-radius:12px; border:1px dashed var(--border); text-align:center;">
+    <div style="margin-top:15px; margin-bottom:5px; padding:10px; background:var(--bg-glass); border-radius:12px; border:1px dashed var(--border); text-align:center;">
         <img id="formTempPhoto" src="" style="width:100%; height:120px; object-fit:cover; border-radius:8px; display:none; margin-bottom:8px;">
         <button type="button" class="btn-action-primary" style="padding:10px; width:100%; background:#0f172a; margin:0;" onclick="window.captureTempPhoto()">
             <i class="fa-solid fa-camera"></i> Capture Photo
@@ -684,8 +689,8 @@ window.showFormModal = function(type, snapLat, snapLng) {
         if(isHT) { let maxHtNo = 0; net.poles.filter(p => p.lineType !== 'LT').forEach(p => { const num = parseInt(p.poleNo); if(!isNaN(num) && num > maxHtNo) maxHtNo = num; }); nextNo = maxHtNo + 1; } 
         else {
             if (net.dts.length === 0) return alert("Add a DT first!");
-            let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); 
-            dtSelectHtml = `<div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select">${sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id} (${window.getDistStr(d.lat, d.lng)})</option>`).join('')}</select></div>`;
+            let sortedDTs = window.sortByDistance(net.dts.map(d=>({id: 'DT_' + d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); 
+            dtSelectHtml = `<div class="form-row"><label>Associated DT*</label><select id="inpLTPoleDT" class="form-select">${sortedDTs.map(d => `<option value="${d.id}">DT: ${d.id.replace('DT_','')} (${window.getDistStr(d.lat, d.lng)})</option>`).join('')}</select></div>`;
         }
         openModal(`
             <div class="sheet-head"><div class="sheet-title">Add ${isHT?'HT':'LT'} Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -701,7 +706,6 @@ window.showFormModal = function(type, snapLat, snapLng) {
             <button class="btn-action-primary" onclick="${isHT?'window.saveNewPole()':'window.saveNewLTPole()'}">Save Pole</button>`);
     } else if (type === 'LINE') {
         if (net.poles.length === 0) return alert("Add at least one pole first!");
-        
         window.filterLineNodes = function() {
             const type = document.getElementById('inpLineType').value, fromSel = document.getElementById('inpFromNode'), dtSelectorBox = document.getElementById('ltLineDTSelector');
             let nodes = [];
@@ -743,7 +747,7 @@ window.showFormModal = function(type, snapLat, snapLng) {
 
         openModal(`<div class="sheet-head"><div class="sheet-title">Add Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
             <div class="form-grid-2">
-                <div class="form-row"><label>Voltage Type*</label><select id="inpLineType" class="form-select" onchange="window.filterLineNodes()"><option value="11 KV LINE" selected>11 KV (HT)</option><option value="LT LINE">LT Line</option></select></div>
+                <div class="form-row"><label>Voltage Type*</label><select id="inpLineType" class="form-select" onchange="window.filterLineNodes(); window.toggleLineConductor('inpLineType', 'inpConductor');"><option value="11 KV LINE" selected>11 KV (HT)</option><option value="LT LINE">LT Line</option></select></div>
                 <div class="form-row" id="linePhaseRow"><label>Phase Type (HT)*</label><select id="inpLinePhase" class="form-select"><option value="Three Phase" selected>Three Phase</option><option value="Single Phase">Single Phase</option></select></div>
             </div>
             <div class="form-row"><label>Conductor*</label><select id="inpConductor" class="form-select"></select></div>
@@ -944,7 +948,6 @@ function deleteLTPoleLogic(p, net) { net.consumers = net.consumers.filter(c => !
 window.deleteEntity = function(type, id) {
     const net = getActiveNetwork(); if(!confirm(`Delete this ${type.toUpperCase()}?`)) return; saveSnapshot();
     
-    // TRACK FOR SUPABASE DELETION
     const beforeIds = [...net.poles, ...net.lines, ...net.dts, ...net.consumers].map(x=>x.id);
 
     if (type === 'line') net.lines = net.lines.filter(x => x.id !== id); 
