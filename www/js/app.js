@@ -20,8 +20,8 @@ let map = null; let tileLayers = {}; let currentTileIndex = 0; let layerKeys = [
 window.isSetupModalOpen = false; window.tempPhotoUrl = null;
 
 const i18n = {
-    en: { appLanguage: "App Language", distUnit: "Distance Unit", theme: "Theme Mode", settings: "Settings", save: "Save", edit: "Edit", delete: "Delete", mapSetup: "Network Setup Required" },
-    hi: { appLanguage: "ऐप की भाषा", distUnit: "दूरी की इकाई", theme: "थीम मोड", settings: "सेटिंग्स", save: "सेव करें", edit: "बदलें", delete: "डिलीट", mapSetup: "नेटवर्क सेटअप ज़रूरी है" }
+    en: { appLanguage: "App Language", distUnit: "Distance Unit", theme: "Theme Mode", settings: "Settings", save: "Save", edit: "Edit", delete: "Delete", mapSetup: "Network Setup Required", htPole: "HT Pole", ltPole: "LT Pole", line: "Line", dt: "DT", consumer: "Consumer", permReq: "Permissions Required", permDesc: "This app strictly requires <b>Location, Camera</b> and <b>Storage</b> permissions to function.", grantPerm: "Grant Permissions" },
+    hi: { appLanguage: "ऐप की भाषा", distUnit: "दूरी की इकाई", theme: "थीम मोड", settings: "सेटिंग्स", save: "सेव करें", edit: "बदलें", delete: "डिलीट", mapSetup: "नेटवर्क सेटअप ज़रूरी है", htPole: "HT पोल", ltPole: "LT पोल", line: "लाइन", dt: "डी.टी", consumer: "कंज्यूमर", permReq: "अनुमति आवश्यक है", permDesc: "इस ऐप को चलाने के लिए <b>Location, Camera</b> और <b>Storage</b> की अनुमति देना अनिवार्य है।", grantPerm: "अनुमति दें" }
 };
 
 function applyTranslations() {
@@ -54,6 +54,7 @@ function initMapLayers() {
     map.on('move', () => { 
         const c = map.getCenter(); 
         document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
+        
         if (appState.placementType && document.getElementById('center-placement-pin').style.display === 'block') {
             const net = getActiveNetwork();
             if (net) {
@@ -68,6 +69,7 @@ function initMapLayers() {
                 net.dts.forEach(d => checkNode(d.lat, d.lng, `DT ${d.code}`));
                 const gss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null;
                 if(gss) checkNode(gss.lat, gss.lng, 'GSS');
+                
                 const ind = document.getElementById('live-distance-indicator');
                 if (nearestDist === Infinity) { ind.style.display = 'none'; } 
                 else { ind.style.display = 'block'; ind.innerText = `Nearest: ${nearestName} (${window.formatDistance(nearestDist)})`; }
@@ -102,15 +104,19 @@ function updateMapZoomClasses() {
 }
 
 window.toggleMapLayer = function() { 
-    if(!map) return; map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; 
+    if(!map) return;
+    map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; 
     tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name;
 }
 
 window.updateFeederDropdown = function() {
-    const header = document.getElementById('activeFeederLabel'); if(!header) return;
+    const header = document.getElementById('activeFeederLabel');
+    if(!header) return;
     const keys = Object.keys(appState.feeders || {});
-    if(keys.length === 0) { header.innerText = 'No Feeder'; appState.currentFeederCode = null; } 
-    else {
+    if(keys.length === 0) {
+        header.innerText = 'No Feeder';
+        appState.currentFeederCode = null;
+    } else {
         if(!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode]) { appState.currentFeederCode = keys[0]; }
         const currentFeeder = appState.feeders[appState.currentFeederCode];
         header.innerText = (currentFeeder && currentFeeder.feeder && currentFeeder.feeder.name) ? currentFeeder.feeder.name : 'Unnamed Feeder';
@@ -118,67 +124,152 @@ window.updateFeederDropdown = function() {
 };
 
 window.switchFeeder = function(code) { 
-    if (appState.feeders[code]) { appState.currentFeederCode = code; window.updateFeederDropdown(); renderEntireNetwork(); triggerPersistence(); centerMapOnGSS(); window.toggleSidebar(false); } 
+    if (appState.feeders[code]) { 
+        appState.currentFeederCode = code; 
+        window.updateFeederDropdown();
+        renderEntireNetwork(); 
+        triggerPersistence(); 
+        centerMapOnGSS(); 
+        window.toggleSidebar(false); 
+    } 
 }
 
 function getActiveNetwork() {
     let keys = Object.keys(appState.feeders || {});
     if (keys.length > 0 && (!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode])) appState.currentFeederCode = keys[0];
-    let net = appState.feeders[appState.currentFeederCode]; if (!net) return null; 
+    let net = appState.feeders[appState.currentFeederCode];
+    if (!net) return null; 
     if (!Array.isArray(net.poles)) net.poles = []; if (!Array.isArray(net.lines)) net.lines = []; if (!Array.isArray(net.dts)) net.dts = []; if (!Array.isArray(net.consumers)) net.consumers = [];
     return net;
 }
 
-function showToast(msg) { const toast = document.getElementById('app-toast'); const msgElem = document.getElementById('toast-msg'); if (!toast || !msgElem) return; msgElem.innerText = msg; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500); }
-function setSyncStatus(status) { const ind = document.getElementById('sync-indicator'); if(!navigator.onLine) status = 'offline'; if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>'; else if(status === 'synced') ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>'; else ind.innerHTML = '<i class="fa-solid fa-cloud-xmark sync-error"></i>'; }
-function getPhotoUrl(objId) { if(!appState.photos) return null; const p = appState.photos.find(x => x.object_id === objId); return p ? p.photo_url : null; }
+function showToast(msg) {
+    const toast = document.getElementById('app-toast'); const msgElem = document.getElementById('toast-msg');
+    if (!toast || !msgElem) return; msgElem.innerText = msg;
+    toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3500);
+}
 
+function setSyncStatus(status) {
+    const ind = document.getElementById('sync-indicator'); if(!navigator.onLine) status = 'offline';
+    if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>';
+    else if(status === 'synced') ind.innerHTML = '<i class="fa-solid fa-cloud-check sync-success"></i>';
+    else ind.innerHTML = '<i class="fa-solid fa-cloud-xmark sync-error"></i>';
+}
+
+function getPhotoUrl(objId) {
+    if(!appState.photos) return null;
+    const p = appState.photos.find(x => x.object_id === objId);
+    return p ? p.photo_url : null;
+}
+
+/* ====== ADVANCED DATABASE SYNC (LAG-FREE & TABLE SEPARATED) ====== */
 window.syncToSupabase = async function() {
     if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
     try {
-        const dataToSync = JSON.parse(JSON.stringify(appState)); delete dataToSync.user; delete dataToSync.orphanPoleIds; delete dataToSync.photos; 
-        await supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: dataToSync, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-        
+        // 1. CLEAR DELETED ITEMS FROM DB (Objects & Photos tables)
         if (appState.deletedObjectIds && appState.deletedObjectIds.length > 0) {
-            const {error: delErr} = await supabaseClient.from('survey_objects').delete().in('id', appState.deletedObjectIds);
-            if (!delErr) { appState.deletedObjectIds = []; if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState); }
+            await supabaseClient.from('survey_objects').delete().in('id', appState.deletedObjectIds);
+            await supabaseClient.from('object_photos').delete().in('object_id', appState.deletedObjectIds);
+            appState.deletedObjectIds = []; 
         }
+
+        // 2. UPLOAD PHOTOS (Only to object_photos table in chunks to avoid lag)
         if (appState.photos && appState.photos.length > 0) {
             const unsyncedPhotos = appState.photos.filter(p => !p.synced);
             if (unsyncedPhotos.length > 0) {
-                const photoPayload = unsyncedPhotos.map(p => ({ user_id: appState.user.id, object_type: p.object_type, object_id: p.object_id, photo_url: p.photo_url }));
-                const {error: photoErr} = await supabaseClient.from('object_photos').upsert(photoPayload, { onConflict: 'id' });
-                if (!photoErr) { unsyncedPhotos.forEach(p => p.synced = true); if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState); }
+                const photoPayload = unsyncedPhotos.map(p => ({ id: p.id, user_id: appState.user.id, object_type: p.object_type, object_id: p.object_id, photo_url: p.photo_url }));
+                for(let i=0; i<photoPayload.length; i+=5) {
+                    await supabaseClient.from('object_photos').upsert(photoPayload.slice(i, i+5), { onConflict: 'id' });
+                }
+                unsyncedPhotos.forEach(p => p.synced = true); 
             }
         }
+
+        // 3. SEPARATE LIGHTWEIGHT DATA & HEAVY DATA
+        let metaDataToSync = {
+            settings: appState.settings,
+            filters: appState.filters,
+            currentFeederCode: appState.currentFeederCode,
+            gssNodes: appState.gssNodes,
+            feeders: {}
+        };
+        
         let objectsPayload = [];
         for (let fCode in appState.feeders) {
-            let f = appState.feeders[fCode]; let gCode = f.feeder.parentGss || 'UNKNOWN';
-            f.poles.forEach(p => objectsPayload.push({ id: p.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'POLE', details: p, photo_url: getPhotoUrl(p.id) }));
-            f.dts.forEach(d => objectsPayload.push({ id: d.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'DT', details: d, photo_url: getPhotoUrl(d.id) }));
-            f.lines.forEach(l => objectsPayload.push({ id: l.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'LINE', details: l, photo_url: getPhotoUrl(l.id) }));
-            f.consumers.forEach(c => objectsPayload.push({ id: c.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'CONSUMER', details: c, photo_url: getPhotoUrl(c.id) }));
+            let f = appState.feeders[fCode];
+            // Only keeping structure layout, NO objects in survey_data
+            metaDataToSync.feeders[fCode] = { feeder: f.feeder, poles: [], dts: [], lines: [], consumers: [] }; 
+            let gCode = f.feeder.parentGss || 'UNKNOWN';
+
+            // Pushing detailed items into dedicated array (No base64 photos included here)
+            f.poles.forEach(p => objectsPayload.push({ id: p.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'POLE', details: p }));
+            f.dts.forEach(d => objectsPayload.push({ id: d.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'DT', details: d }));
+            f.lines.forEach(l => objectsPayload.push({ id: l.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'LINE', details: l }));
+            f.consumers.forEach(c => objectsPayload.push({ id: c.id, user_id: appState.user.id, gss_code: gCode, feeder_code: fCode, object_type: 'CONSUMER', details: c }));
         }
+
+        // Upload lightweight Meta to survey_data
+        await supabaseClient.from('survey_data').upsert({ user_id: appState.user.id, data: metaDataToSync, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+
+        // Upload Heavy Objects to survey_objects in batches
         if (objectsPayload.length > 0) {
-            for (let i = 0; i < objectsPayload.length; i += 100) { const batch = objectsPayload.slice(i, i + 100); await supabaseClient.from('survey_objects').upsert(batch, { onConflict: 'id' }); }
+            for (let i = 0; i < objectsPayload.length; i += 200) {
+                const batch = objectsPayload.slice(i, i + 200);
+                await supabaseClient.from('survey_objects').upsert(batch, { onConflict: 'id' });
+            }
         }
+        
+        if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState);
         setSyncStatus('synced'); 
     } catch (err) { console.warn("Sync error", err); setSyncStatus('offline'); }
 }
 
 async function pullFromSupabase() {
     if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
-    let query = supabaseClient.from('survey_data').select('data').eq('user_id', appState.user.id);
     try {
-        const { data, error } = await query; if (error) throw error;
-        if (data && data.length > 0) {
-            const cloudData = data[0].data; 
-            if(cloudData.feeders) appState.feeders = cloudData.feeders; 
-            if(cloudData.gssNodes) appState.gssNodes = cloudData.gssNodes; 
-            if(cloudData.currentFeederCode) appState.currentFeederCode = cloudData.currentFeederCode;
-            if(cloudData.photos) appState.photos = cloudData.photos;
-            if(cloudData.settings) appState.settings = { ...appState.settings, ...cloudData.settings };
-            if(cloudData.deletedObjectIds) appState.deletedObjectIds = cloudData.deletedObjectIds;
+        const { data: metaData, error: metaErr } = await supabaseClient.from('survey_data').select('data').eq('user_id', appState.user.id);
+        if (metaErr) throw metaErr;
+        
+        if (metaData && metaData.length > 0) {
+            const cloudData = metaData[0].data; 
+            appState.feeders = cloudData.feeders || {}; 
+            appState.gssNodes = cloudData.gssNodes || {}; 
+            appState.currentFeederCode = cloudData.currentFeederCode || null;
+            appState.settings = { ...appState.settings, ...(cloudData.settings || {}) };
+            
+            // Reconstruct Arrays
+            for (let fCode in appState.feeders) {
+                appState.feeders[fCode].poles = []; appState.feeders[fCode].dts = [];
+                appState.feeders[fCode].lines = []; appState.feeders[fCode].consumers = [];
+            }
+
+            const { data: objData } = await supabaseClient.from('survey_objects').select('*').eq('user_id', appState.user.id);
+            if(objData && objData.length > 0) {
+                objData.forEach(row => {
+                    const fCode = row.feeder_code;
+                    if(appState.feeders[fCode]) {
+                        if(row.object_type === 'POLE') appState.feeders[fCode].poles.push(row.details);
+                        if(row.object_type === 'DT') appState.feeders[fCode].dts.push(row.details);
+                        if(row.object_type === 'LINE') appState.feeders[fCode].lines.push(row.details);
+                        if(row.object_type === 'CONSUMER') appState.feeders[fCode].consumers.push(row.details);
+                    }
+                });
+            } else {
+                for (let fCode in appState.feeders) {
+                    if(cloudData.feeders && cloudData.feeders[fCode]) {
+                        appState.feeders[fCode].poles = cloudData.feeders[fCode].poles || [];
+                        appState.feeders[fCode].dts = cloudData.feeders[fCode].dts || [];
+                        appState.feeders[fCode].lines = cloudData.feeders[fCode].lines || [];
+                        appState.feeders[fCode].consumers = cloudData.feeders[fCode].consumers || [];
+                    }
+                }
+            }
+
+            const { data: photoData } = await supabaseClient.from('object_photos').select('id, object_type, object_id, photo_url').eq('user_id', appState.user.id);
+            if(photoData) {
+                appState.photos = photoData.map(p => ({ id: p.id, object_type: p.object_type, object_id: p.object_id, photo_url: p.photo_url, synced: true }));
+            } else appState.photos = [];
+
             if(typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState); 
             applyTranslations(); applyTheme(); if(map) map.invalidateSize();
             renderEntireNetwork(); window.updateFeederDropdown(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow();
@@ -192,7 +283,134 @@ function triggerPersistence() {
     if(appState.settings.liveSync) { window.syncToSupabase(); }
 }
 
-/* ====== REFINED REAL-LIFE SVGS ====== */
+let authMode = 'login';
+window.toggleAuthMode = function() {
+    authMode = authMode === 'login' ? 'signup' : 'login';
+    document.getElementById('loginBtn').style.display = authMode === 'login' ? 'inline-block' : 'none'; document.getElementById('signupBtn').style.display = authMode === 'signup' ? 'inline-block' : 'none'; document.getElementById('signupNameField').style.display = authMode === 'signup' ? 'block' : 'none'; document.getElementById('authToggleText').innerText = authMode === 'login' ? "Need an account? Sign Up" : "Already have an account? Login";
+}
+
+function applyAuthUIVisuals() {
+    document.getElementById('auth-screen').style.display = 'none'; document.getElementById('app-container').style.display = 'flex';
+    setTimeout(() => { if(map) map.invalidateSize(); }, 100);
+    document.getElementById('userNameDisplay').innerText = appState.user.name; 
+}
+
+window.checkOnboardingFlow = function() {
+    if(window.isSetupModalOpen) return;
+    if(Object.keys(appState.gssNodes || {}).length === 0) {
+        document.getElementById('onboarding-overlay').style.display = 'flex';
+        document.getElementById('onboarding-title').innerText = "Network Setup Required";
+        document.getElementById('onboarding-desc').innerText = "Please add your first GSS to begin mapping.";
+        document.getElementById('onboarding-btn').onclick = function() { document.getElementById('onboarding-overlay').style.display = 'none'; window.isSetupModalOpen = true; window.openAddGssModal(); };
+    } else if (Object.keys(appState.feeders || {}).length === 0) {
+        document.getElementById('onboarding-overlay').style.display = 'flex';
+        document.getElementById('onboarding-title').innerText = "Create Feeder";
+        document.getElementById('onboarding-desc').innerText = "You must create a Feeder linked to your GSS to continue.";
+        document.getElementById('onboarding-btn').onclick = function() { document.getElementById('onboarding-overlay').style.display = 'none'; window.isSetupModalOpen = true; window.openFeederConfigModal(); };
+    } else { document.getElementById('onboarding-overlay').style.display = 'none'; renderEntireNetwork(); }
+};
+
+window.handleSupabaseAuth = async function(mode) {
+    if(!supabaseClient) return alert("Network Error. Supabase not initialized.");
+    const email = document.getElementById('authEmail').value.trim(), password = document.getElementById('authPassword').value.trim(), name = document.getElementById('authName').value.trim();
+    if(!email || !password) return alert("Email and Password required"); showToast("Processing..."); let response;
+    if (mode === 'signup') { if(!name) return alert("Enter Full Name"); response = await supabaseClient.auth.signUp({ email, password, options: { data: { full_name: name } } }); } else response = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (response.error) alert(response.error.message);
+    else if (response.data.user) {
+        appState.user.isLoggedIn = true; appState.user.email = response.data.user.email; appState.user.id = response.data.user.id;
+        appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0];
+        applyAuthUIVisuals(); await pullFromSupabase(); showToast("Login Successful!");
+    }
+}
+window.handleSupabaseLogout = async function() { if(supabaseClient) await supabaseClient.auth.signOut(); if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.clear(); location.reload(); }
+
+window.openResetConfirmationModal = function() {
+    window.toggleSidebar(false); window.closeSettingsPage();
+    openModal(`<div class="sheet-head"><div class="sheet-title" style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Factory Reset</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+        <p style="font-size:0.9rem; color:var(--text-main); margin-bottom:15px; line-height:1.5;">This will permanently wipe all local database records, logs, and settings. This action cannot be undone.</p>
+        <div class="form-row"><label>Type "RESET" to confirm</label><input type="text" id="inpResetConfirm" class="form-input" placeholder="Type RESET here"></div>
+        <button class="btn-action-primary" style="background:#ef4444;" onclick="window.executeFactoryReset()">Erase All Data</button>`);
+};
+window.executeFactoryReset = async function() {
+    const val = document.getElementById('inpResetConfirm').value;
+    if(val !== 'RESET') return alert("Confirmation text does not match 'RESET'.");
+    showToast("Erasing all data...");
+    if(supabaseClient) await supabaseClient.auth.signOut();
+    if(typeof localforage !== 'undefined') await localforage.clear();
+    localStorage.clear();
+    setTimeout(() => location.reload(), 1000);
+}
+
+function centerMapOnGSS() {
+    if(!map) return; map.invalidateSize();
+    const net = getActiveNetwork(); if(!net) return;
+    const gss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null;
+    if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false});
+}
+
+window.liveTrackingId = null; window.liveUserMarker = null; window.isFirstLocationLock = true;
+window.toggleLiveTracking = function() {
+    if (!navigator.geolocation) return alert("Geolocation API not found.");
+    if (window.liveTrackingId) {
+        navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null;
+        if (window.liveUserMarker && map) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; }
+        document.getElementById('liveTrackBtn').style.color = '#ef4444'; showToast("Live tracking disabled.");
+    } else {
+        showToast("Fetching location..."); window.isFirstLocationLock = true; 
+        window.liveTrackingId = navigator.geolocation.watchPosition((pos) => {
+            const lat = pos.coords.latitude, lng = pos.coords.longitude; if(!map) return;
+            if (!window.liveUserMarker) {
+                const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [44,44] });
+                window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map);
+            } else window.liveUserMarker.setLatLng([lat, lng]);
+            if (window.isFirstLocationLock) { map.setView([lat, lng], 18); window.isFirstLocationLock = false; }
+            document.getElementById('liveTrackBtn').style.color = '#10b981';
+        }, (err) => alert("GPS Error."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    }
+}
+
+document.getElementById('formModalOverlay').addEventListener('click', function(e) { if(e.target === this) { window.closeModal(); } });
+window.toggleSpeedDial = function(e) { if(e) { e.preventDefault(); e.stopPropagation(); } const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); if (!dial || !fab) return; const isOpen = !dial.classList.contains('active'); dial.classList.toggle('active', isOpen); fab.classList.toggle('open', isOpen); }
+document.addEventListener('click', function(e) { const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) { dial.classList.remove('active'); fab.classList.remove('open'); } } });
+
+window.currentSelectedObj = null;
+window.closeObjectSheet = function() { document.getElementById('object-bottom-sheet').classList.remove('open'); window.currentSelectedObj = null; };
+window.openObjectSheet = function(type, id, title, detailsHtml) {
+    window.currentSelectedObj = { type, id };
+    document.getElementById('objSheetTitle').innerText = title; document.getElementById('objSheetDetails').innerHTML = detailsHtml;
+    const photoUrl = getPhotoUrl(id); const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder');
+    if(photoUrl) { imgEl.src = photoUrl; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; } else { imgEl.style.display = 'none'; imgEl.src = ''; placeholderEl.style.display = 'block'; }
+    document.getElementById('object-bottom-sheet').classList.add('open');
+    document.getElementById('btnObjEdit').onclick = () => window.openEditModal(type.toLowerCase(), id);
+    document.getElementById('btnObjMove').style.display = (type === 'DT') ? 'none' : 'block';
+    document.getElementById('btnObjMove').onclick = () => window.startObjectMove(type, id, title);
+    document.getElementById('btnObjDelete').onclick = () => { window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
+};
+
+window.captureTempPhoto = function() {
+    if (typeof navigator.camera === 'undefined') return alert("Camera plugin not found.");
+    navigator.camera.getPicture(function(imageData) {
+        window.tempPhotoUrl = "data:image/jpeg;base64," + imageData;
+        document.getElementById('formTempPhoto').src = window.tempPhotoUrl;
+        document.getElementById('formTempPhoto').style.display = 'block';
+    }, function(err) { showToast("Camera cancelled"); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false });
+};
+
+window.captureObjectPhoto = function() {
+    if (!window.currentSelectedObj || !appState.user.isLoggedIn) return;
+    if (typeof navigator.camera === 'undefined') return alert("Camera plugin not installed.");
+    navigator.camera.getPicture(function(imageData) {
+        showToast("Saving photo...");
+        const base64Data = "data:image/jpeg;base64," + imageData;
+        if(!appState.photos) appState.photos = [];
+        appState.photos = appState.photos.filter(x => x.object_id !== window.currentSelectedObj.id);
+        appState.photos.push({ id: 'PH_' + Date.now(), object_type: window.currentSelectedObj.type, object_id: window.currentSelectedObj.id, photo_url: base64Data, synced: false });
+        const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder');
+        imgEl.src = base64Data; imgEl.style.display = 'block'; placeholderEl.style.display = 'none';
+        triggerPersistence();
+    }, function(message) { alert('Camera cancelled or failed: ' + message); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false });
+};
+
 const C_YELLOW = '#facc15'; const W_BASE = '#ffffff';
 
 function getPoleSVG(type, config, isOrphan) {
@@ -204,17 +422,14 @@ function getPoleSVG(type, config, isOrphan) {
 }
 
 function getDTSVG(phase, rating) {
-    const numRating = String(rating).replace(/[^0-9]/g, '');
-    const lightOrange = '#f97316';
+    const numRating = String(rating).replace(/[^0-9]/g, ''); const lightOrange = '#f97316';
     if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:24px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="23" y="2" width="4" height="8" fill="#cbd5e1" stroke="#000" stroke-width="1"/><rect x="10" y="10" width="30" height="40" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><text x="25" y="35" font-size="14" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
     return `<svg viewBox="0 0 70 70" style="width:32px;height:32px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="18" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="32" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="46" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="12" y="15" width="46" height="45" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2.5"/><text x="35" y="44" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
 }
 
 function getConsumerSVG(cType, status) {
     let iconClass = 'fa-house'; 
-    if(cType === 'NonDomestic') iconClass = 'fa-building';
-    else if(cType === 'Agriculture') iconClass = 'fa-leaf';
-    else if(cType === 'SIP MIP') iconClass = 'fa-industry';
+    if(cType === 'NonDomestic') iconClass = 'fa-building'; else if(cType === 'Agriculture') iconClass = 'fa-leaf'; else if(cType === 'SIP MIP') iconClass = 'fa-industry'; else if(cType === 'Other') iconClass = 'fa-house';
     let bgColor = '#10b981'; if(status === 'DC') bgColor = '#facc15'; else if(status === 'PDC') bgColor = '#ef4444';
     const iconColor = status === 'DC' ? '#000' : '#fff';
     return `<div style="position:relative; width:26px; height:26px; display:flex; align-items:center; justify-content:center;"><div style="background:${bgColor}; border:2.5px solid #fff; border-radius:50%; width:100%; height:100%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.8); z-index:2;"><i class="fa-solid ${iconClass}" style="color:${iconColor}; font-size:12px;"></i></div><div style="position:absolute; bottom:-6px; width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:8px solid ${bgColor}; z-index:1; filter:drop-shadow(0 2px 2px rgba(0,0,0,0.4));"></div></div>`;
@@ -264,8 +479,6 @@ function renderEntireNetwork() {
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
                 const svgHtml = getPoleSVG(p.poleType, p.poleConfig, isOrphan);
                 const poleClass = isLT ? 'lt-pole' : 'ht-pole';
-                
-                // TOP ANCHOR: [20, 10]
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: `pole-marker-icon ${poleClass} ${isOrphan ? 'orphan-pulse' : ''}`, html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [40, 56], iconAnchor: [20, 10] }), zIndexOffset: 200 });
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'} ${p.poleConfig&&p.poleConfig!=='N/A'?'('+p.poleConfig+')':''}</b><br>Condition: <b>${p.condition||'Good'}</b><br>Parent: <b>${p.dtCode || 'Feeder'}</b>`); }); 
                 featureGroups.poles.addLayer(m);
@@ -277,7 +490,6 @@ function renderEntireNetwork() {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => x.poleNo == d.parentPole); if (p) { d.lat = p.lat; d.lng = p.lng; } }
                 if (d.lat && d.lng && !isNaN(d.lat)) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const svgHtml = getDTSVG(d.phase, d.rating);
-                    // TOP ANCHOR: [18, 6]
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [36, 36], iconAnchor: [18, 6] }), zIndexOffset: 400 });
                     m.on('click', () => { window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b>`); }); 
                     featureGroups.dts.addLayer(m);
@@ -289,7 +501,6 @@ function renderEntireNetwork() {
             const c1 = getNodeCoords(line.fromNode), c2 = getNodeCoords(line.toNode); 
             if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
             const spec = getLineSpec(line.type, line.phase, line.conductor); if (!f[spec.filterKey]) return;
-            
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 35, className: spec.lineClass }).addTo(featureGroups.lines);
             
             if(spec.lineClass === 'ryb-line-path') { 
@@ -304,7 +515,6 @@ function renderEntireNetwork() {
                 L.polyline(line.coords, { color: spec.strokeColor, weight: spec.weight + 4, opacity: 0.8, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
                 L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
             }
-            
             hitPoly.on('click', () => { window.openObjectSheet('LINE', line.id, spec.name, `Phase: <b>${line.phase || 'N/A'}</b><br>Conductor: <b>${line.conductor || 'Standard'}</b><br>From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Dist: <b>${window.formatDistance(line.distanceMeters||0)}</b>`); });
         });
 
@@ -327,65 +537,8 @@ function renderEntireNetwork() {
         if(document.getElementById('kpiLT')) document.getElementById('kpiLT').innerText = window.formatDistance(tLT);
         document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph;
         document.getElementById('kpiCons').innerText = net.consumers.length;
-        
     } catch(err) { console.error("Rendering error:", err); }
 }
-
-document.getElementById('formModalOverlay').addEventListener('click', function(e) { if(e.target === this) { window.closeModal(); } });
-
-window.toggleSpeedDial = function(e) {
-    if(e) { e.preventDefault(); e.stopPropagation(); }
-    const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn');
-    if (!dial || !fab) return;
-    const isOpen = !dial.classList.contains('active'); dial.classList.toggle('active', isOpen); fab.classList.toggle('open', isOpen);
-}
-document.addEventListener('click', function(e) {
-    const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn');
-    if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) { dial.classList.remove('active'); fab.classList.remove('open'); } }
-});
-
-window.currentSelectedObj = null;
-window.closeObjectSheet = function() { document.getElementById('object-bottom-sheet').classList.remove('open'); window.currentSelectedObj = null; };
-window.openObjectSheet = function(type, id, title, detailsHtml) {
-    window.currentSelectedObj = { type, id };
-    document.getElementById('objSheetTitle').innerText = title; document.getElementById('objSheetDetails').innerHTML = detailsHtml;
-    
-    const photoUrl = getPhotoUrl(id);
-    const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder');
-    if(photoUrl) { imgEl.src = photoUrl; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; } 
-    else { imgEl.style.display = 'none'; imgEl.src = ''; placeholderEl.style.display = 'block'; }
-    
-    document.getElementById('object-bottom-sheet').classList.add('open');
-    document.getElementById('btnObjEdit').onclick = () => window.openEditModal(type.toLowerCase(), id);
-    document.getElementById('btnObjMove').style.display = (type === 'DT') ? 'none' : 'block';
-    document.getElementById('btnObjMove').onclick = () => window.startObjectMove(type, id, title);
-    document.getElementById('btnObjDelete').onclick = () => { window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
-};
-
-window.captureTempPhoto = function() {
-    if (typeof navigator.camera === 'undefined') return alert("Camera plugin not found.");
-    navigator.camera.getPicture(function(imageData) {
-        window.tempPhotoUrl = "data:image/jpeg;base64," + imageData;
-        document.getElementById('formTempPhoto').src = window.tempPhotoUrl;
-        document.getElementById('formTempPhoto').style.display = 'block';
-    }, function(err) { showToast("Camera cancelled"); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false });
-};
-
-window.captureObjectPhoto = function() {
-    if (!window.currentSelectedObj || !appState.user.isLoggedIn) return;
-    if (typeof navigator.camera === 'undefined') return alert("Camera plugin not installed.");
-    navigator.camera.getPicture(function(imageData) {
-        showToast("Saving photo...");
-        const base64Data = "data:image/jpeg;base64," + imageData;
-        if(!appState.photos) appState.photos = [];
-        appState.photos = appState.photos.filter(x => x.object_id !== window.currentSelectedObj.id);
-        appState.photos.push({ id: 'PH_' + Date.now(), object_type: window.currentSelectedObj.type, object_id: window.currentSelectedObj.id, photo_url: base64Data, synced: false });
-        
-        const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder');
-        imgEl.src = base64Data; imgEl.style.display = 'block'; placeholderEl.style.display = 'none';
-        triggerPersistence();
-    }, function(message) { alert('Camera cancelled or failed: ' + message); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false });
-};
 
 function saveSnapshot() { const net = getActiveNetwork(); if(!net) return; historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); if (historyStack.length > 15) historyStack.shift(); }
 window.undoLastAction = function() { if (historyStack.length === 0) return showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = getActiveNetwork(); if(!net) return; net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺"); }
@@ -422,7 +575,6 @@ function getNodeCoords(nodeId) {
     if (idStr.startsWith('GSS_')) { const code = idStr.replace('GSS_', ''); if (appState.gssNodes[code]) return { lat: appState.gssNodes[code].lat, lng: appState.gssNodes[code].lng }; }
     if (idStr.startsWith('DT_')) { const code = idStr.replace('DT_', ''); const d = net.dts.find(x => String(x.code) === code); if (d) return { lat: d.lat, lng: d.lng }; }
     if (idStr.startsWith('POLE_')) { const code = idStr.replace('POLE_', ''); const p = net.poles.find(x => String(x.poleNo) === code); if (p) return { lat: p.lat, lng: p.lng }; }
-    
     const p = net.poles.find(x => String(x.poleNo) === idStr); if (p) return { lat: p.lat, lng: p.lng };
     const d = net.dts.find(x => String(x.code) === idStr); if (d) return { lat: d.lat, lng: d.lng };
     if (appState.gssNodes[idStr]) return { lat: appState.gssNodes[idStr].lat, lng: appState.gssNodes[idStr].lng };
@@ -545,7 +697,8 @@ window.showFormModal = function(type, snapLat, snapLng) {
     const net = getActiveNetwork(); if(!net) return; 
     let center = { lat: 26.91, lng: 75.78 }; if(map) center = map.getCenter();
     snapLat = snapLat || parseFloat(center.lat.toFixed(6)); snapLng = snapLng || parseFloat(center.lng.toFixed(6));
-    
+    window.tempPhotoUrl = null;
+
     if (type === 'POLE' || type === 'LTPOLE') {
         const isHT = type === 'POLE';
         let dtSelectHtml = ''; let nextNo = '';
@@ -654,149 +807,11 @@ window.filterConsumerPoles = function() {
     nodes = window.sortByDistance(nodes, centerLat, centerLng); document.getElementById('inpConsParent').innerHTML = nodes.map(n => `<option value="${n.id}">${n.title} (${window.getDistStr(n.lat, n.lng)})</option>`).join('');
 }
 
-function attachTempPhoto(type, id) {
-    if(window.tempPhotoUrl) {
-        if(!appState.photos) appState.photos = [];
-        appState.photos.push({ id: 'PH_' + Date.now(), object_type: type, object_id: id, photo_url: window.tempPhotoUrl, synced: false });
-        window.tempPhotoUrl = null;
-    }
-}
-
-window.saveNewPole = function() { 
-    try {
-        saveSnapshot(); const no = document.getElementById('inpPoleNo').value.trim(), category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value); 
-        const pType = document.getElementById('inpMainPoleType').value; const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A'; const condition = document.getElementById('inpPoleCondition').value;
-        if (!no) return alert("Enter pole number"); const net = getActiveNetwork(); if (net.poles.some(p => String(p.poleNo) === no)) return alert(`Pole exists!`); 
-        const objId = 'P_'+Date.now();
-        net.poles.push({ id: objId, poleNo: no, lineType: category, poleType: pType, poleConfig: pConfig, condition: condition, lat, lng }); 
-        attachTempPhoto('POLE', objId);
-        window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("HT Pole added!");
-    } catch(err) { console.error(err); alert("Error saving pole"); }
-}
-
-window.saveNewLTPole = function() {
-    try {
-        saveSnapshot(); const dtCodeRaw = document.getElementById('inpLTPoleDT').value; const dtCode = dtCodeRaw.replace('DT_', ''); const category = document.getElementById('inpPoleCategory').value, lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value); 
-        const pType = document.getElementById('inpMainPoleType').value; const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A'; const condition = document.getElementById('inpPoleCondition').value;
-        if (!dtCode) return alert("Select DT"); const net = getActiveNetwork(); const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode)); 
-        let maxId = 0; existingLTPoles.forEach(ep => { const parts = String(ep.poleNo).split('-'); if (parts.length > 1) { const num = parseInt(parts[parts.length - 1]); if (!isNaN(num) && num > maxId) maxId = num; } }); const finalPoleNo = `${dtCode}-${maxId + 1}`;
-        if (net.poles.some(p => String(p.poleNo) === String(finalPoleNo))) return alert(`Pole ${finalPoleNo} exists!`); 
-        const objId = 'P_'+Date.now();
-        net.poles.push({ id: objId, poleNo: finalPoleNo, lineType: category, dtCode: dtCode, poleType: pType, poleConfig: pConfig, condition: condition, lat, lng }); 
-        attachTempPhoto('POLE', objId);
-        window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("LT Pole added!");
-    } catch(err) { console.error(err); alert("Error saving pole"); }
-}
-
-window.saveNewLine = function() { 
-    try {
-        saveSnapshot(); const from = document.getElementById('inpFromNode').value, to = document.getElementById('inpToNode').value, type = document.getElementById('inpLineType').value, conductor = document.getElementById('inpConductor').value; 
-        const phase = type === '11 KV LINE' ? document.getElementById('inpLinePhase').value : 'N/A';
-        if (!from || !to) return alert("Please select both From and To nodes!"); 
-        if (from === to) return alert("Cannot connect node to itself!");
-        const net = getActiveNetwork(), spec = getLineSpec(type, phase, conductor), existingLine = net.lines.find(l => (l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from));
-        if(existingLine) return alert("Line already exists!");
-        const c1 = getNodeCoords(from), c2 = getNodeCoords(to); 
-        if(!c1 || !c2 || isNaN(c1.lat) || isNaN(c2.lat)) return alert("Invalid node coordinates! Check map placements."); 
-        const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); 
-        const objId = 'LN_'+Date.now();
-        net.lines.push({ id: objId, type: spec.name, conductor: conductor, phase: phase, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]] }); 
-        attachTempPhoto('LINE', objId);
-        window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Line added!");
-    } catch(err) { console.error(err); alert("Error saving line"); }
-}
-
-window.saveNewDT = function() { 
-    try {
-        saveSnapshot(); 
-        const parentRef = document.getElementById('inpDTParent').value; 
-        const code = document.getElementById('inpDTCode').value.trim();
-        const mountedOn = document.getElementById('inpDTMounted').value;
-        const rating = parseFloat(document.getElementById('inpDTRating').value);
-        const phase = document.getElementById('inpDTPhase').value;
-        const location = document.getElementById('inpDTLocation').value.trim();
-        
-        if (!code) return alert("Enter DT Code"); 
-        const net = getActiveNetwork();
-        
-        let rawParentRef = parentRef;
-        if(parentRef.startsWith('POLE_')) rawParentRef = parentRef.replace('POLE_', '');
-        if(parentRef.startsWith('GSS_')) rawParentRef = parentRef.replace('GSS_', '');
-
-        let lat = 0, lng = 0;
-        const p = net.poles.find(x => String(x.poleNo) === String(rawParentRef)); 
-        if (p && !isNaN(p.lat)) { lat = p.lat; lng = p.lng; } 
-        else { const gss = appState.gssNodes[rawParentRef]; if(gss && !isNaN(gss.lat)) { lat = gss.lat; lng = gss.lng; } else return alert("Parent node coordinates missing!"); }
-
-        const objId = 'DT_' + Date.now();
-        net.dts.push({ id: objId, parentPole: rawParentRef, mountedOn: mountedOn, code, rating, phase, location, lat: lat, lng: lng }); 
-        attachTempPhoto('DT', objId);
-        window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("DT added!");
-    } catch(err) { console.error(err); alert("Error saving DT"); }
-}
-
-window.saveNewConsumer = function() { 
-    try {
-        saveSnapshot(); const parentRefRaw = document.getElementById('inpConsParent').value, kno = document.getElementById('inpConsKno').value.trim(), name = document.getElementById('inpConsName').value.trim(), load = document.getElementById('inpConsLoad').value.trim();
-        const status = document.getElementById('inpConsStatus').value, cType = document.getElementById('inpConsType').value; const lat = parseFloat(document.getElementById('inpLat').value), lng = parseFloat(document.getElementById('inpLng').value); 
-        const net = getActiveNetwork(); if(net.consumers.some(c => String(c.kno) === String(kno))) return alert("K-Number exists!");
-        
-        let rawParentRef = parentRefRaw;
-        if (rawParentRef.startsWith('POLE_')) rawParentRef = rawParentRef.replace('POLE_', '');
-        if (rawParentRef.startsWith('DT_')) rawParentRef = rawParentRef.replace('DT_', '');
-
-        let parentType = parentRefRaw.startsWith('DT_') ? 'DT' : 'POLE';
-        if (!name || !kno) return alert("Enter Name and K-No"); 
-        const objId = 'CS_'+Date.now();
-        net.consumers.push({ id: objId, parentRef: rawParentRef, parentType, kno, name, load, status, cType, lat, lng }); 
-        attachTempPhoto('CONSUMER', objId);
-        window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Consumer added!");
-    } catch(err) { console.error(err); alert("Error saving consumer"); }
-}
-
-/* ====== EDIT FORMS ====== */
-window.openEditModal = function(type, id) {
-    window.closeObjectSheet(); const net = getActiveNetwork();
-    if (type === 'pole') { 
-        const p = net.poles.find(x => x.id === id); if (!p) return; 
-        openModal(`
-            <div class="sheet-head"><div class="sheet-title">Edit Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Pole Number (Locked)</label><input type="text" id="editPoleNo" class="form-input" value="${p.poleNo}" disabled></div>
-            <div class="form-grid-2"><div class="form-row"><label>Pole Type*</label><select id="editMainPoleType" class="form-select" onchange="window.togglePccConfig('editMainPoleType', 'editPccConfigDiv')"><option value="PCC" ${p.poleType==='PCC'?'selected':''}>PCC</option><option value="TOWER" ${p.poleType==='TOWER'?'selected':''}>TOWER</option><option value="RAIL POLE" ${p.poleType==='RAIL POLE'?'selected':''}>RAIL POLE</option></select></div><div class="form-row"><label>Condition</label><select id="editPoleCondition" class="form-select"><option value="Good" ${p.condition==='Good'?'selected':''}>Good</option><option value="Tilted" ${p.condition==='Tilted'?'selected':''}>Tilted</option><option value="Damaged" ${p.condition==='Damaged'?'selected':''}>Damaged</option></select></div></div>
-            <div class="form-row" id="editPccConfigDiv" style="display:${p.poleType==='PCC'?'block':'none'};"><label>PCC Configuration</label><select id="editPccConfig" class="form-select"><option value="Single Pole" ${p.poleConfig==='Single Pole'?'selected':''}>Single Pole</option><option value="Double Pole" ${p.poleConfig==='Double Pole'?'selected':''}>Double Pole</option></select></div>
-            <button class="btn-action-primary" onclick="window.saveEditedPole('${p.id}')">Save Changes</button>`); 
-    } else if (type === 'dt') { 
-        const d = net.dts.find(x => x.id === id); if (!d) return; 
-        openModal(`
-            <div class="sheet-head"><div class="sheet-title">Edit DT</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Mounted On (Structure)*</label><select id="editDTMounted" class="form-select"><option value="Double Pole (DP)" ${d.mountedOn==='Double Pole (DP)'?'selected':''}>Double Pole (DP)</option><option value="Single Pole (SP)" ${d.mountedOn==='Single Pole (SP)'?'selected':''}>Single Pole (SP)</option><option value="Plinth" ${d.mountedOn==='Plinth'?'selected':''}>Plinth</option></select></div>
-            <div class="form-grid-2"><div class="form-row"><label>DT Code (Locked)</label><input type="text" class="form-input" value="${d.code}" disabled></div><div class="form-row"><label>Phase*</label><select id="editDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('editDTPhase', 'editDTRating')"><option value="Three Phase" ${d.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${d.phase==='Single Phase'?'selected':''}>Single Phase</option></select></div></div>
-            <div class="form-row"><label>Rating (kVA)*</label><select id="editDTRating" class="form-select"><option value="${d.rating}" selected>${d.rating} kVA</option></select></div><div class="form-row"><label>Location</label><input type="text" id="editDTLocation" class="form-input" value="${d.location || ''}"></div><button class="btn-action-primary" onclick="window.saveEditedDT('${d.id}')">Save Changes</button>`); 
-            setTimeout(() => window.updateDTRatingDropdowns('editDTPhase', 'editDTRating'), 30);
-    } else if (type === 'consumer') { 
-        const c = net.consumers.find(x => x.id === id); if (!c) return; 
-        openModal(`
-            <div class="sheet-head"><div class="sheet-title">Edit Consumer</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Consumer Name*</label><input type="text" id="editConsName" class="form-input" value="${c.name}"></div>
-            <div class="form-grid-2"><div class="form-row"><label>K-Number (Locked)</label><input type="number" class="form-input" value="${c.kno}" disabled></div><div class="form-row"><label>Load</label><input type="text" id="editConsLoad" class="form-input" value="${c.load||''}"></div></div>
-            <div class="form-grid-2"><div class="form-row"><label>Status</label><select id="editConsStatus" class="form-select"><option value="Regular" ${c.status==='Regular'?'selected':''}>Regular</option><option value="DC" ${c.status==='DC'?'selected':''}>DC</option><option value="PDC" ${c.status==='PDC'?'selected':''}>PDC</option></select></div><div class="form-row"><label>Type</label><select id="editConsType" class="form-select"><option value="Domestic" ${c.cType==='Domestic'?'selected':''}>Domestic</option><option value="NonDomestic" ${c.cType==='NonDomestic'?'selected':''}>NonDomestic</option><option value="Agriculture" ${c.cType==='Agriculture'?'selected':''}>Agriculture</option><option value="Govt." ${c.cType==='Govt.'?'selected':''}>Govt.</option><option value="SIP MIP" ${c.cType==='SIP MIP'?'selected':''}>SIP MIP</option><option value="Other" ${c.cType==='Other'?'selected':''}>Other</option></select></div></div>
-            <button class="btn-action-primary" onclick="window.saveEditedConsumer('${c.id}')">Save Changes</button>`); 
-    } else if (type === 'line') { 
-        const l = net.lines.find(x => x.id === id); if (!l) return; 
-        openModal(`
-            <div class="sheet-head"><div class="sheet-title">Edit Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="form-row"><label>Voltage Type (Locked)</label><input type="text" class="form-input" value="${l.type}" disabled></div>
-            <div class="form-row" id="editLinePhaseRow" style="display:${l.type.includes('11')?'block':'none'}"><label>Phase Type (HT)*</label><select id="editLinePhase" class="form-select"><option value="Three Phase" ${l.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${l.phase==='Single Phase'?'selected':''}>Single Phase</option></select></div>
-            <div class="form-row"><label>Conductor</label><select id="editLineConductor" class="form-select">${l.type.includes('11') ? `<option value="Weasel" ${l.conductor==='Weasel'?'selected':''}>Weasel</option><option value="Rabbit" ${l.conductor==='Rabbit'?'selected':''}>Rabbit</option><option value="Dog" ${l.conductor==='Dog'?'selected':''}>Dog</option><option value="Underground Cable" ${l.conductor==='Underground Cable'?'selected':''}>Underground Cable</option>` : `<option value="Single Phase" ${l.conductor==='Single Phase'?'selected':''}>Single Phase</option><option value="Three Phase" ${l.conductor==='Three Phase'?'selected':''}>Three Phase</option>`}</select></div>
-            <button class="btn-action-primary" onclick="window.saveEditedLine('${l.id}')">Save Changes</button>`); 
-    }
-}
 window.saveEditedPole = function(id) { const net = getActiveNetwork(); const p = net.poles.find(x => x.id === id); if(!p) return; p.poleType = document.getElementById('editMainPoleType').value; p.poleConfig = p.poleType === 'PCC' ? document.getElementById('editPccConfig').value : 'N/A'; p.condition = document.getElementById('editPoleCondition').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Pole Settings Updated"); }
 window.saveEditedDT = function(id) { const net = getActiveNetwork(); const d = net.dts.find(x => x.id === id); if (!d) return; d.phase = document.getElementById('editDTPhase').value; d.mountedOn = document.getElementById('editDTMounted').value; d.rating = parseFloat(document.getElementById('editDTRating').value); d.location = document.getElementById('editDTLocation').value.trim(); saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("DT Updated"); }
 window.saveEditedConsumer = function(id) { const net = getActiveNetwork(); const c = net.consumers.find(x => x.id === id); if (!c) return; c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value.trim(); c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Consumer Updated"); }
 window.saveEditedLine = function(id) { const net = getActiveNetwork(); const l = net.lines.find(x => x.id === id); if (!l) return; if(l.type.includes('11')) l.phase = document.getElementById('editLinePhase').value; l.conductor = document.getElementById('editLineConductor').value; saveSnapshot(); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("Line Updated"); }
 
-/* ====== ENTITY DELETION ====== */
 function deleteDTLogic(dtId, net) {
     const d = net.dts.find(x => x.id === dtId); if(!d) return;
     const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn);
@@ -823,7 +838,6 @@ window.deleteEntity = function(type, id) {
     window.closeObjectSheet(); renderEntireNetwork(); triggerPersistence(); showToast("Deleted!");
 }
 
-/* ====== EXPORT LOGIC ====== */
 async function smartExportFile(filename, dataBlobOrText, mimeType) {
     try {
         showToast("Preparing file export..."); const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
