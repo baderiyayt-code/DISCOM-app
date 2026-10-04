@@ -117,6 +117,12 @@
             <div class="round-tool-btn" onclick="toggleMapLayer()"><i class="fa-solid fa-layer-group"></i></div>
             <div class="round-tool-btn" id="liveTrackBtn" onclick="toggleLiveTracking()"><i class="fa-solid fa-location-crosshairs"></i></div>
             <div class="round-tool-btn undo-btn" onclick="undoLastAction()"><i class="fa-solid fa-clock-rotate-left"></i></div>
+            
+            <!-- NEW: Map Rotation Slider Tool -->
+            <div class="round-tool-btn" title="Rotate Map" style="position:relative; overflow:visible;">
+                <i class="fa-solid fa-compass"></i>
+                <input type="range" min="0" max="360" value="0" id="mapRotateSlider" oninput="rotateMapFromSlider(this.value)" style="position:absolute; bottom:55px; right:0; width:120px; background:var(--bg-sheet); accent-color:var(--accent); writing-mode:vertical-lr; direction:rtl; display:none; padding:5px; border-radius:10px; border:1px solid var(--border); box-shadow:var(--shadow-md);" onclick="event.stopPropagation()">
+            </div>
         </div>
 
         <!-- Bottom Single Action (Modern FAB) -->
