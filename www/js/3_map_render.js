@@ -111,13 +111,14 @@ window.centerMapOnGSS = function() {
 };
 
 /* ==============================================================
-   EMBEDDED POLE + DT RENDERER (DT PERFECTLY CENTERED AT BOTTOM)
+   EMBEDDED POLE + DT RENDERER (LT BRACKET & 3-PHASE DT BOTTOM EMBEDDED)
 ============================================================== */
 window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     const strokeC = isOrphan ? '#ef4444' : '#475569';
     const fillC = isOrphan ? '#fca5a5' : '#fb923c'; 
     let displayNo = p.poleNo; 
-    if (p.lineType === 'LT' && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
+    const isLT = p.lineType === 'LT';
+    if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
     let poleSvg = '';
     if(p.poleType === 'TOWER') {
@@ -127,15 +128,21 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     } else if(p.poleType === 'PCC' && p.poleConfig === 'Double Pole') {
         poleSvg = `<polygon points="16,15 24,15 26,95 14,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><polygon points="56,15 64,15 66,95 54,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="10" y="25" width="60" height="5" fill="${strokeC}"/><rect x="10" y="45" width="60" height="5" fill="${strokeC}"/><rect x="17" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="37" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="57" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
     } else {
-        poleSvg = `<path d="M 10 25 L 30 40 L 50 25" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="7" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="47" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="30" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+        if(isLT) {
+            // LT Pole with LT Bracket and Insulator
+            poleSvg = `<polygon points="26,20 34,20 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="18" y="15" width="24" height="6" fill="${strokeC}" rx="1"/><rect x="27" y="8" width="6" height="8" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+        } else {
+            // HT Single Pole with V-Cross Arm
+            poleSvg = `<path d="M 10 25 L 30 40 L 50 25" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="7" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="47" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="30" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+        }
     }
 
     let dtSvgs = '';
     if(associatedDTs && associatedDTs.length > 0) {
         associatedDTs.forEach((d, idx) => {
             const numRating = String(d.rating).replace(/[^0-9]/g, '');
-            // Perfect bottom alignment centered directly under the pole base
-            const xOffset = associatedDTs.length === 1 ? 13 : (idx === 0 ? -4 : 32); 
+            // Both 1-Phase and 3-Phase centered perfectly at bottom
+            const xOffset = associatedDTs.length === 1 ? 11 : (idx === 0 ? -6 : 30); 
             
             if(d.phase === 'Single Phase') {
                 dtSvgs += `<g transform="translate(${xOffset}, 55)">
@@ -146,8 +153,9 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
                     <text x="13" y="19" font-size="13" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
                 </g>`;
             } else {
-                dtSvgs += `<g transform="translate(${xOffset}, 50)">
-                    <rect x="0" y="0" width="32" height="35" rx="3" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
+                // Three Phase DT Mounted at Bottom Center
+                dtSvgs += `<g transform="translate(${xOffset - 3}, 50)">
+                    <rect x="0" y="0" width="32" height="36" rx="3" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
                     <polygon points="7,0 11,0 9,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
                     <polygon points="15,0 19,0 17,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
                     <polygon points="23,0 27,0 25,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
