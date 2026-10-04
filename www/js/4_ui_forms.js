@@ -147,8 +147,26 @@ window.saveNewGss = function() {
 window.relocateGss = function(gssCode) { if(window.closeObjectSheet) window.closeObjectSheet(); window.toggleSidebar(false); if(window.startObjectMove) window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
 
 /* ====== SETTINGS & FILTERS ====== */
-window.autoSaveSettings = function() { appState.settings.unit = document.getElementById('setUnit').value; appState.settings.language = document.getElementById('setLanguage').value; appState.settings.theme = document.getElementById('setTheme').value; appState.settings.liveSync = document.getElementById('setLiveSync').checked; window.applyTranslations(); window.applyTheme(); window.triggerPersistence(); window.renderEntireNetwork(); window.showToast("Settings Saved!"); }
-window.openSettingsPage = function() { window.toggleSidebar(false); document.getElementById('setUnit').value = appState.settings.unit || 'm'; document.getElementById('setLanguage').value = appState.settings.language || 'en'; document.getElementById('setTheme').value = appState.settings.theme || 'light'; document.getElementById('setLiveSync').checked = appState.settings.liveSync !== false; document.getElementById('settings-page').classList.add('open'); }
+
+window.autoSaveSettings = function() { 
+    appState.settings.unit = document.getElementById('setUnit').value; 
+    appState.settings.language = document.getElementById('setLanguage').value; 
+    appState.settings.theme = document.getElementById('setTheme').value; 
+    appState.settings.liveSync = document.getElementById('setLiveSync').checked; 
+    appState.settings.checkOrphanNode = document.getElementById('setOrphanCheck').checked; // NEW
+    window.applyTranslations(); window.applyTheme(); window.triggerPersistence(); window.renderEntireNetwork(); window.showToast("Settings Saved!"); 
+}
+
+window.openSettingsPage = function() { 
+    window.toggleSidebar(false); 
+    document.getElementById('setUnit').value = appState.settings.unit || 'm'; 
+    document.getElementById('setLanguage').value = appState.settings.language || 'en'; 
+    document.getElementById('setTheme').value = appState.settings.theme || 'light'; 
+    document.getElementById('setLiveSync').checked = appState.settings.liveSync !== false; 
+    document.getElementById('setOrphanCheck').checked = appState.settings.checkOrphanNode !== false; // NEW
+    document.getElementById('settings-page').classList.add('open'); 
+}
+
 window.closeSettingsPage = function() { document.getElementById('settings-page').classList.remove('open'); }
 window.openFilterModal = function() {
     const f = appState.filters;
