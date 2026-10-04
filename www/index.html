@@ -248,13 +248,24 @@
                 <div><h3 style="font-size:0.9rem; font-weight:700;"><i class="fa-solid fa-cloud-arrow-up" style="color:var(--accent);"></i> Live Cloud Sync</h3><p style="font-size:0.75rem; color:var(--text-sub);">Auto-save to Supabase DB</p></div>
                 <label class="switch"><input type="checkbox" id="setLiveSync" onchange="autoSaveSettings()"><span class="slider round"></span></label>
             </div>
+            <!-- ... existing Settings Cards (Live Cloud Sync etc.) ... -->
+            <div class="settings-card" style="display:flex; justify-content:space-between; align-items:center;">
+                <div><h3 style="font-size:0.9rem; font-weight:700;"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Orphan Checker</h3><p style="font-size:0.75rem; color:var(--text-sub);">Highlight disconnected poles</p></div>
+                <label class="switch"><input type="checkbox" id="setOrphanCheck" onchange="autoSaveSettings()"><span class="slider round"></span></label>
+            </div>
+            
+            <!-- Button to view the actual list of orphans -->
+            <button class="btn-danger-outline" style="width:100%; margin-bottom:16px; border-radius:16px;" onclick="runOrphanNodeChecker()"><i class="fa-solid fa-list"></i> View Orphan List</button>
+
+            <!-- Factory Reset Card -->
             <div class="settings-card" style="border-color:#ef4444; cursor:pointer; background:rgba(239, 68, 68, 0.05);" onclick="openResetConfirmationModal()">
                 <h3 style="font-size:0.9rem; font-weight:700; color:#ef4444; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-skull-crossbones"></i> Factory Reset</h3>
                 <p style="font-size:0.75rem; color:var(--text-sub); margin-top:4px;">Permanently wipe all local offline data</p>
             </div>
         </div>
     </div>
-
+            
+    
     <!-- 9. Toast Notification -->
     <div id="app-toast"><i class="fa-solid fa-circle-check"></i> <span id="toast-msg">Success!</span></div>
 
