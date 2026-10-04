@@ -152,16 +152,28 @@ window.getLineSpec = function(type, phase, conductor) {
 
 window.renderEntireNetwork = function() {
     if(!map) return; window.updateFeederDropdown();
-    try {
-        window.updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); 
-        Object.values(appState.gssNodes).forEach(gss => {
-            if (typeof gss.lat === 'number' && !isNaN(gss.lat)) {
-                if (appState.activeMove && appState.activeMove.id === gss.code) return; 
-                const gssIcon = L.divIcon({ className: 'gss-square-icon', html: `<i class="fa-solid fa-bolt"></i> GSS`, iconSize: [44,24], iconAnchor: [22,12] });
-                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 });
-                m.on('click', () => { window.openObjectSheet('GSS', gss.code, gss.name, `Code: <b>${gss.code}</b>`); }); 
-                featureGroups.gss.addLayer(m);
-            }
+    try 
+        /* Update this function in js/3_map_render.js */
+
+window.updateOrphanStatus = function() {
+    if(!appState.orphanPoleIds) appState.orphanPoleIds = new Set();
+    appState.orphanPoleIds.clear(); 
+    
+    // NEW: Check if user turned OFF Orphan Checker in Settings
+    if (appState.settings && appState.settings.checkOrphanNode === false) return; 
+
+    const net = window.getActiveNetwork(); if(!net) return; 
+    const adj = {}, gssCode = net.feeder.parentGss, gssId = 'GSS_' + gssCode; adj[gssId] = [];
+    net.poles.forEach(p => adj['POLE_' + p.poleNo] = []); net.dts.forEach(d => adj['DT_' + d.code] = []);
+    net.dts.forEach(d => { if(d.parentPole) { const pId = 'POLE_' + d.parentPole; if (!adj[pId]) adj[pId] = []; adj[pId].push('DT_' + d.code); adj['DT_' + d.code].push(pId); } });
+    net.lines.forEach(l => { const u = String(l.fromNode), v = String(l.toNode); if (!adj[u]) adj[u] = []; if (!adj[v]) adj[v] = []; adj[u].push(v); adj[v].push(u); });
+    const visited = new Set([gssId]), queue = [gssId];
+    while (queue.length > 0) { const curr = queue.shift(); (adj[curr] || []).forEach(neighbor => { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } }); }
+    net.poles.forEach(p => { if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id); }); 
+    net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
+}
+
+            
         });
         const net = window.getActiveNetwork(); if(!net) return; const f = appState.filters;
 
