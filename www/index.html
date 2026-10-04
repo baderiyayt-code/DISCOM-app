@@ -13,7 +13,7 @@
     <!-- JS Libraries -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    <!-- NEW: LEAFLET ROTATE PLUGIN (मैप को 2-उंगली से घुमाने के लिए) -->
+    <!-- LEAFLET ROTATE PLUGIN (मैप को 2-उंगली से घुमाने के लिए) -->
     <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -83,12 +83,11 @@
                     </div>
                 </div>
                 
-                <!-- Header Actions -->
+                <!-- Header Actions (Add Feeder button removed from here) -->
                 <div class="header-actions">
                     <button class="action-btn-sm" onclick="window.toggleSearchBox()"><i class="fa-solid fa-search"></i></button>
                     <button class="action-btn-sm" onclick="window.runOrphanNodeChecker()" title="Check Orphan Nodes" style="color:#ef4444;"><i class="fa-solid fa-link-slash"></i></button>
                     <button class="action-btn-sm" onclick="window.syncToSupabase()" id="sync-indicator"><i class="fa-solid fa-cloud"></i></button>
-                    <button class="action-btn-sm" onclick="window.openFeederConfigModal()"><i class="fa-solid fa-code-branch"></i></button>
                 </div>
             </div>
 
