@@ -88,7 +88,7 @@
                 </div>
             </div>
 
-            <!-- KPI Row (Updated for Collapse) -->
+            <!-- KPI Row -->
             <div id="kpi-container" class="kpi-row">
                 <div class="kpi-tile"><div class="kpi-label" id="kpi11Label">11 KV LINE</div><div class="kpi-val" id="kpi11">0.0 M</div></div>
                 <div class="kpi-tile"><div class="kpi-label" id="kpiLTLabel">LT LINE</div><div class="kpi-val" id="kpiLT">0.0 M</div></div>
@@ -146,9 +146,20 @@
                     <span>LT Pole</span>
                 </div>
 
-                <!-- Line -->
+                <!-- Line (NEW CUSTOM SVG: 3-Phase connecting two poles) -->
                 <div class="dial-card" onclick="openAddForm('LINE')">
-                    <i class="fa-solid fa-bezier-curve" style="color:#3b82f6; font-size:30px; margin-bottom:8px;"></i>
+                    <svg viewBox="0 0 60 60" style="width:28px;height:28px; margin-bottom:10px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+                        <!-- Left Node (Pole) -->
+                        <rect x="10" y="35" width="4" height="20" fill="#475569" rx="1"/>
+                        <line x1="6" y1="38" x2="18" y2="46" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+                        <!-- Right Node (Pole) -->
+                        <rect x="46" y="5" width="4" height="20" fill="#475569" rx="1"/>
+                        <line x1="42" y1="8" x2="54" y2="16" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+                        <!-- 3-Phase Wires (R, Y, B) -->
+                        <line x1="8" y1="38" x2="44" y2="8" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="12" y1="42" x2="48" y2="12" stroke="#facc15" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="16" y1="46" x2="52" y2="16" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
                     <span>Line</span>
                 </div>
 
