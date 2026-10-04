@@ -92,14 +92,16 @@
             </div>
 
             <!-- KPI Row -->
-            <div class="kpi-row">
+                        <!-- KPI Row (Updated for Collapse) -->
+            <div id="kpi-container" class="kpi-row">
                 <div class="kpi-tile"><div class="kpi-label" id="kpi11Label">11 KV LINE</div><div class="kpi-val" id="kpi11">0.0 M</div></div>
                 <div class="kpi-tile"><div class="kpi-label" id="kpiLTLabel">LT LINE</div><div class="kpi-val" id="kpiLT">0.0 M</div></div>
                 <div class="kpi-tile"><div class="kpi-label" id="kpi3PhLabel">3-PH DT</div><div class="kpi-val" id="kpi3Ph">0</div></div>
                 <div class="kpi-tile"><div class="kpi-label" id="kpi1PhLabel">1-PH DT</div><div class="kpi-val" id="kpi1Ph">0</div></div>
                 <div class="kpi-tile"><div class="kpi-label" id="kpiConsLabel">CONSUMERS</div><div class="kpi-val" id="kpiCons">0</div></div>
             </div>
-        </div>
+            <!-- Arrow Button -->
+            <div class="kpi-toggle-btn" onclick="window.toggleKPIBar()"><i id="kpi-toggle-icon" class="fa-solid fa-chevron-up"></i></div>
 
         <div id="layer-indicator">Street Map</div>
         <div id="reticle-coordinates">26.915000, 75.783000</div>
