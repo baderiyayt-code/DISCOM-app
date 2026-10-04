@@ -33,7 +33,6 @@ window.initMapLayers = function() {
     map.on('zoom', window.updateMapZoomClasses); 
     map.on('zoomend', window.updateMapZoomClasses); 
     
-    // --- NEW FIX: CLOSE DETAIL FORM ON MAP BACKGROUND CLICK ---
     map.on('click', () => { 
         const sheet = document.getElementById('object-bottom-sheet');
         if(sheet && sheet.classList.contains('open')) {
@@ -114,6 +113,20 @@ window.centerMapOnGSS = function() {
     if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false}); 
 };
 
+// --- NEW FIX: HANDLE CLICK ON DT INSIDE COMBINED SVG ---
+window.openDTFromSVG = function(e, id) {
+    if(e) e.stopPropagation(); // Stops click from opening the pole sheet
+    const net = window.getActiveNetwork();
+    if(!net) return;
+    const d = net.dts.find(x => x.id === id);
+    if(d) {
+        window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b>`);
+    }
+};
+
+/* ==============================================================
+   EMBEDDED POLE + DT RENDERER (CLICK SEPARATION INCLUDED)
+============================================================== */
 window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     const strokeC = isOrphan ? '#ef4444' : '#475569';
     const fillC = isOrphan ? '#fca5a5' : '#fb923c'; 
@@ -121,7 +134,9 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     const isLT = p.lineType === 'LT';
     if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
-    let poleSvg = ''; let cx = 50; 
+    let poleSvg = '';
+    let cx = 50; 
+
     if(p.poleType === 'TOWER') {
         poleSvg = `<path d="M 40 10 L 20 95 M 40 10 L 60 95" stroke="${strokeC}" stroke-width="3"/><path d="M 33 35 L 47 35 M 29 55 L 51 55 M 24 75 L 56 75" stroke="${strokeC}" stroke-width="2"/><line x1="10" y1="35" x2="70" y2="35" stroke="${strokeC}" stroke-width="4"/><line x1="15" y1="55" x2="65" y2="55" stroke="${strokeC}" stroke-width="4"/><rect x="37" y="0" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
         cx = 60; 
@@ -144,22 +159,62 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     if(associatedDTs && associatedDTs.length > 0) {
         associatedDTs.forEach((d, idx) => {
             const numRating = String(d.rating).replace(/[^0-9]/g, '');
-            let startX = cx; if (associatedDTs.length > 1) { startX = idx === 0 ? cx - 18 : cx + 18; }
+            let startX = cx;
+            if (associatedDTs.length > 1) {
+                startX = idx === 0 ? cx - 18 : cx + 18; 
+            }
+            
+            // Added onclick wrapper mapped directly to the DT's separate ID
             if(d.phase === 'Single Phase') {
-                dtSvgs += `<g transform="translate(${startX - 13}, 65)"><rect x="0" y="0" width="26" height="30" rx="2" fill="${fillC}" stroke="#0f172a" stroke-width="2"/><rect x="3" y="3" width="20" height="24" fill="#fdba74"/><polygon points="10,0 16,0 13,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/><rect x="11" y="-9" width="4" height="2" fill="#94a3b8"/><text x="13" y="19" font-size="13" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text></g>`;
+                dtSvgs += `<g transform="translate(${startX - 13}, 65)" onclick="window.openDTFromSVG(event, '${d.id}')" style="cursor:pointer;">
+                    <rect x="0" y="0" width="26" height="30" rx="2" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
+                    <rect x="3" y="3" width="20" height="24" fill="#fdba74"/>
+                    <polygon points="10,0 16,0 13,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+                    <rect x="11" y="-9" width="4" height="2" fill="#94a3b8"/>
+                    <text x="13" y="19" font-size="13" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
+                </g>`;
             } else {
-                dtSvgs += `<g transform="translate(${startX - 16}, 60)"><rect x="0" y="0" width="32" height="36" rx="3" fill="${fillC}" stroke="#0f172a" stroke-width="2"/><polygon points="7,0 11,0 9,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/><polygon points="15,0 19,0 17,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/><polygon points="23,0 27,0 25,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/><text x="16" y="23" font-size="12" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text></g>`;
+                dtSvgs += `<g transform="translate(${startX - 16}, 60)" onclick="window.openDTFromSVG(event, '${d.id}')" style="cursor:pointer;">
+                    <rect x="0" y="0" width="32" height="36" rx="3" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
+                    <polygon points="7,0 11,0 9,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+                    <polygon points="15,0 19,0 17,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+                    <polygon points="23,0 27,0 25,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+                    <text x="16" y="23" font-size="12" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
+                </g>`;
             }
         });
     }
 
-    return `<svg viewBox="0 0 100 110" style="width:50px;height:75px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6)); overflow:visible;"><g transform="translate(20, 0)">${poleSvg}</g>${dtSvgs}</svg><span>${displayNo}</span>`;
+    return `<svg viewBox="0 0 100 110" style="width:50px;height:75px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6)); overflow:visible;">
+        <g transform="translate(20, 0)">${poleSvg}</g>
+        ${dtSvgs}
+    </svg><span>${displayNo}</span>`;
 }
 
 window.getDTSVG = function(phase, rating) {
-    const numRating = String(rating).replace(/[^0-9]/g, ''); const lightOrange = '#fb923c'; const darkOrange = '#ea580c';  
-    if(phase === 'Single Phase') return `<svg viewBox="0 0 40 50" style="width:20px;height:25px; filter:drop-shadow(0 3px 5px rgba(0,0,0,0.7));"><rect x="5" y="15" width="30" height="35" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><rect x="8" y="18" width="24" height="29" fill="#fdba74"/><polygon points="17,15 23,15 20,2" fill="#78350f" stroke="#0f172a" stroke-width="1"/><rect x="18" y="2" width="4" height="2" fill="#94a3b8"/><text x="20" y="40" font-size="16" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
-    return `<svg viewBox="0 0 60 70" style="width:34px;height:40px; filter:drop-shadow(0 5px 8px rgba(0,0,0,0.7));"><rect x="15" y="20" width="30" height="40" rx="3" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><rect x="8" y="25" width="7" height="30" fill="${darkOrange}" rx="1"/><rect x="5" y="28" width="7" height="24" fill="#c2410c" rx="1"/><rect x="45" y="25" width="7" height="30" fill="${darkOrange}" rx="1"/><rect x="48" y="28" width="7" height="24" fill="#c2410c" rx="1"/><polygon points="18,20 22,20 20,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/><polygon points="28,20 32,20 30,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/><polygon points="38,20 42,20 40,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/><text x="30" y="45" font-size="12" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
+    const numRating = String(rating).replace(/[^0-9]/g, ''); 
+    const lightOrange = '#fb923c'; 
+    const darkOrange = '#ea580c';  
+    
+    if(phase === 'Single Phase') return `<svg viewBox="0 0 40 50" style="width:20px;height:25px; filter:drop-shadow(0 3px 5px rgba(0,0,0,0.7));">
+        <rect x="5" y="15" width="30" height="35" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/>
+        <rect x="8" y="18" width="24" height="29" fill="#fdba74"/>
+        <polygon points="17,15 23,15 20,2" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <rect x="18" y="2" width="4" height="2" fill="#94a3b8"/>
+        <text x="20" y="40" font-size="16" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
+    </svg>`;
+    
+    return `<svg viewBox="0 0 60 70" style="width:34px;height:40px; filter:drop-shadow(0 5px 8px rgba(0,0,0,0.7));">
+        <rect x="15" y="20" width="30" height="40" rx="3" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/>
+        <rect x="8" y="25" width="7" height="30" fill="${darkOrange}" rx="1"/>
+        <rect x="5" y="28" width="7" height="24" fill="#c2410c" rx="1"/>
+        <rect x="45" y="25" width="7" height="30" fill="${darkOrange}" rx="1"/>
+        <rect x="48" y="28" width="7" height="24" fill="#c2410c" rx="1"/>
+        <polygon points="18,20 22,20 20,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <polygon points="28,20 32,20 30,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <polygon points="38,20 42,20 40,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <text x="30" y="45" font-size="12" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
+    </svg>`;
 }
 
 window.getConsumerSVG = function(cType, status) {
@@ -205,16 +260,26 @@ window.renderEntireNetwork = function() {
         });
 
         const net = window.getActiveNetwork(); if(!net) return; const f = appState.filters;
-        let poleDTMap = {}; net.dts.forEach(d => { if(d.parentPole) { if(!poleDTMap[String(d.parentPole)]) poleDTMap[String(d.parentPole)] = []; poleDTMap[String(d.parentPole)].push(d); } });
+
+        let poleDTMap = {};
+        net.dts.forEach(d => {
+            if(d.parentPole) {
+                if(!poleDTMap[String(d.parentPole)]) poleDTMap[String(d.parentPole)] = [];
+                poleDTMap[String(d.parentPole)].push(d);
+            }
+        });
 
         if (f.poles) {
             net.poles.forEach(p => {
                 if(isNaN(p.lat) || isNaN(p.lng)) return;
                 const isOrphan = appState.orphanPoleIds.has(p.id);
                 if (appState.activeMove && appState.activeMove.id === p.id) return;
+                
                 const associatedDTs = poleDTMap[String(p.poleNo)] || [];
                 const svgHtml = window.getPoleWithDTHTML(p, associatedDTs, isOrphan);
+                
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pole-marker-icon', html: svgHtml, iconSize: [50, 75], iconAnchor: [25, 12] }), zIndexOffset: 200 });
+                
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'}</b><br>Condition: <b>${p.condition||'Good'}</b>`); }); 
                 featureGroups.poles.addLayer(m);
             });
