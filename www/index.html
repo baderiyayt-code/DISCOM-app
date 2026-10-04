@@ -12,10 +12,7 @@
 
     <!-- JS Libraries -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <!-- LEAFLET ROTATE PLUGIN (मैप को 2-उंगली से घुमाने के लिए) -->
     <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.min.js"></script>
-
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -83,7 +80,7 @@
                     </div>
                 </div>
                 
-                <!-- Header Actions (Add Feeder button removed from here) -->
+                <!-- Header Actions -->
                 <div class="header-actions">
                     <button class="action-btn-sm" onclick="window.toggleSearchBox()"><i class="fa-solid fa-search"></i></button>
                     <button class="action-btn-sm" onclick="window.runOrphanNodeChecker()" title="Check Orphan Nodes" style="color:#ef4444;"><i class="fa-solid fa-link-slash"></i></button>
@@ -91,8 +88,7 @@
                 </div>
             </div>
 
-            <!-- KPI Row -->
-                        <!-- KPI Row (Updated for Collapse) -->
+            <!-- KPI Row (Updated for Collapse) -->
             <div id="kpi-container" class="kpi-row">
                 <div class="kpi-tile"><div class="kpi-label" id="kpi11Label">11 KV LINE</div><div class="kpi-val" id="kpi11">0.0 M</div></div>
                 <div class="kpi-tile"><div class="kpi-label" id="kpiLTLabel">LT LINE</div><div class="kpi-val" id="kpiLT">0.0 M</div></div>
@@ -100,8 +96,11 @@
                 <div class="kpi-tile"><div class="kpi-label" id="kpi1PhLabel">1-PH DT</div><div class="kpi-val" id="kpi1Ph">0</div></div>
                 <div class="kpi-tile"><div class="kpi-label" id="kpiConsLabel">CONSUMERS</div><div class="kpi-val" id="kpiCons">0</div></div>
             </div>
+            
             <!-- Arrow Button -->
             <div class="kpi-toggle-btn" onclick="window.toggleKPIBar()"><i id="kpi-toggle-icon" class="fa-solid fa-chevron-up"></i></div>
+            
+        </div> <!-- यह वो </div> टैग है जो डिलीट हो गया था! -->
 
         <div id="layer-indicator">Street Map</div>
         <div id="reticle-coordinates">26.915000, 75.783000</div>
@@ -204,9 +203,9 @@
         </div>
         <div class="settings-body">
             <div class="settings-card">
-                <div class="form-row"><label>Language</label><select id="setLanguage" class="form-select" onchange="autoSaveSettings()"><option value="en">English</option><option value="hi">हिंदी (Hindi)</option></select></div>
-                <div class="form-row"><label>Distance Unit</label><select id="setUnit" class="form-select" onchange="autoSaveSettings()"><option value="m">Meters (M)</option><option value="km">Kilometers (KM)</option></select></div>
-                <div class="form-row" style="margin-bottom:0;"><label>Theme</label><select id="setTheme" class="form-select" onchange="autoSaveSettings()"><option value="light">Light Mode</option><option value="dark">Dark Mode</option></select></div>
+                <div class="form-row"><select id="setLanguage" class="form-select" onchange="autoSaveSettings()"><option value="en">English</option><option value="hi">हिंदी (Hindi)</option></select><label>Language</label></div>
+                <div class="form-row"><select id="setUnit" class="form-select" onchange="autoSaveSettings()"><option value="m">Meters (M)</option><option value="km">Kilometers (KM)</option></select><label>Distance Unit</label></div>
+                <div class="form-row" style="margin-bottom:0;"><select id="setTheme" class="form-select" onchange="autoSaveSettings()"><option value="light">Light Mode</option><option value="dark">Dark Mode</option></select><label>Theme</label></div>
             </div>
             <div class="settings-card" style="display:flex; justify-content:space-between; align-items:center;">
                 <div><h3 style="font-size:0.9rem; font-weight:700;">Live Cloud Sync</h3><p style="font-size:0.75rem; color:var(--text-sub);">Auto-save to Supabase</p></div>
