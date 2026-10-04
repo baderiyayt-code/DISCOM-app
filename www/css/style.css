@@ -298,3 +298,30 @@ input:checked + .slider:before { transform: translateX(22px); }
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.05); }
 }
+/* ==========================================
+   ZOOM LEVEL HIDE/SHOW RULES FOR MAP ELEMENTS
+========================================== */
+#map.hide-consumers .consumer-marker-icon,
+#map.hide-consumers .consumer-line-path {
+    display: none !important;
+}
+
+#map.hide-lt-poles .pole-marker-icon:has(polygon),
+#map.hide-lt-lines .lt-line-path {
+    display: none !important;
+}
+
+#map.hide-ht-poles .pole-marker-icon:not(:has(polygon)),
+#map.hide-ht-lines .ht-line-path,
+#map.hide-ht-lines .ug-line-path,
+#map.hide-ht-lines .ryb-line-path {
+    display: none !important;
+}
+
+#map.hide-dt .dt-square-icon {
+    display: none !important;
+}
+
+#map.hide-gss .gss-marker {
+    display: none !important;
+}
