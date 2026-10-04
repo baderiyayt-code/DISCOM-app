@@ -133,7 +133,6 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     const isLT = p.lineType === 'LT';
     if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
-    // Number Pill embedded INSIDE SVG so it scales perfectly and doesn't push the anchor down
     let numberPill = `
         <g transform="translate(0, -18)">
             <rect x="30" y="0" width="40" height="20" rx="6" fill="#ffffff" stroke="#0f172a" stroke-width="2.5"/>
@@ -141,24 +140,25 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
         </g>
     `;
 
-    // Uniform Geometry: All Poles have their main central axis perfectly at local X=30
     let poleSvg = '';
     let cx = 50; 
 
     if(p.poleType === 'TOWER') {
         poleSvg = `<path d="M 30 10 L 10 95 M 30 10 L 50 95" stroke="${strokeC}" stroke-width="3"/><path d="M 23 35 L 37 35 M 19 55 L 41 55 M 14 75 L 46 75" stroke="${strokeC}" stroke-width="2"/><line x1="0" y1="35" x2="60" y2="35" stroke="${strokeC}" stroke-width="4"/><line x1="5" y1="55" x2="55" y2="55" stroke="${strokeC}" stroke-width="4"/><rect x="27" y="20" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+        cx = 60; 
     } else if(p.poleType === 'RAIL POLE') {
         poleSvg = `<rect x="22" y="10" width="16" height="85" fill="${fillC}" stroke="${strokeC}" stroke-width="2"/><line x1="12" y1="20" x2="48" y2="20" stroke="${strokeC}" stroke-width="5"/><rect x="18" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="36" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+        cx = 40; 
     } else if(p.poleType === 'PCC' && p.poleConfig === 'Double Pole') {
         poleSvg = `<polygon points="12,15 20,15 22,95 10,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><polygon points="40,15 48,15 50,95 38,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="6" y="25" width="48" height="5" fill="${strokeC}"/><rect x="6" y="45" width="48" height="5" fill="${strokeC}"/><rect x="13" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="41" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+        cx = 60; 
     } else {
         if(isLT) {
-            // LT Bracket adjusted to Y=25, Insulator to Y=18
             poleSvg = `<polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="18" y="25" width="24" height="6" fill="${strokeC}" rx="1"/><rect x="27" y="18" width="6" height="8" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
         } else {
-            // V-Cross adjusted so Center Insulator is exactly at Y=25
             poleSvg = `<path d="M 10 20 L 30 35 L 50 20" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="7" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="47" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="25" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
         }
+        cx = 50; 
     }
 
     let dtSvgs = '';
@@ -188,7 +188,6 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
         });
     }
 
-    // Only SVG returned, meaning divIcon size matches perfectly, and Anchor calculation holds true
     return `<svg viewBox="0 -20 100 130" style="width:50px;height:75px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6)); overflow:visible;">
         ${numberPill}
         <g transform="translate(20, 0)">${poleSvg}</g>
@@ -227,10 +226,14 @@ window.getConsumerSVG = function(cType, status) {
     return `<div style="position:relative; width:34px; height:34px; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.6));"><svg viewBox="0 0 100 100" width="100%" height="100%"><path d="M 10 50 L 50 15 L 90 50 L 80 50 L 80 90 L 20 90 L 20 50 Z" fill="${bgColor}" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/><rect x="40" y="60" width="20" height="30" fill="#ffffff"/><rect x="25" y="55" width="10" height="15" fill="#e0f2fe"/><rect x="65" y="55" width="10" height="15" fill="#e0f2fe"/></svg></div>`;
 }
 
+// --- FIX: REMOVED WHITE BORDER/STROKE FROM SINGLE PHASE HT LINE ---
 window.getLineSpec = function(type, phase, conductor) {
     const t = (type || '').toUpperCase(); const cond = (conductor || '').toUpperCase();
     if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 3, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
-    let lineClass = 'ht-line-path'; let color = '#2563eb'; let weight = 3; let strokeColor = '#ffffff';
+    
+    // Setting HT strokeColor to transparent to remove the white border
+    let lineClass = 'ht-line-path'; let color = '#2563eb'; let weight = 3; let strokeColor = 'transparent'; 
+    
     if (cond.includes('UNDERGROUND') || cond.includes('UG')) { color = '#000000'; weight = 5; strokeColor = 'transparent'; lineClass = 'ug-line-path'; } 
     else if (phase === 'Three Phase') { lineClass = 'ryb-line-path'; color = '#2563eb'; }
     return { name: '11 KV LINE', color: color, weight: weight, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: strokeColor };
@@ -283,9 +286,6 @@ window.renderEntireNetwork = function() {
                 const associatedDTs = poleDTMap[String(p.poleNo)] || [];
                 const svgHtml = window.getPoleWithDTHTML(p, associatedDTs, isOrphan);
                 
-                // --- EXACT MATHEMATICAL ANCHOR TO HIT THE INSULATORS ---
-                // viewBox = "0 -20 100 130". width=50, height=75
-                // Insulators are exactly at local Y=25 (which is CSS Y=16px from top of SVG)
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pole-marker-icon', html: svgHtml, iconSize: [50, 75], iconAnchor: [25, 16] }), zIndexOffset: 200 });
                 
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'}</b><br>Condition: <b>${p.condition||'Good'}</b>`); }); 
@@ -312,7 +312,6 @@ window.renderEntireNetwork = function() {
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 35, className: spec.lineClass }).addTo(featureGroups.lines);
             
             if(spec.lineClass === 'ryb-line-path') { 
-                // --- REDUCED OFFSET SO R/B LINES HIT EXACTLY ON SIDE INSULATORS ---
                 const coordsR = window.getOffsetCoords(line.coords, 1.2); 
                 const coordsB = window.getOffsetCoords(line.coords, -1.2); 
                 L.polyline(coordsR, { color: '#ef4444', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
@@ -321,7 +320,10 @@ window.renderEntireNetwork = function() {
             } else if (spec.lineClass === 'ug-line-path') {
                 L.polyline(line.coords, { color: spec.color, weight: spec.weight, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
             } else { 
-                L.polyline(line.coords, { color: spec.strokeColor, weight: spec.weight + 4, opacity: 0.8, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
+                // Don't draw the stroke polyline if it's set to transparent (saves resources)
+                if (spec.strokeColor !== 'transparent') {
+                    L.polyline(line.coords, { color: spec.strokeColor, weight: spec.weight + 4, opacity: 0.8, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
+                }
                 L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
             }
             hitPoly.on('click', () => { window.openObjectSheet('LINE', line.id, spec.name, `Phase: <b>${line.phase || 'N/A'}</b><br>Conductor: <b>${line.conductor || 'Standard'}</b><br>From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Dist: <b>${window.formatDistance(line.distanceMeters||0)}</b>`); });
