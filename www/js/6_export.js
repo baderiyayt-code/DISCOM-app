@@ -1,57 +1,249 @@
-window.smartExportFile = async function(filename, dataBlobOrText, mimeType) {
+/* --- js/6_export.js --- */
+
+// ==========================================
+// 1. GENERATE PROFESSIONAL SLD PDF (LIKE CAD)
+// ==========================================
+window.generateCadSLDPdf = function() {
+    const net = window.getActiveNetwork();
+    if(!net) return alert("No active network to export!");
+    
     try {
-        window.showToast("Preparing file export..."); const blob = dataBlobOrText instanceof Blob ? dataBlobOrText : new Blob([dataBlobOrText], { type: mimeType });
-        if (window.showSaveFilePicker) { try { const ext = filename.split('.').pop(); const fileHandle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: 'Export', accept: { [mimeType]: ['.' + ext] } }] }); const writable = await fileHandle.createWritable(); await writable.write(blob); await writable.close(); window.showToast("File Saved Successfully!"); return; } catch (e) { console.warn("SaveFilePicker cancelled", e); } }
-        if (window.cordova && cordova.file && cordova.file.externalRootDirectory) { window.resolveLocalFileSystemURL(cordova.file.externalRootDirectory + 'Download/', function(dirEntry) { dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) { fileEntry.createWriter(function(fileWriter) { fileWriter.onwriteend = function() { window.showToast("Saved to Downloads folder!"); }; fileWriter.onerror = function(e) { window.fallbackDownload(blob, filename); }; fileWriter.write(blob); }, function() { window.fallbackDownload(blob, filename); }); }, function() { window.fallbackDownload(blob, filename); }); }, function() { window.fallbackDownload(blob, filename); }); return; }
-        window.fallbackDownload(blob, filename);
-    } catch (err) { alert("Export failed: " + err.message); }
-}
-window.fallbackDownload = function(blob, filename) { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.style.display = 'none'; a.href = url; a.download = filename; document.body.appendChild(a); a.click(); setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500); window.showToast("File Downloaded!"); }
+        const { jsPDF } = window.jspdf;
+        // Create A4 Landscape PDF
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        
+        const pageWidth = 297;
+        const pageHeight = 210;
+        const margin = 10;
+        const cw = pageWidth - 2 * margin;
+        const ch = pageHeight - 2 * margin;
 
-window.exportFullJSONBackup = async function() { window.toggleSidebar(false); const backupData = JSON.stringify(appState); await window.smartExportFile(`DISCOM_Backup_${new Date().getTime()}.json`, backupData, "application/json"); }
-window.handleImportChoice = function(e) { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async function(event) { try { const content = event.target.result; const importedData = JSON.parse(content); if (importedData.feeders && importedData.gssNodes) { appState = importedData; window.triggerPersistence(); window.renderEntireNetwork(); window.showToast("Data Imported!"); } else alert("Invalid Backup Format!"); } catch (err) { alert("Error parsing file."); } }; reader.readAsText(file); e.target.value = ''; window.toggleSidebar(false); }
-window.getCSVString = function() {
-    const net = window.getActiveNetwork(); let csv = "\uFEFFWKT,Name,Type,ParentNode,Details\n"; 
-    Object.values(appState.gssNodes).forEach(g => csv += `"POINT (${g.lng} ${g.lat})","${g.name}","GSS","","Code: ${g.code}"\n`);
-    net.poles.forEach(p => csv += `"POINT (${p.lng} ${p.lat})","Pole ${p.poleNo}","POLE","${p.dtCode||p.poleNo}","Type: ${p.lineType} | Config: ${p.poleType} (${p.poleConfig})" \n`);
-    net.dts.forEach(d => csv += `"POINT (${d.lng} ${d.lat})","DT ${d.code}","DT","${d.parentPole}","Rating: ${d.rating}kVA"\n`);
-    net.consumers.forEach(c => csv += `"POINT (${c.lng} ${c.lat})","${c.name}","CONSUMER","${c.parentRef}","KNo: ${c.kno} | Load: ${c.load}"\n`);
-    net.lines.forEach(l => { if (l.coords && l.coords.length === 2) csv += `"LINESTRING (${l.coords[0][1]} ${l.coords[0][0]}, ${l.coords[1][1]} ${l.coords[1][0]})","${l.type}","LINE","${l.fromNode} ➔ ${l.toNode}","Dist: ${(l.distanceMeters||0).toFixed(1)}m | Cond: ${l.conductor}"\n`; }); return csv;
-}
-window.exportDataToCSV = async function() { window.toggleSidebar(false); await window.smartExportFile(`${window.getActiveNetwork().feeder.name.replace(/\s+/g, '_')}_GE.csv`, window.getCSVString(), "text/csv;charset=utf-8;"); }
-window.exportToAutoCAD_DXF = async function() { window.toggleSidebar(false); let dxf = "0\nSECTION\n2\nENTITIES\n"; window.getActiveNetwork().lines.forEach(l => { if (l.coords && l.coords[0] && l.coords[1]) dxf += `0\nLINE\n8\n${l.type.replace(/\s+/g,'_')}\n10\n${l.coords[0][1]}\n20\n${l.coords[0][0]}\n30\n0\n11\n${l.coords[1][1]}\n21\n${l.coords[1][0]}\n31\n0\n`; }); dxf += "0\nENDSEC\n0\nEOF\n"; await window.smartExportFile(`${window.getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.dxf`, dxf, "application/dxf"); }
-window.exportToGoogleEarth_KML = async function() { window.toggleSidebar(false); const esc = u => u.replace(/[<>&'"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c])); const feederName = esc(window.getActiveNetwork().feeder.name); let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n<Document>\n<name>${feederName}</name>\n`; window.getActiveNetwork().lines.forEach(l => { if (l.coords) kml += `<Placemark><LineString><coordinates>${l.coords[0][1]},${l.coords[0][0]},0 ${l.coords[1][1]},${l.coords[1][0]},0</coordinates></LineString></Placemark>\n`; }); window.getActiveNetwork().dts.forEach(d => { if (d.lat) kml += `<Placemark><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>\n`; }); kml += "</Document>\n</kml>"; await window.smartExportFile(`${window.getActiveNetwork().feeder.name.replace(/\s+/g, '_')}.kml`, kml, "application/vnd.google-earth.kml+xml"); }
+        // 1. Draw Grid Background (Light Blue/Gray)
+        doc.setDrawColor(235, 240, 245); 
+        doc.setLineWidth(0.2);
+        for(let i = margin; i <= pageWidth - margin; i += 5) doc.line(i, margin, i, pageHeight - margin);
+        for(let j = margin; j <= pageHeight - margin; j += 5) doc.line(margin, j, pageWidth - margin, j);
 
-window.generateCadSLDPdf = async function() { 
-    window.toggleSidebar(false); const net = window.getActiveNetwork();
-    if(!window.jspdf || !window.jspdf.jsPDF) return alert("PDF Generator library load error.");
-    window.showToast("Generating A0 SLD PDF..."); const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a0' });
-    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180; const allPoints = [];
-    if(appState.gssNodes[net.feeder.parentGss]) allPoints.push(appState.gssNodes[net.feeder.parentGss]);
-    net.poles.forEach(p => { if(p.lineType !== 'LT') allPoints.push(p); }); net.dts.forEach(d => allPoints.push(d));
-    if(allPoints.length === 0) return alert("No HT nodes found to plot!");
-    allPoints.forEach(p => { if(p.lat < minLat) minLat = p.lat; if(p.lat > maxLat) maxLat = p.lat; if(p.lng < minLng) minLng = p.lng; if(p.lng > maxLng) maxLng = p.lng; });
-    const margin = 50; const pdfW = 1189 - (margin * 2); const pdfH = 841 - (margin * 2); const latDiff = maxLat - minLat || 0.01; const lngDiff = maxLng - minLng || 0.01; const scaleX = pdfW / lngDiff; const scaleY = pdfH / latDiff; const scale = Math.min(scaleX, scaleY); const offsetX = margin + (pdfW - (lngDiff * scale)) / 2; const offsetY = margin + (pdfH - (latDiff * scale)) / 2;
-    function getPt(lat, lng) { return { x: offsetX + (lng - minLng) * scale, y: 841 - (offsetY + (lat - minLat) * scale) }; }
-    doc.setFontSize(10); doc.setDrawColor(37, 99, 235); doc.setLineWidth(1.5);
+        // 2. Draw Main Border
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.5);
+        doc.rect(margin, margin, cw, ch);
+
+        // 3. Header Text
+        const fName = (net.feeder && net.feeder.name) ? net.feeder.name : 'UNNAMED FEEDER';
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`SLD: ${fName.toUpperCase()} (DISCOM PRO)`, margin + 2, margin + 5);
+
+        // Map Extents Calculation
+        let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+        let nodes = [];
+        
+        const pGss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null;
+        if(pGss) nodes.push({id: 'GSS_'+pGss.code, type: 'GSS', lat: pGss.lat, lng: pGss.lng, data: pGss});
+        
+        net.poles.forEach(p => { if(!isNaN(p.lat) && p.lineType !== 'LT') nodes.push({id: 'POLE_'+p.poleNo, type: 'POLE', lat: p.lat, lng: p.lng, data: p}); });
+        net.dts.forEach(d => { if(!isNaN(d.lat)) nodes.push({id: 'DT_'+d.code, type: 'DT', lat: d.lat, lng: d.lng, data: d}); });
+
+        if(nodes.length === 0) return alert("No network elements to draw!");
+
+        nodes.forEach(n => {
+            if(n.lat < minLat) minLat = n.lat; if(n.lat > maxLat) maxLat = n.lat;
+            if(n.lng < minLng) minLng = n.lng; if(n.lng > maxLng) maxLng = n.lng;
+        });
+
+        // Add 15% Padding to map bounds
+        if(maxLat === minLat) { maxLat += 0.001; minLat -= 0.001; }
+        if(maxLng === minLng) { maxLng += 0.001; minLng -= 0.001; }
+        const padLat = (maxLat - minLat) * 0.15; const padLng = (maxLng - minLng) * 0.15;
+        minLat -= padLat; maxLat += padLat; minLng -= padLng; maxLng += padLng;
+        
+        const scaleX = cw / (maxLng - minLng);
+        const scaleY = ch / (maxLat - minLat);
+        const scale = Math.min(scaleX, scaleY); // Maintain Aspect Ratio
+        
+        // Center alignment
+        const xOffset = margin + (cw - ((maxLng - minLng) * scale)) / 2;
+        const yOffset = margin + (ch - ((maxLat - minLat) * scale)) / 2;
+
+        const mapToPdf = (lat, lng) => {
+            const x = xOffset + ((lng - minLng) * scale);
+            const y = yOffset + ch - ((lat - minLat) * scale); // Invert Y axis for PDF
+            return {x, y};
+        };
+
+        // 4. Draw Lines with Distances
+        let totalHT = 0;
+        net.lines.forEach(l => {
+            const spec = window.getLineSpec(l.type, l.phase, l.conductor);
+            if(spec.name.includes('LT')) return; // SLD focus is HT
+            
+            totalHT += (l.distanceMeters || 0);
+            const n1 = window.getNodeCoords(l.fromNode);
+            const n2 = window.getNodeCoords(l.toNode);
+            
+            if(n1 && n2 && !isNaN(n1.lat) && !isNaN(n2.lat)) {
+                const p1 = mapToPdf(n1.lat, n1.lng);
+                const p2 = mapToPdf(n2.lat, n2.lng);
+
+                doc.setDrawColor(37, 99, 235); // Blue Line
+                doc.setLineWidth(0.6);
+                doc.line(p1.x, p1.y, p2.x, p2.y);
+
+                // Distance Label rotated along line
+                const midX = (p1.x + p2.x) / 2;
+                const midY = (p1.y + p2.y) / 2;
+                let angleDeg = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+                if(angleDeg > 90 || angleDeg < -90) angleDeg += 180; // Keep text upright
+
+                doc.setFontSize(4);
+                doc.setTextColor(37, 99, 235);
+                doc.text(`${(l.distanceMeters||0).toFixed(1)} M`, midX, midY - 0.5, { angle: -angleDeg, align: 'center' });
+            }
+        });
+
+        // 5. Draw Nodes (GSS & DT)
+        nodes.forEach(n => {
+            const pos = mapToPdf(n.lat, n.lng);
+            
+            if(n.type === 'GSS') {
+                doc.setFillColor(220, 38, 38); // Red
+                doc.setDrawColor(0,0,0); doc.setLineWidth(0.2);
+                doc.rect(pos.x - 3, pos.y - 2, 6, 4, 'FD');
+                doc.setFontSize(4.5); doc.setTextColor(255,255,255);
+                doc.text("GSS", pos.x, pos.y + 1, { align: 'center' });
+                doc.setTextColor(0,0,0); doc.setFontSize(4);
+                doc.text(n.data.name || "Substation", pos.x, pos.y - 3, { align: 'center' });
+            } else if(n.type === 'DT') {
+                doc.setFillColor(249, 115, 22); // Orange
+                doc.setDrawColor(0,0,0); doc.setLineWidth(0.2);
+                doc.rect(pos.x - 2, pos.y - 2, 4, 4, 'FD');
+                doc.setFontSize(4); doc.setTextColor(0,0,0);
+                const rating = String(n.data.rating).replace(/[^0-9]/g, '');
+                doc.text(rating, pos.x, pos.y + 1.2, { align: 'center' });
+            } else if(n.type === 'POLE') {
+                doc.setFillColor(100, 116, 139);
+                doc.circle(pos.x, pos.y, 0.6, 'F');
+            }
+        });
+
+        // 6. Data Summary Box (Bottom Right)
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.3);
+        doc.rect(pageWidth - margin - 45, pageHeight - margin - 12, 43, 10, 'FD');
+        doc.setFontSize(6);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Feeder Name: ${fName}`, pageWidth - margin - 43, pageHeight - margin - 8.5);
+        doc.text(`Total HT Length: ${(totalHT/1000).toFixed(3)} km`, pageWidth - margin - 43, pageHeight - margin - 5.5);
+        doc.text(`Total DTs: ${net.dts.length}`, pageWidth - margin - 43, pageHeight - margin - 2.5);
+
+        // Download Action
+        doc.save(`${fName.replace(/\s+/g, '_')}_SLD.pdf`);
+        if(window.showToast) window.showToast("SLD PDF Exported Successfully!");
+        window.closeModal();
+        
+    } catch(err) {
+        console.error("PDF Gen Error:", err);
+        alert("Error generating PDF. Wait for libraries to load.");
+    }
+}
+
+// ==========================================
+// 2. EXPORT TO GOOGLE EARTH (KML)
+// ==========================================
+window.exportToGoogleEarth_KML = function() {
+    const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
+    let kml = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${net.feeder.name || 'Feeder'} KML</name>`;
+    
+    // Add Styles
+    kml += `<Style id="htLine"><LineStyle><color>ffeb6325</color><width>4</width></LineStyle></Style>`;
+    kml += `<Style id="dtIcon"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_square.png</href></Icon></IconStyle></Style>`;
+    kml += `<Style id="poleIcon"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/open-diamond.png</href></Icon></IconStyle></Style>`;
+
+    // Add Poles
+    net.poles.forEach(p => { if(!isNaN(p.lat)) kml += `<Placemark><name>Pole ${p.poleNo}</name><styleUrl>#poleIcon</styleUrl><Point><coordinates>${p.lng},${p.lat},0</coordinates></Point></Placemark>`; });
+    // Add DTs
+    net.dts.forEach(d => { if(!isNaN(d.lat)) kml += `<Placemark><name>DT ${d.code} (${d.rating}kVA)</name><styleUrl>#dtIcon</styleUrl><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>`; });
+    // Add Lines
     net.lines.forEach(l => {
-        if(!l.type.includes('11 KV')) return;
-        const c1 = window.getNodeCoords(l.fromNode), c2 = window.getNodeCoords(l.toNode);
-        if(c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) {
-            const pt1 = getPt(c1.lat, c1.lng), pt2 = getPt(c2.lat, c2.lng); doc.line(pt1.x, pt1.y, pt2.x, pt2.y);
-            const dist = (l.distanceMeters || window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng)).toFixed(0);
-            const midX = (pt1.x + pt2.x) / 2; const midY = (pt1.y + pt2.y) / 2; let angle = Math.atan2(pt2.y - pt1.y, pt2.x - pt1.x) * (180 / Math.PI); if (angle > 90 || angle < -90) angle += 180;
-            doc.setTextColor(0, 0, 0); doc.setFontSize(8); doc.text(`${dist} M`, midX, midY - 2, { angle: angle, align: 'center' });
+        const n1 = window.getNodeCoords(l.fromNode); const n2 = window.getNodeCoords(l.toNode);
+        if(n1 && n2 && !isNaN(n1.lat) && !isNaN(n2.lat)) {
+            kml += `<Placemark><name>${l.type}</name><styleUrl>#htLine</styleUrl><LineString><coordinates>${n1.lng},${n1.lat},0 ${n2.lng},${n2.lat},0</coordinates></LineString></Placemark>`;
         }
     });
-    allPoints.forEach(p => {
-        if(isNaN(p.lat)) return;
-        const pt = getPt(p.lat, p.lng);
-        if(p.code && p.name && p.name.includes("Substation")) { doc.setFillColor(185, 28, 28); doc.rect(pt.x - 6, pt.y - 6, 12, 12, 'FD'); doc.setTextColor(255, 255, 255); doc.setFontSize(6); doc.text("GSS", pt.x, pt.y + 2, {align:'center'}); } 
-        else if(p.rating) { doc.setFillColor(245, 158, 11); doc.rect(pt.x - 5, pt.y - 5, 10, 10, 'FD'); doc.setTextColor(0, 0, 0); doc.setFontSize(7); const numOnly = String(p.rating).replace(/[^0-9]/g, ''); doc.text(numOnly, pt.x, pt.y + 2.5, {align:'center'}); } 
-        else if(p.lineType !== 'LT') { doc.setFillColor(253, 224, 71); doc.circle(pt.x, pt.y, 3, 'FD'); }
+
+    kml += `</Document></kml>`;
+    const blob = new Blob([kml], {type: "application/vnd.google-earth.kml+xml"});
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+    link.download = `${(net.feeder.name || 'network').replace(/\s+/g, '_')}.kml`; link.click();
+    window.closeModal(); if(window.showToast) window.showToast("KML Exported!");
+}
+
+// ==========================================
+// 3. EXPORT TO AUTOCAD (DXF)
+// ==========================================
+window.exportToAutoCAD_DXF = function() {
+    const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
+    let dxf = "0\nSECTION\n2\nENTITIES\n";
+    
+    net.lines.forEach(l => {
+        const n1 = window.getNodeCoords(l.fromNode); const n2 = window.getNodeCoords(l.toNode);
+        if(n1 && n2 && !isNaN(n1.lat)) {
+            dxf += `0\nLINE\n8\nLines\n10\n${n1.lng}\n20\n${n1.lat}\n11\n${n2.lng}\n21\n${n2.lat}\n`;
+        }
     });
-    let t11 = 0, dt1ph = 0, dt3ph = 0; net.lines.forEach(l => { if(!l.type.includes('LT')) t11 += (l.distanceMeters||0); }); net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
-    doc.setFillColor(255, 255, 255); doc.setDrawColor(0,0,0); doc.setLineWidth(0.5); doc.rect(1189 - 160, 841 - 70, 150, 60, 'FD'); doc.setTextColor(0, 0, 0); doc.setFontSize(16); doc.text("DISCOM SLD REPORT", 1189 - 155, 841 - 55); doc.setFontSize(12); doc.text(`Feeder: ${net.feeder.name} (${net.feeder.code})`, 1189 - 155, 841 - 45); doc.text(`Total HT Line: ${(t11/1000).toFixed(3)} KM`, 1189 - 155, 841 - 35); doc.text(`1-Phase DTs: ${dt1ph}`, 1189 - 155, 841 - 25); doc.text(`3-Phase DTs: ${dt3ph}`, 1189 - 155, 841 - 15);
-    await window.smartExportFile(`${net.feeder.name.replace(/\s+/g, '_')}_SLD.pdf`, doc.output('blob'), "application/pdf");
+    net.dts.forEach(d => { if(!isNaN(d.lat)) dxf += `0\nPOINT\n8\nDTs\n10\n${d.lng}\n20\n${d.lat}\n`; });
+
+    dxf += "0\nENDSEC\n0\nEOF\n";
+    const blob = new Blob([dxf], {type: "application/dxf"});
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+    link.download = `${(net.feeder.name || 'network').replace(/\s+/g, '_')}.dxf`; link.click();
+    window.closeModal(); if(window.showToast) window.showToast("DXF Exported!");
+}
+
+// ==========================================
+// 4. EXPORT TO CSV (DATA DUMP)
+// ==========================================
+window.exportDataToCSV = function() {
+    const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
+    let csv = "Type,ID/Code,Lat,Lng,Details\n";
+    
+    net.poles.forEach(p => csv += `POLE,${p.poleNo},${p.lat},${p.lng},${p.lineType} - ${p.poleType}\n`);
+    net.dts.forEach(d => csv += `DT,${d.code},${d.lat},${d.lng},${d.rating}kVA - ${d.phase}\n`);
+    net.lines.forEach(l => csv += `LINE,${l.fromNode} to ${l.toNode},,,${l.type} - ${(l.distanceMeters||0).toFixed(1)}m\n`);
+    net.consumers.forEach(c => csv += `CONSUMER,${c.kno},${c.lat},${c.lng},${c.name} - ${c.cType}\n`);
+
+    const blob = new Blob([csv], {type: "text/csv"});
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+    link.download = `${(net.feeder.name || 'network').replace(/\s+/g, '_')}_Data.csv`; link.click();
+    window.closeModal(); if(window.showToast) window.showToast("CSV Exported!");
+}
+
+// ==========================================
+// 5. JSON BACKUP & RESTORE
+// ==========================================
+window.exportFullJSONBackup = function() {
+    if(!appState) return;
+    const dataStr = JSON.stringify(appState, null, 2);
+    const blob = new Blob([dataStr], {type: "application/json"});
+    const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+    link.download = `DISCOM_Survey_Backup_${new Date().getTime()}.json`; link.click();
+    window.closeModal(); if(window.showToast) window.showToast("JSON Backup Downloaded!");
+}
+
+window.handleImportChoice = function(e) {
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        try {
+            const importedData = JSON.parse(ev.target.result);
+            if(!importedData.feeders || !importedData.gssNodes) return alert("Invalid Backup File!");
+            appState = importedData;
+            window.triggerPersistence(); window.renderEntireNetwork();
+            alert("Backup Restored Successfully!");
+            window.closeModal();
+        } catch(err) { alert("Error parsing JSON file!"); }
+    };
+    reader.readAsText(file);
 }
