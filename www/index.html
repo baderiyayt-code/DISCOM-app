@@ -105,44 +105,17 @@
             </div>
         </div>
 
-                <!-- Right Side Tools (Filter Button Added Here) -->
-                <!-- Right Side Tools (Cleaned & Stable) -->
+        <!-- Floating Overlays -->
+        <div id="layer-indicator"><i class="fa-solid fa-map-location-dot"></i> Street Map</div>
+        <div id="reticle-coordinates"><i class="fa-solid fa-satellite"></i> 26.915000, 75.783000</div>
+        <div id="center-placement-pin"><i class="fa-solid fa-crosshairs" style="color:#ef4444; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5)); font-size:40px;"></i></div>
+        <div id="live-distance-indicator"></div>
+
+        <!-- Right Side Tools -->
         <div class="right-tools-stack">
             <div class="round-tool-btn" onclick="toggleMapLayer()"><i class="fa-solid fa-layer-group"></i></div>
             <div class="round-tool-btn" id="liveTrackBtn" onclick="toggleLiveTracking()"><i class="fa-solid fa-location-crosshairs"></i></div>
-            <div class="round-tool-btn" onclick="openFilterModal()" title="Filters"><i class="fa-solid fa-filter" style="color:#d97706;"></i></div>
             <div class="round-tool-btn undo-btn" onclick="undoLastAction()"><i class="fa-solid fa-clock-rotate-left"></i></div>
-        </div>
-
-            <!-- Map Rotation Tool -->
-            <div class="round-tool-btn" title="Rotate Map" style="position:relative; overflow:visible;">
-                <i class="fa-solid fa-compass"></i>
-                <input type="range" min="0" max="360" value="0" id="mapRotateSlider" oninput="rotateMapFromSlider(this.value)" style="position:absolute; bottom:55px; right:0; width:120px; background:var(--bg-sheet); accent-color:var(--accent); writing-mode:vertical-lr; direction:rtl; display:none; padding:5px; border-radius:10px; border:1px solid var(--border); box-shadow:var(--shadow-md);" onclick="event.stopPropagation()">
-            </div>
-        </div>
-
-        <!-- Bottom Single Action (Modern FAB) -->
-        <div id="bottom-single-action">
-            <div class="center-plus-fab" id="mainFabBtn" onclick="toggleSpeedDial(event)"><i class="fa-solid fa-plus"></i></div>
-        </div>
-
-        <!-- Speed Dial Menu (Cleaned - 4 Options Only) -->
-        <div id="speed-dial-menu">
-            <div class="dial-grid" style="grid-template-columns: repeat(2, 1fr);">
-                <div class="dial-card" onclick="openAddForm('POLE')"><div class="icon-wrap bg-blue"><i class="fa-solid fa-bolt"></i></div><span>HT Pole</span></div>
-                <div class="dial-card" onclick="openAddForm('LTPOLE')"><div class="icon-wrap bg-green"><i class="fa-solid fa-lightbulb"></i></div><span>LT Pole</span></div>
-                <div class="dial-card" onclick="openAddForm('LINE')"><div class="icon-wrap bg-cyan"><i class="fa-solid fa-route"></i></div><span>Line</span></div>
-                <div class="dial-card" onclick="openAddForm('CONSUMER')"><div class="icon-wrap bg-purple"><i class="fa-solid fa-house-chimney-user"></i></div><span>Consumer</span></div>
-            </div>
-        </div>
-
-    </div> <!-- End of App Container -->
-
-            <!-- NEW: Map Rotation Slider Tool -->
-            <div class="round-tool-btn" title="Rotate Map" style="position:relative; overflow:visible;">
-                <i class="fa-solid fa-compass"></i>
-                <input type="range" min="0" max="360" value="0" id="mapRotateSlider" oninput="rotateMapFromSlider(this.value)" style="position:absolute; bottom:55px; right:0; width:120px; background:var(--bg-sheet); accent-color:var(--accent); writing-mode:vertical-lr; direction:rtl; display:none; padding:5px; border-radius:10px; border:1px solid var(--border); box-shadow:var(--shadow-md);" onclick="event.stopPropagation()">
-            </div>
         </div>
 
         <!-- Bottom Single Action (Modern FAB) -->
@@ -246,24 +219,13 @@
                 <div><h3 style="font-size:0.9rem; font-weight:700;"><i class="fa-solid fa-cloud-arrow-up" style="color:var(--accent);"></i> Live Cloud Sync</h3><p style="font-size:0.75rem; color:var(--text-sub);">Auto-save to Supabase DB</p></div>
                 <label class="switch"><input type="checkbox" id="setLiveSync" onchange="autoSaveSettings()"><span class="slider round"></span></label>
             </div>
-            <!-- ... existing Settings Cards (Live Cloud Sync etc.) ... -->
-            <div class="settings-card" style="display:flex; justify-content:space-between; align-items:center;">
-                <div><h3 style="font-size:0.9rem; font-weight:700;"><i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b;"></i> Orphan Checker</h3><p style="font-size:0.75rem; color:var(--text-sub);">Highlight disconnected poles</p></div>
-                <label class="switch"><input type="checkbox" id="setOrphanCheck" onchange="autoSaveSettings()"><span class="slider round"></span></label>
-            </div>
-            
-            <!-- Button to view the actual list of orphans -->
-            <button class="btn-danger-outline" style="width:100%; margin-bottom:16px; border-radius:16px;" onclick="runOrphanNodeChecker()"><i class="fa-solid fa-list"></i> View Orphan List</button>
-
-            <!-- Factory Reset Card -->
             <div class="settings-card" style="border-color:#ef4444; cursor:pointer; background:rgba(239, 68, 68, 0.05);" onclick="openResetConfirmationModal()">
                 <h3 style="font-size:0.9rem; font-weight:700; color:#ef4444; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-skull-crossbones"></i> Factory Reset</h3>
                 <p style="font-size:0.75rem; color:var(--text-sub); margin-top:4px;">Permanently wipe all local offline data</p>
             </div>
         </div>
     </div>
-            
-    
+
     <!-- 9. Toast Notification -->
     <div id="app-toast"><i class="fa-solid fa-circle-check"></i> <span id="toast-msg">Success!</span></div>
 
