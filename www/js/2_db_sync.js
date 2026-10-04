@@ -1,8 +1,3 @@
-/* --- js/2_db_sync.js --- */
-
-let authMode = 'login'; 
-
-// FIX: Toggle Auth Mode ID Matching
 window.toggleAuthMode = function() { 
     authMode = authMode === 'login' ? 'signup' : 'login'; 
     document.getElementById('loginBtn').style.display = authMode === 'login' ? 'inline-block' : 'none'; 
@@ -11,7 +6,7 @@ window.toggleAuthMode = function() {
     document.getElementById('authToggleText').innerText = authMode === 'login' ? "Need an account? Sign Up" : "Already have an account? Login"; 
 }
 
-function applyAuthUIVisuals() { 
+window.applyAuthUIVisuals = function() { 
     document.getElementById('auth-screen').style.display = 'none'; 
     document.getElementById('app-container').style.display = 'flex'; 
     setTimeout(() => { if(map) map.invalidateSize(); }, 100); 
@@ -19,73 +14,41 @@ function applyAuthUIVisuals() {
     if(uName) uName.innerText = appState.user.name || 'Admin User'; 
 }
 
-// NEW: Bypass Login for Offline Testing
-window.skipLoginOffline = function() {
-    appState.user.isLoggedIn = true;
-    appState.user.email = "offline@local.dev";
-    appState.user.id = "OFFLINE_USER_" + Date.now();
-    appState.user.name = "Offline Admin";
-    applyAuthUIVisuals();
-    triggerPersistence();
-    checkOnboardingFlow();
-    showToast("Started in Offline Mode!");
-};
-
 window.handleSupabaseAuth = async function(mode) {
-    if(!supabaseClient) {
-        alert("Network/Supabase Error. App ko Offline Mode me open kar rahe hain.");
-        window.skipLoginOffline();
-        return;
-    }
-
+    if(!supabaseClient) return alert("Network/Supabase Error. Supabase initialize nahi hua hai.");
     const email = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value.trim();
     const name = document.getElementById('authName').value.trim();
     
     if(!email || !password) return alert("Email aur Password bharna zaroori hai!"); 
-    showToast("Processing..."); 
+    window.showToast("Processing..."); 
     
     try {
         let response;
         if (mode === 'signup') { 
             if(!name) return alert("Sign Up ke liye Full Name zaroori hai!"); 
             response = await supabaseClient.auth.signUp({ email, password, options: { data: { full_name: name } } }); 
-            
-            if(!response.error) {
-                alert("Account Created! (Note: Agar Supabase me email verification ON hai, toh email verify karke login karein).");
-                window.toggleAuthMode(); // Wapas Login form dikhaye
-                return;
-            }
+            if(response.error) { alert("Signup Error: " + response.error.message); } 
+            else { alert("Account Created Successfully! Ab aap Login kar sakte hain."); window.toggleAuthMode(); }
         } else { 
             response = await supabaseClient.auth.signInWithPassword({ email, password }); 
+            if (response.error) { alert("Login Error: " + response.error.message); } 
+            else if (response.data.user) { 
+                appState.user.isLoggedIn = true; 
+                appState.user.email = response.data.user.email; 
+                appState.user.id = response.data.user.id; 
+                appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0]; 
+                window.applyAuthUIVisuals(); 
+                await window.pullFromSupabase(); 
+                window.showToast("Login Successful!"); 
+            }
         }
-        
-        if (response.error) {
-            alert("Error: " + response.error.message);
-        } else if (response.data.user) { 
-            appState.user.isLoggedIn = true; 
-            appState.user.email = response.data.user.email; 
-            appState.user.id = response.data.user.id; 
-            appState.user.name = response.data.user.user_metadata?.full_name || email.split('@')[0]; 
-            applyAuthUIVisuals(); 
-            await pullFromSupabase(); 
-            showToast("Login Successful!"); 
-        }
-    } catch(err) {
-        console.error("Auth Exception:", err);
-        alert("Login block ho gaya! App Offline Mode me chalu ho rahi hai.");
-        window.skipLoginOffline();
-    }
+    } catch(err) { console.error("Auth Exception:", err); alert("Connection error: " + err.message); }
 }
 
-window.handleSupabaseLogout = async function() { 
-    if(supabaseClient) await supabaseClient.auth.signOut(); 
-    if(typeof localforage !== 'undefined') await localforage.clear(); 
-    localStorage.clear(); 
-    location.reload(); 
-}
+window.handleSupabaseLogout = async function() { if(supabaseClient) await supabaseClient.auth.signOut(); if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.clear(); location.reload(); }
 
-function setSyncStatus(status) { 
+window.setSyncStatus = function(status) { 
     const ind = document.getElementById('sync-indicator'); if(!ind) return;
     if(!navigator.onLine) status = 'offline'; 
     if(status === 'syncing') ind.innerHTML = '<i class="fa-solid fa-cloud-arrow-up sync-active"></i>'; 
@@ -93,7 +56,7 @@ function setSyncStatus(status) {
     else ind.innerHTML = '<i class="fa-solid fa-cloud-xmark sync-error"></i>'; 
 }
 
-function updateUnsyncedBadge() {
+window.updateUnsyncedBadge = function() {
     let unsyncCount = 0; if(appState.photos) unsyncCount += appState.photos.filter(p => !p.synced).length;
     for(let fCode in appState.feeders) { let f = appState.feeders[fCode]; if(f.poles) unsyncCount += f.poles.filter(p => !p.synced).length; if(f.lines) unsyncCount += f.lines.filter(l => !l.synced).length; if(f.dts) unsyncCount += f.dts.filter(d => !d.synced).length; if(f.consumers) unsyncCount += f.consumers.filter(c => !c.synced).length; }
     let badge = document.getElementById('unsync-badge'); const syncBtn = document.getElementById('sync-indicator');
@@ -102,7 +65,7 @@ function updateUnsyncedBadge() {
 }
 
 window.syncToSupabase = async function() {
-    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id || appState.user.id.startsWith("OFFLINE")) return; setSyncStatus('syncing');
+    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; window.setSyncStatus('syncing');
     try {
         if (appState.deletedObjectIds && appState.deletedObjectIds.length > 0) { await supabaseClient.from('object_photos').delete().in('object_id', appState.deletedObjectIds); await supabaseClient.from('survey_objects').delete().in('id', appState.deletedObjectIds); appState.deletedObjectIds = []; }
         if (appState.deletedFeederCodes && appState.deletedFeederCodes.length > 0) { await supabaseClient.from('feeders').delete().in('code', appState.deletedFeederCodes); appState.deletedFeederCodes = []; }
@@ -129,12 +92,12 @@ window.syncToSupabase = async function() {
                 unsyncedPhotos.forEach(p => p.synced = true); 
             }
         }
-        if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState); setSyncStatus('synced'); updateUnsyncedBadge();
-    } catch (err) { console.warn("Sync error", err); setSyncStatus('offline'); updateUnsyncedBadge(); }
+        if(typeof localforage !== 'undefined') localforage.setItem(DB_KEY, appState); window.setSyncStatus('synced'); window.updateUnsyncedBadge();
+    } catch (err) { console.warn("Sync error", err); window.setSyncStatus('offline'); window.updateUnsyncedBadge(); }
 }
 
-async function pullFromSupabase() {
-    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id || appState.user.id.startsWith("OFFLINE")) return; setSyncStatus('syncing');
+window.pullFromSupabase = async function() {
+    if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; window.setSyncStatus('syncing');
     try {
         const { data: metaData } = await supabaseClient.from('survey_data').select('data').eq('user_id', appState.user.id);
         if(metaData && metaData.length > 0) { const cd = metaData[0].data; appState.gssNodes = cd.gssNodes || {}; appState.settings = { ...appState.settings, ...(cd.settings || {}) }; appState.filters = cd.filters || appState.filters; appState.currentFeederCode = cd.currentFeederCode || null; }
@@ -145,33 +108,17 @@ async function pullFromSupabase() {
         const { data: photoData } = await supabaseClient.from('object_photos').select('id, object_type, object_id, photo_url').eq('user_id', appState.user.id);
         if(photoData) { appState.photos = photoData.map(p => ({ id: p.id, object_type: p.object_type, object_id: p.object_id, photo_url: p.photo_url, synced: true })); } else appState.photos = [];
         if(typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState); 
-        applyTranslations(); applyTheme(); if(map) map.invalidateSize(); renderEntireNetwork(); window.updateFeederDropdown(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow(); updateUnsyncedBadge();
-    } catch (err) { console.error("Sync error:", err); setSyncStatus('offline'); if(map) map.invalidateSize(); checkOnboardingFlow(); updateUnsyncedBadge(); }
+        window.applyTranslations(); window.applyTheme(); if(map) map.invalidateSize(); window.renderEntireNetwork(); window.updateFeederDropdown(); window.setSyncStatus('synced'); window.centerMapOnGSS(); window.checkOnboardingFlow(); window.updateUnsyncedBadge();
+    } catch (err) { console.error("Sync error:", err); window.setSyncStatus('offline'); if(map) map.invalidateSize(); window.checkOnboardingFlow(); window.updateUnsyncedBadge(); }
 }
 
-function triggerPersistence() { 
-    try { 
-        if(typeof localforage !== 'undefined') { localforage.setItem(DB_KEY, appState).catch((err) => console.log("LocalForage Error:", err)); } 
-        else { localStorage.setItem(DB_KEY, JSON.stringify(appState)); } 
-        updateUnsyncedBadge(); 
-        if(appState.settings && appState.settings.liveSync && appState.user && !appState.user.id.startsWith("OFFLINE")) { window.syncToSupabase(); } 
-    } catch(err) { console.error("Persistence Error:", err); }
+window.triggerPersistence = function() { 
+    try { if(typeof localforage !== 'undefined') { localforage.setItem(DB_KEY, appState).catch((err) => console.log("LocalForage Error:", err)); } else { localStorage.setItem(DB_KEY, JSON.stringify(appState)); } window.updateUnsyncedBadge(); if(appState.settings && appState.settings.liveSync) { window.syncToSupabase(); } } catch(err) { console.error("Persistence Error:", err); }
 }
 
 window.checkOnboardingFlow = function() {
-    if(window.isSetupModalOpen) return;
-    if(Object.keys(appState.gssNodes || {}).length === 0) { document.getElementById('onboarding-overlay').style.display = 'flex'; document.getElementById('onboarding-title').innerText = "Network Setup Required"; document.getElementById('onboarding-desc').innerText = "Please add your first GSS to begin mapping."; document.getElementById('onboarding-btn').onclick = function() { document.getElementById('onboarding-overlay').style.display = 'none'; window.isSetupModalOpen = true; window.openAddGssModal(); }; } 
-    else if (Object.keys(appState.feeders || {}).length === 0) { document.getElementById('onboarding-overlay').style.display = 'flex'; document.getElementById('onboarding-title').innerText = "Create Feeder"; document.getElementById('onboarding-desc').innerText = "You must create a Feeder linked to your GSS to continue."; document.getElementById('onboarding-btn').onclick = function() { document.getElementById('onboarding-overlay').style.display = 'none'; window.isSetupModalOpen = true; window.openFeederConfigModal(); }; } 
-    else { document.getElementById('onboarding-overlay').style.display = 'none'; renderEntireNetwork(); }
+    if(isSetupModalOpen) return;
+    if(Object.keys(appState.gssNodes || {}).length === 0) { document.getElementById('onboarding-overlay').style.display = 'flex'; document.getElementById('onboarding-title').innerText = "Network Setup Required"; document.getElementById('onboarding-desc').innerText = "Please add your first GSS to begin mapping."; document.getElementById('onboarding-btn').onclick = function() { document.getElementById('onboarding-overlay').style.display = 'none'; isSetupModalOpen = true; window.openAddGssModal(); }; } 
+    else if (Object.keys(appState.feeders || {}).length === 0) { document.getElementById('onboarding-overlay').style.display = 'flex'; document.getElementById('onboarding-title').innerText = "Create Feeder"; document.getElementById('onboarding-desc').innerText = "You must create a Feeder linked to your GSS to continue."; document.getElementById('onboarding-btn').onclick = function() { document.getElementById('onboarding-overlay').style.display = 'none'; isSetupModalOpen = true; window.openFeederConfigModal(); }; } 
+    else { document.getElementById('onboarding-overlay').style.display = 'none'; window.renderEntireNetwork(); }
 };
-
-window.openResetConfirmationModal = function() { window.toggleSidebar(false); window.closeSettingsPage(); openModal(`<div class="sheet-head"><div class="sheet-title" style="color:#ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Factory Reset</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="font-size:0.9rem; color:var(--text-main); margin-bottom:15px; line-height:1.5;">This will permanently wipe all local database records, logs, and settings. This action cannot be undone.</p><div class="form-row"><label>Type "RESET" to confirm</label><input type="text" id="inpResetConfirm" class="form-input" placeholder="Type RESET here"></div><button class="btn-action-primary" style="background:#ef4444;" onclick="window.executeFactoryReset()">Erase All Data</button>`); };
-window.executeFactoryReset = async function() { const val = document.getElementById('inpResetConfirm').value; if(val !== 'RESET') return alert("Confirmation text does not match 'RESET'."); showToast("Erasing all data..."); if(supabaseClient) await supabaseClient.auth.signOut(); if(typeof localforage !== 'undefined') await localforage.clear(); localStorage.clear(); setTimeout(() => location.reload(), 1000); }
-
-function centerMapOnGSS() { if(!map) return; map.invalidateSize(); const net = getActiveNetwork(); if(!net) return; const gss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false}); }
-
-window.toggleLiveTracking = function() {
-    if (!navigator.geolocation) return alert("Geolocation API not found.");
-    if (window.liveTrackingId) { navigator.geolocation.clearWatch(window.liveTrackingId); window.liveTrackingId = null; if (window.liveUserMarker && map) { map.removeLayer(window.liveUserMarker); window.liveUserMarker = null; } document.getElementById('liveTrackBtn').style.color = '#ef4444'; showToast("Live tracking disabled."); } 
-    else { showToast("Fetching location..."); window.isFirstLocationLock = true; window.liveTrackingId = navigator.geolocation.watchPosition((pos) => { const lat = pos.coords.latitude, lng = pos.coords.longitude; if(!map) return; if (!window.liveUserMarker) { const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [44,44] }); window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map); } else window.liveUserMarker.setLatLng([lat, lng]); if (window.isFirstLocationLock) { map.setView([lat, lng], 18); window.isFirstLocationLock = false; } document.getElementById('liveTrackBtn').style.color = '#10b981'; }, (err) => alert("GPS Error."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }); }
-}
