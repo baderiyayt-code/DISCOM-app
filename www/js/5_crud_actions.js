@@ -1,67 +1,35 @@
-/* --- js/5_crud_actions.js --- */
-
-/* ====== OBJECT MOVE (100% SECURE NATIVE EVENTS) ====== */
 window.startObjectMove = function(type, id, title) {
-    window.closeObjectSheet(); 
-    appState.activeMove = { type: type, id: id }; 
+    window.closeObjectSheet(); appState.activeMove = { type: type, id: id }; 
     const pin = document.getElementById('center-placement-pin'); if(pin) pin.style.display = 'block'; 
     const bsa = document.getElementById('bottom-single-action'); if(bsa) bsa.style.display = 'none';
     
     let moveBar = document.getElementById('move-confirm-bar');
     if(moveBar) moveBar.remove(); 
-    
     moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar'; 
-    moveBar.style.cssText = 'position:fixed; bottom:calc(20px + env(safe-area-inset-bottom, 0px)); left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:12px; width:90%; max-width:400px; pointer-events:auto;'; 
+    moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; 
     
-    // NATIVE HTML BUTTONS
+    // NATIVE POINTERDOWN TO BLOCK MAP CLICKS
     moveBar.innerHTML = `
-        <button type="button" class="btn-danger-outline" style="background:white; margin-top:0; flex:1;" id="btnCancelMove">Cancel</button>
-        <button type="button" class="btn-action-primary" style="margin-top:0; flex:1;" id="btnConfirmMove">Confirm Move</button>
+        <button type="button" class="btn-danger-outline" style="background:white; margin-top:0; pointer-events:auto; flex:1; font-weight:800;" onpointerdown="event.stopPropagation();" onclick="window.cancelMove(event)">Cancel</button>
+        <button type="button" class="btn-action-primary" style="margin-top:0; pointer-events:auto; flex:1; font-weight:800;" onpointerdown="event.stopPropagation();" onclick="window.confirmMove(event)">Confirm Move</button>
     `; 
     document.body.appendChild(moveBar); 
-    
-    // ATTACHING EVENT LISTENERS DIRECTLY TO AVOID LEAFLET INTERCEPTION
-    document.getElementById('btnCancelMove').addEventListener('pointerdown', function(e) { e.preventDefault(); e.stopPropagation(); window.cancelMove(); });
-    document.getElementById('btnConfirmMove').addEventListener('pointerdown', function(e) { e.preventDefault(); e.stopPropagation(); window.confirmMove(); });
-    
     window.renderEntireNetwork(); 
 }
-
-window.cancelMove = function() { 
-    appState.activeMove = null; 
-    const pin = document.getElementById('center-placement-pin'); if(pin) pin.style.display = 'none'; 
-    const moveBar = document.getElementById('move-confirm-bar'); if(moveBar) moveBar.remove(); 
-    const bsa = document.getElementById('bottom-single-action'); if(bsa) bsa.style.display = 'block'; 
-    window.renderEntireNetwork(); 
-}
-
-window.confirmMove = function() {
+window.cancelMove = function(e) { if(e){e.preventDefault(); e.stopPropagation();} appState.activeMove = null; const pin = document.getElementById('center-placement-pin'); if(pin) pin.style.display = 'none'; const moveBar = document.getElementById('move-confirm-bar'); if(moveBar) moveBar.remove(); const bsa = document.getElementById('bottom-single-action'); if(bsa) bsa.style.display = 'block'; window.renderEntireNetwork(); }
+window.confirmMove = function(e) {
+    if(e){e.preventDefault(); e.stopPropagation();}
     try {
-        if(!appState.activeMove) return; 
-        const net = window.getActiveNetwork(); if(!net) return; 
-        const center = map.getCenter(); const { type, id } = appState.activeMove;
-        
-        let objList = null; 
-        if(type === 'POLE') objList = net.poles; 
-        else if(type === 'DT') objList = net.dts; 
-        else if(type === 'CONSUMER') objList = net.consumers; 
-        else if(type === 'GSS') { if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } }
-        
+        if(!appState.activeMove) return; const net = window.getActiveNetwork(); if(!net) return; const center = map.getCenter(); const { type, id } = appState.activeMove;
+        let objList = null; if(type === 'POLE') objList = net.poles; else if(type === 'DT') objList = net.dts; else if(type === 'CONSUMER') objList = net.consumers; else if(type === 'GSS') { if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } }
         if(objList) { const obj = objList.find(x => x.id === id); if(obj) { obj.lat = center.lat; obj.lng = center.lng; obj.synced = false; } }
-        
-        if(typeof window.saveSnapshot === 'function') window.saveSnapshot(); 
-        if(typeof window.triggerPersistence === 'function') window.triggerPersistence(); 
-        
-        window.cancelMove(); window.showToast("Location Updated!");
+        if(typeof window.saveSnapshot === 'function') window.saveSnapshot(); if(typeof window.triggerPersistence === 'function') window.triggerPersistence(); window.cancelMove(); window.showToast("Location Updated!");
     } catch(err) { console.error("Move Error:", err); alert("Move Error: " + err.message); }
 }
 
 window.attachTempPhoto = function(type, id) { if(tempPhotoUrl) { if(!appState.photos) appState.photos = []; appState.photos.push({ id: 'PH_' + Date.now(), object_type: type, object_id: id, photo_url: tempPhotoUrl, synced: false }); tempPhotoUrl = null; } };
 window.captureTempPhoto = function() { if (typeof navigator.camera === 'undefined') return alert("Camera plugin not found."); navigator.camera.getPicture(function(imageData) { tempPhotoUrl = "data:image/jpeg;base64," + imageData; document.getElementById('formTempPhoto').src = tempPhotoUrl; document.getElementById('formTempPhoto').style.display = 'block'; }, function(err) { window.showToast("Camera cancelled"); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false }); };
 window.captureObjectPhoto = function() { if (!currentSelectedObj || !appState.user.isLoggedIn) return; if (typeof navigator.camera === 'undefined') return alert("Camera plugin not installed."); navigator.camera.getPicture(function(imageData) { window.showToast("Saving photo..."); const base64Data = "data:image/jpeg;base64," + imageData; if(!appState.photos) appState.photos = []; appState.photos = appState.photos.filter(x => x.object_id !== currentSelectedObj.id); appState.photos.push({ id: 'PH_' + Date.now(), object_type: currentSelectedObj.type, object_id: currentSelectedObj.id, photo_url: base64Data, synced: false }); const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder'); imgEl.src = base64Data; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; window.triggerPersistence(); }, function(message) { alert('Camera cancelled or failed: ' + message); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false }); };
-
-window.saveSnapshot = function() { const net = window.getActiveNetwork(); if(!net) return; historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); if (historyStack.length > 15) historyStack.shift(); }
-window.undoLastAction = function() { if (historyStack.length === 0) return window.showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = window.getActiveNetwork(); if(!net) return; net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Undo Successful ↺"); }
 
 window.saveNewPole = function() { 
     try {
@@ -111,6 +79,11 @@ window.saveNewConsumer = function() {
         window.attachTempPhoto('CONSUMER', objId); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Consumer added!");
     } catch(err) { console.error(err); alert("Error saving consumer: " + err.message); }
 }
+
+window.saveEditedPole = function(id) { const net = window.getActiveNetwork(); const p = net.poles.find(x => x.id === id); if(!p) return; p.poleType = document.getElementById('editMainPoleType').value; p.poleConfig = p.poleType === 'PCC' ? document.getElementById('editPccConfig').value : 'N/A'; p.condition = document.getElementById('editPoleCondition').value; p.synced = false; window.saveSnapshot(); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Pole Settings Updated"); }
+window.saveEditedDT = function(id) { const net = window.getActiveNetwork(); const d = net.dts.find(x => x.id === id); if (!d) return; d.phase = document.getElementById('editDTPhase').value; d.mountedOn = document.getElementById('editDTMounted').value; d.rating = parseFloat(document.getElementById('editDTRating').value); d.location = document.getElementById('editDTLocation').value.trim(); d.synced = false; window.saveSnapshot(); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("DT Updated"); }
+window.saveEditedConsumer = function(id) { const net = window.getActiveNetwork(); const c = net.consumers.find(x => x.id === id); if (!c) return; c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value.trim(); c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; c.synced = false; window.saveSnapshot(); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Consumer Updated"); }
+window.saveEditedLine = function(id) { const net = window.getActiveNetwork(); const l = net.lines.find(x => x.id === id); if (!l) return; if(l.type.includes('11')) l.phase = document.getElementById('editLinePhase').value; l.conductor = document.getElementById('editLineConductor').value; l.synced = false; window.saveSnapshot(); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Line Updated"); }
 
 window.deleteDTLogic = function(dtId, net) { const d = net.dts.find(x => x.id === dtId); if(!d) return; const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn); net.lines = net.lines.filter(l => l.fromNode !== ('DT_' + d.code) && l.toNode !== ('DT_' + d.code) && !ltPoleNodeIds.includes(String(l.fromNode)) && !ltPoleNodeIds.includes(String(l.toNode))); net.consumers = net.consumers.filter(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); return !(isDirectToDT || isOnRemovedLTPole); }); net.poles = net.poles.filter(p => !ltPoleIds.includes(String(p.poleNo))); net.dts = net.dts.filter(x => x.id !== dtId); }
 window.deleteLTPoleLogic = function(p, net) { net.consumers = net.consumers.filter(c => !(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo))); net.lines = net.lines.filter(l => String(l.fromNode) !== ('POLE_'+p.poleNo) && String(l.toNode) !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== p.id); }
