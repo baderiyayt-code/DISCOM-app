@@ -221,34 +221,21 @@ window.renderEntireNetwork = function() {
             net.dts.forEach(d => {
                 if (!d.lat || !d.lng) { const p = net.poles.find(x => String(x.poleNo) === String(d.parentPole)); if (p) { d.lat = p.lat; d.lng = p.lng; } }
                 if (d.lat && d.lng && !isNaN(d.lat)) {
-                    const isOrphan = appState.orphanPoleIds.has(d.id); 
-                    const svgHtml = window.getDTSVG(d.phase, d.rating);
-                    let pk = d.parentPole || `${d.lat},${d.lng}`; 
-                    let sIdx = dtGroups[pk].findIndex(x => x.id === d.id);
+                    const isOrphan = appState.orphanPoleIds.has(d.id); const svgHtml = window.getDTSVG(d.phase, d.rating);
+                    let pk = d.parentPole || `${d.lat},${d.lng}`; let sIdx = dtGroups[pk].findIndex(x => x.id === d.id);
                     
-                    // --- FIX FOR ZOOM DRIFT & BOTTOM ALIGNMENT ---
-                    // Fixed center anchor [17, 20] and translation via transform matrix so zoom out/in never drifts
-                    let translateX = 0;
-                    let translateY = 22; // Pole ke bottom ke paas place karne ke liye offset
+                    // --- STABLE ANCHOR FIX FOR ZERO DRIFT ON ZOOM ---
+                    let aX = 15; let aY = 50; 
                     
-                    if(d.phase === 'Single Phase') {
-                        translateX = -28 - (sIdx * 24);
-                    } else {
-                        translateX = 20 + (sIdx * 38);
-                    }
-
-                    const wrappedHtml = `<div style="transform: translate(${translateX}px, ${translateY}px); transform-origin: center;"><div style="transform: scale(var(--icon-scale, 1)); transform-origin: center;">${svgHtml}</div></div>`;
-
-                    const m = L.marker([d.lat, d.lng], { 
-                        icon: L.divIcon({ 
-                            className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, 
-                            html: wrappedHtml, 
-                            iconSize: [34, 40], 
-                            iconAnchor: [17, 20] 
-                        }), 
-                        zIndexOffset: 400 
-                    });
+                    if(d.phase === 'Single Phase') { 
+                        aX = -10 - (sIdx * 20); 
+                        aY = 48; 
+                    } else { 
+                        aX = 15 + (sIdx * 35); 
+                        aY = 50; 
+                    } 
                     
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [34, 40], iconAnchor: [aX, aY] }), zIndexOffset: 400 });
                     m.on('click', () => { window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b>`); }); 
                     featureGroups.dts.addLayer(m);
                 }
