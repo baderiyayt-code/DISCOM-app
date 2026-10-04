@@ -12,6 +12,10 @@
 
     <!-- JS Libraries -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- NEW: LEAFLET ROTATE PLUGIN (मैप को 2-उंगली से घुमाने के लिए) -->
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate.min.js"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -79,7 +83,7 @@
                     </div>
                 </div>
                 
-                <!-- NEW: Header Actions (Orphan Node & Search shifted here) -->
+                <!-- Header Actions -->
                 <div class="header-actions">
                     <button class="action-btn-sm" onclick="window.toggleSearchBox()"><i class="fa-solid fa-search"></i></button>
                     <button class="action-btn-sm" onclick="window.runOrphanNodeChecker()" title="Check Orphan Nodes" style="color:#ef4444;"><i class="fa-solid fa-link-slash"></i></button>
@@ -103,7 +107,7 @@
         <div id="center-placement-pin"><i class="fa-solid fa-location-dot" style="color:#ef4444; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5));"></i></div>
         <div id="live-distance-indicator"></div>
 
-        <!-- NEW: Right Side Tools (Filter Button Shifted Here) -->
+        <!-- Right Side Tools -->
         <div class="right-tools-stack">
             <div class="round-tool-btn" onclick="toggleMapLayer()"><i class="fa-solid fa-layer-group"></i></div>
             <div class="round-tool-btn" onclick="openFilterModal()" style="color:#d97706;" title="Filters"><i class="fa-solid fa-filter"></i></div>
@@ -116,7 +120,7 @@
             <div class="center-plus-fab" id="mainFabBtn" onclick="toggleSpeedDial(event)"><i class="fa-solid fa-plus"></i></div>
         </div>
 
-        <!-- NEW: Clean Speed Dial Menu -->
+        <!-- Clean Speed Dial Menu -->
         <div id="speed-dial-menu">
             <div class="dial-grid">
                 <div class="dial-card" onclick="openAddForm('POLE')"><i class="fa-solid fa-bolt" style="color:#facc15; font-size:24px;"></i><span>HT Pole</span></div>
@@ -129,7 +133,7 @@
 
     </div>
 
-    <!-- Sidebar, Bottom Sheet, Modals (Remains Same) -->
+    <!-- Sidebar, Bottom Sheet, Modals -->
     <div id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
     <div id="sidebar-drawer">
         <div class="sidebar-header-gradient">
