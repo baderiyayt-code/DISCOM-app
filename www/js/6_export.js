@@ -1,7 +1,7 @@
 /* --- js/6_export.js --- */
 
 // ==========================================
-// 1. GENERATE PROFESSIONAL SLD PDF (LIKE CAD)
+// 1. GENERATE PROFESSIONAL SLD PDF (AUTO-ROTATE FIT)
 // ==========================================
 window.generateCadSLDPdf = function() {
     const net = window.getActiveNetwork();
@@ -58,19 +58,43 @@ window.generateCadSLDPdf = function() {
         const padLat = (maxLat - minLat) * 0.15; const padLng = (maxLng - minLng) * 0.15;
         minLat -= padLat; maxLat += padLat; minLng -= padLng; maxLng += padLng;
         
-        const scaleX = cw / (maxLng - minLng);
-        const scaleY = ch / (maxLat - minLat);
-        const scale = Math.min(scaleX, scaleY); // Maintain Aspect Ratio
+        const dLat = maxLat - minLat;
+        const dLng = maxLng - minLng;
+
+        // --- NEW FIX: AUTO-ROTATION SCALING ALGORITHM ---
+        const scaleNormal = Math.min(cw / dLng, ch / dLat);
+        const scaleRotated = Math.min(cw / dLat, ch / dLng);
         
-        // Center alignment
-        const xOffset = margin + (cw - ((maxLng - minLng) * scale)) / 2;
-        const yOffset = margin + (ch - ((maxLat - minLat) * scale)) / 2;
+        // Agar rotate karne se drawing paper par badi aayegi, toh rotate karo!
+        const isRotated = scaleRotated > scaleNormal;
+        const scale = isRotated ? scaleRotated : scaleNormal;
+        
+        const eW = isRotated ? dLat : dLng;
+        const eH = isRotated ? dLng : dLat;
+        
+        // Perfect Center Alignment
+        const xOffset = margin + (cw - (eW * scale)) / 2;
+        const yOffset = margin + (ch - (eH * scale)) / 2;
 
         const mapToPdf = (lat, lng) => {
-            const x = xOffset + ((lng - minLng) * scale);
-            const y = yOffset + ch - ((lat - minLat) * scale); // Invert Y axis for PDF
-            return {x, y};
+            if(isRotated) {
+                // Rotate 90 degree Clockwise map
+                const x = xOffset + ((lat - minLat) * scale);
+                const y = yOffset + ((lng - minLng) * scale);
+                return {x, y};
+            } else {
+                // Standard fit
+                const x = xOffset + ((lng - minLng) * scale);
+                const y = yOffset + ch - ((lat - minLat) * scale);
+                return {x, y};
+            }
         };
+
+        if(isRotated) {
+            doc.setFontSize(6);
+            doc.setTextColor(100, 100, 100);
+            doc.text("Note: Diagram Auto-Rotated 90° for optimal fit", margin + 2, margin + 8);
+        }
 
         // 4. Draw Lines with Distances
         let totalHT = 0;
@@ -90,7 +114,7 @@ window.generateCadSLDPdf = function() {
                 doc.setLineWidth(0.6);
                 doc.line(p1.x, p1.y, p2.x, p2.y);
 
-                // Distance Label rotated along line
+                // Distance Label rotated along line (Angle auto-adjusts even if map rotated)
                 const midX = (p1.x + p2.x) / 2;
                 const midY = (p1.y + p2.y) / 2;
                 let angleDeg = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
