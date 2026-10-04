@@ -230,3 +230,18 @@ window.renderEntireNetwork = function() {
 
 window.saveSnapshot = function() { const net = window.getActiveNetwork(); if(!net) return; historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); if (historyStack.length > 15) historyStack.shift(); }
 window.undoLastAction = function() { if (historyStack.length === 0) return window.showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = window.getActiveNetwork(); if(!net) return; net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Undo Successful ↺"); }
+/* --- Map Rotation Control Function --- */
+window.rotateMapFromSlider = function(deg) {
+    if (!map) return;
+    // If leaflet-rotate plugin is active, this handles the bearing rotation
+    if (typeof map.setBearing === 'function') {
+        map.setBearing(parseFloat(deg));
+    } else {
+        // Fallback CSS transform rotation for standard leaflet map container
+        const mapEl = document.getElementById('map');
+        if (mapEl) {
+            mapEl.style.transform = `rotate(${deg}deg)`;
+            mapEl.style.transition = 'transform 0.05s linear';
+        }
+    }
+}
