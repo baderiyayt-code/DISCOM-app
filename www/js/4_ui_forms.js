@@ -16,7 +16,6 @@ window.closeModal = function() {
     } 
 }
 
-// --- NEW FIX: SMART AUTO-CLOSE WRAPPER FOR EDIT/SAVE FORMS ---
 window.executeSafeSave = function(actionFn) {
     let hasError = false;
     const origAlert = window.alert;
@@ -29,7 +28,6 @@ window.executeSafeSave = function(actionFn) {
     }
     window.alert = origAlert;
     
-    // अगर कोई वैलिडेशन एरर (Alert) नहीं आया, तभी फॉर्म बंद करें
     if(!hasError) { 
         window.closeModal(); 
         if(window.renderEntireNetwork) window.renderEntireNetwork(); 
@@ -98,9 +96,14 @@ window.saveEditedFeeder = function(code) {
     } catch (e) { console.error(e); }
 }
 
+// --- NEW FIX: FEEDER DELETE WARNING WITH CODE TYPING ---
 window.deleteFeederStrict = function(code) { 
     try {
-        if(!confirm(`WARNING: Deleting Feeder ${code} will destroy all data inside it. Continue?`)) return; 
+        const conf1 = confirm(`WARNING: Deleting Feeder ${code} will destroy all data inside it. Continue?`);
+        if (!conf1) return;
+        const conf2 = prompt(`Type Feeder code "${code}" to confirm:`);
+        if (conf2 !== code) return alert("Cancelled");
+
         if (appState.feeders[code]) { const f = appState.feeders[code]; const ids = [...f.poles, ...f.lines, ...f.dts, ...f.consumers].map(x=>x.id); if(!appState.deletedObjectIds) appState.deletedObjectIds = []; appState.deletedObjectIds.push(...ids); if(!appState.deletedFeederCodes) appState.deletedFeederCodes = []; appState.deletedFeederCodes.push(code); }
         delete appState.feeders[code]; if(appState.currentFeederCode === code) { const remaining = Object.keys(appState.feeders); appState.currentFeederCode = remaining.length > 0 ? remaining[0] : null; } 
         window.closeModal(); if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.triggerPersistence) window.triggerPersistence(); if(window.showToast) window.showToast("Feeder Deleted!"); if(window.checkOnboardingFlow) window.checkOnboardingFlow(); 
