@@ -211,3 +211,90 @@ input:checked + .slider:before { transform: translateX(22px); }
 .form-row .form-select + label {
     top: 5px; font-size: 0.7rem; color: var(--accent); font-weight: 800;
 }
+/* ==========================================
+   PROFESSIONAL SPLASH SCREEN STYLES
+========================================== */
+#erection-loader {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    z-index: 9999999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.4s ease;
+}
+
+.pro-splash-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 20px;
+}
+
+.pro-splash-logo {
+    width: 80px; height: 80px;
+    background: var(--accent, #2563eb);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 40px;
+    box-shadow: 0 10px 25px rgba(37, 99, 235, 0.4);
+    margin-bottom: 20px;
+    animation: pulseLogo 2s infinite ease-in-out;
+}
+
+.pro-splash-title {
+    color: #ffffff;
+    font-size: 1.8rem;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+    margin: 0 0 8px 0;
+}
+
+.pro-splash-subtitle {
+    color: #94a3b8;
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin: 0 0 40px 0;
+}
+
+.pro-loader-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top: 3px solid #2563eb;
+    border-radius: 50%;
+    animation: spinLoader 0.8s linear infinite;
+    margin-bottom: 30px;
+}
+
+.pro-splash-footer {
+    position: absolute;
+    bottom: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #64748b;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+}
+
+.pro-splash-footer strong {
+    color: #cbd5e1;
+    font-size: 0.9rem;
+    margin-top: 2px;
+}
+
+@keyframes spinLoader {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes pulseLogo {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
