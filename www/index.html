@@ -8,7 +8,7 @@
     <!-- CSS Libraries -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="css/style.css"> <!-- आपकी कस्टम CSS -->
+    <link rel="stylesheet" href="css/style.css">
 
     <!-- JS Libraries (CDN) -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -16,7 +16,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
-    <!-- Cordova Script (will fail silently in browser, works on device) -->
+    <!-- Cordova Script -->
     <script src="cordova.js"></script>
 </head>
 <body>
@@ -30,40 +30,41 @@
             <div class="loader-pole lp4"></div>
             <div class="loader-wire"></div>
         </div>
-        <div class="loader-text">SURVEY PRO</div>
+        <div class="loader-text">ENTERPRISE GIS</div>
     </div>
 
-            <!-- 2. Authentication Screen -->
+    <!-- 2. Authentication Screen -->
     <div id="auth-screen">
         <div class="auth-card">
-            <div class="auth-logo"><i class="fa-solid fa-bolt"></i></div>
+            <div class="auth-logo"><i class="fa-solid fa-satellite-dish"></i></div>
             <h2>DISCOM Survey Pro</h2>
             
             <input type="text" id="authName" class="auth-input-glass" placeholder="Full Name" style="display:none;">
-            <input type="email" id="authEmail" class="auth-input-glass" placeholder="Email Address">
+            <input type="email" id="authEmail" class="auth-input-glass" placeholder="Corporate Email">
             <input type="password" id="authPassword" class="auth-input-glass" placeholder="Password">
             
-            <button id="loginBtn" class="btn-action-primary" onclick="handleSupabaseAuth('login')">Login to Continue</button>
+            <button id="loginBtn" class="btn-action-primary" onclick="handleSupabaseAuth('login')">Login</button>
             <button id="signupBtn" class="btn-action-primary btn-signup" style="display:none;" onclick="handleSupabaseAuth('signup')">Create Account</button>
             
             <div class="auth-toggle-link" id="authToggleText" onclick="toggleAuthMode()">Need an account? Sign Up</div>
         </div>
     </div>
 
-
     <!-- 3. Permission & Onboarding Overlays -->
     <div id="permission-overlay" style="display:none;">
         <div class="permission-card">
+            <div class="icon-circle"><i class="fa-solid fa-shield-halved"></i></div>
             <h2 data-i18n="permReq">Permissions Required</h2>
-            <p data-i18n="permDesc">This app strictly requires Location, Camera and Storage permissions to function.</p>
+            <p data-i18n="permDesc">This enterprise app strictly requires Location, Camera and Storage permissions.</p>
             <button class="btn-action-primary" onclick="requestAppPermissions()" data-i18n="grantPerm">Grant Permissions</button>
         </div>
     </div>
 
     <div id="onboarding-overlay" style="display:none;">
         <div class="permission-card">
-            <h2 id="onboarding-title">Network Setup Required</h2>
-            <p id="onboarding-desc">Please add your first GSS to begin mapping.</p>
+            <div class="icon-circle" style="background:var(--accent-glow); color:var(--accent);"><i class="fa-solid fa-tower-cell"></i></div>
+            <h2 id="onboarding-title">Network Setup</h2>
+            <p id="onboarding-desc">Please initialize your first GSS to begin mapping.</p>
             <button class="btn-action-primary" id="onboarding-btn">Setup Now</button>
         </div>
     </div>
@@ -74,19 +75,19 @@
         <!-- Map Div -->
         <div id="map"></div>
 
-        <!-- Top UI Bar -->
+        <!-- Top UI Bar (Glassmorphism) -->
         <div id="top-bar">
             <div class="header-glass">
                 <div class="header-title-group" onclick="toggleSidebar(true)">
-                    <i class="fa-solid fa-bars" style="color:var(--accent); font-size:1.2rem;"></i>
-                    <div style="display:flex; flex-direction:column;">
-                        <span id="activeFeederLabel" style="font-weight:900; font-size:1rem; color:var(--accent);">Loading...</span>
+                    <i class="fa-solid fa-bars-staggered" style="color:var(--accent); font-size:1.2rem;"></i>
+                    <div style="display:flex; flex-direction:column; margin-left:5px;">
+                        <span id="activeFeederLabel" style="font-weight:900; font-size:0.95rem; color:var(--text-main); letter-spacing:0.5px;">Loading...</span>
                     </div>
                 </div>
                 <div class="header-actions">
-                    <!-- Search Icon Button is injected dynamically here via map.js -->
+                    <!-- Search Icon Button injected via map.js -->
                     <button class="action-btn-sm" onclick="window.syncToSupabase()" id="sync-indicator">
-                        <i class="fa-solid fa-cloud"></i>
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
                     </button>
                     <button class="action-btn-sm" onclick="window.openFeederConfigModal()">
                         <i class="fa-solid fa-code-branch"></i>
@@ -94,85 +95,85 @@
                 </div>
             </div>
 
-            <!-- KPI Row -->
+            <!-- Professional KPI Row -->
             <div class="kpi-row">
-                <div class="kpi-tile"><div class="kpi-label" id="kpi11Label">11 KV LINE</div><div class="kpi-val" id="kpi11">0.0 M</div></div>
-                <div class="kpi-tile"><div class="kpi-label" id="kpiLTLabel">LT LINE</div><div class="kpi-val" id="kpiLT">0.0 M</div></div>
-                <div class="kpi-tile"><div class="kpi-label" id="kpi3PhLabel">3-PH DT</div><div class="kpi-val" id="kpi3Ph">0</div></div>
-                <div class="kpi-tile"><div class="kpi-label" id="kpi1PhLabel">1-PH DT</div><div class="kpi-val" id="kpi1Ph">0</div></div>
-                <div class="kpi-tile"><div class="kpi-label" id="kpiConsLabel">CONSUMERS</div><div class="kpi-val" id="kpiCons">0</div></div>
+                <div class="kpi-tile"><div class="kpi-icon kpi-blue"><i class="fa-solid fa-bolt"></i></div><div><div class="kpi-val" id="kpi11">0.0 M</div><div class="kpi-label" id="kpi11Label">11 KV LINE</div></div></div>
+                <div class="kpi-tile"><div class="kpi-icon kpi-green"><i class="fa-solid fa-plug"></i></div><div><div class="kpi-val" id="kpiLT">0.0 M</div><div class="kpi-label" id="kpiLTLabel">LT LINE</div></div></div>
+                <div class="kpi-tile"><div class="kpi-icon kpi-orange"><i class="fa-solid fa-charging-station"></i></div><div><div class="kpi-val" id="kpi3Ph">0</div><div class="kpi-label" id="kpi3PhLabel">3-PH DT</div></div></div>
+                <div class="kpi-tile"><div class="kpi-icon kpi-yellow"><i class="fa-solid fa-car-battery"></i></div><div><div class="kpi-val" id="kpi1Ph">0</div><div class="kpi-label" id="kpi1PhLabel">1-PH DT</div></div></div>
+                <div class="kpi-tile"><div class="kpi-icon kpi-purple"><i class="fa-solid fa-users"></i></div><div><div class="kpi-val" id="kpiCons">0</div><div class="kpi-label" id="kpiConsLabel">CONSUMERS</div></div></div>
             </div>
         </div>
 
-        <!-- Floating UI Overlays on Map -->
-        <div id="layer-indicator">Street Map</div>
-        <div id="reticle-coordinates">26.915000, 75.783000</div>
-        <div id="center-placement-pin"><i class="fa-solid fa-location-dot" style="color:#ef4444; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5));"></i></div>
+        <!-- Floating Overlays -->
+        <div id="layer-indicator"><i class="fa-solid fa-map-location-dot"></i> Street Map</div>
+        <div id="reticle-coordinates"><i class="fa-solid fa-satellite"></i> 26.915000, 75.783000</div>
+        <div id="center-placement-pin"><i class="fa-solid fa-crosshairs" style="color:#ef4444; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5)); font-size:40px;"></i></div>
         <div id="live-distance-indicator"></div>
 
         <!-- Right Side Tools -->
         <div class="right-tools-stack">
             <div class="round-tool-btn" onclick="toggleMapLayer()"><i class="fa-solid fa-layer-group"></i></div>
-            <div class="round-tool-btn" id="liveTrackBtn" onclick="toggleLiveTracking()"><i class="fa-solid fa-crosshairs"></i></div>
-            <div class="round-tool-btn undo-btn" onclick="undoLastAction()"><i class="fa-solid fa-rotate-left"></i></div>
+            <div class="round-tool-btn" id="liveTrackBtn" onclick="toggleLiveTracking()"><i class="fa-solid fa-location-crosshairs"></i></div>
+            <div class="round-tool-btn undo-btn" onclick="undoLastAction()"><i class="fa-solid fa-clock-rotate-left"></i></div>
         </div>
 
-        <!-- Bottom Speed Dial & Add Button -->
+        <!-- Bottom Single Action (Modern FAB) -->
         <div id="bottom-single-action">
             <div class="center-plus-fab" id="mainFabBtn" onclick="toggleSpeedDial(event)"><i class="fa-solid fa-plus"></i></div>
         </div>
 
-        <!-- Speed Dial Menu -->
+        <!-- Speed Dial Menu (Redesigned) -->
         <div id="speed-dial-menu">
             <div class="dial-grid">
-                <div class="dial-card" onclick="openAddForm('POLE')"><i class="fa-solid fa-bolt" style="color:#facc15; font-size:24px;"></i><span>HT Pole</span></div>
-                <div class="dial-card" onclick="openAddForm('LTPOLE')"><i class="fa-solid fa-lightbulb" style="color:#10b981; font-size:24px;"></i><span>LT Pole</span></div>
-                <div class="dial-card" onclick="openAddForm('LINE')"><i class="fa-solid fa-bezier-curve" style="color:#3b82f6; font-size:24px;"></i><span>Line</span></div>
-                <div class="dial-card" onclick="openAddForm('DT')"><i class="fa-solid fa-transformer" style="color:#f97316; font-size:24px;"></i><span>DT</span></div>
-                <div class="dial-card" onclick="openAddForm('CONSUMER')"><i class="fa-solid fa-house-user" style="color:#8b5cf6; font-size:24px;"></i><span>Consumer</span></div>
+                <div class="dial-card" onclick="openAddForm('POLE')"><div class="icon-wrap bg-blue"><i class="fa-solid fa-bolt"></i></div><span>HT Pole</span></div>
+                <div class="dial-card" onclick="openAddForm('LTPOLE')"><div class="icon-wrap bg-green"><i class="fa-solid fa-lightbulb"></i></div><span>LT Pole</span></div>
+                <div class="dial-card" onclick="openAddForm('LINE')"><div class="icon-wrap bg-cyan"><i class="fa-solid fa-route"></i></div><span>Line</span></div>
+                <div class="dial-card" onclick="openAddForm('DT')"><div class="icon-wrap bg-orange"><i class="fa-solid fa-charging-station"></i></div><span>DT</span></div>
+                <div class="dial-card" onclick="openAddForm('CONSUMER')"><div class="icon-wrap bg-purple"><i class="fa-solid fa-house-chimney-user"></i></div><span>Consumer</span></div>
             </div>
-            <button class="btn-action-primary" style="margin-top:10px; background:var(--bg-base); color:var(--text-main); border:1px solid var(--border);" onclick="openFilterModal()"><i class="fa-solid fa-filter"></i> Open Filters</button>
-            <button class="btn-danger-outline" style="margin-top:10px;" onclick="runOrphanNodeChecker()"><i class="fa-solid fa-triangle-exclamation"></i> Check Orphan Nodes</button>
+            <div style="display:flex; gap:10px; margin-top:15px;">
+                <button class="btn-action-primary" style="flex:1; background:var(--bg-glass); color:var(--text-main); border:1px solid var(--border);" onclick="openFilterModal()"><i class="fa-solid fa-filter"></i> Filters</button>
+                <button class="btn-danger-outline" style="flex:1; margin-top:0;" onclick="runOrphanNodeChecker()"><i class="fa-solid fa-link-slash"></i> Orphans</button>
+            </div>
         </div>
 
-    </div> <!-- End App Container -->
+    </div>
 
-    <!-- 5. Sidebar Navigation -->
+    <!-- 5. Sidebar Navigation (Enterprise Look) -->
     <div id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
     <div id="sidebar-drawer">
         <div class="sidebar-header-gradient">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div class="user-profile-img"><i class="fa-solid fa-user"></i></div>
-                <button class="sheet-close-btn" style="background:rgba(255,255,255,0.2); border:none; color:white;" onclick="toggleSidebar(false)"><i class="fa-solid fa-times"></i></button>
+                <div class="user-profile-img"><i class="fa-solid fa-user-tie"></i></div>
+                <button class="sheet-close-btn" style="background:rgba(255,255,255,0.2); border:none; color:white;" onclick="toggleSidebar(false)"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <h3 style="margin-top:10px; font-weight:800;" id="userNameDisplay">User Name</h3>
-            <p style="font-size:0.8rem; opacity:0.8; word-break:break-all;">Discom Survey Admin</p>
+            <h3 style="margin-top:10px; font-weight:800;" id="userNameDisplay">Admin User</h3>
+            <p style="font-size:0.8rem; opacity:0.8;">DISCOM Operations Dept.</p>
         </div>
         <div class="sidebar-menu-list">
-            <div class="menu-category-title">GSS Management</div>
-            <div class="menu-link-btn" onclick="openAddGssModal()"><i class="fa-solid fa-plus-circle" style="color:#3b82f6;"></i> Add New GSS</div>
-            <div class="menu-link-btn" onclick="toggleGssFolder()"><i class="fa-solid fa-folder" style="color:#f59e0b;"></i> GSS Folder <i class="fa-solid fa-chevron-down" id="gssFolderIcon" style="margin-left:auto; font-size:0.8rem;"></i></div>
+            <div class="menu-category-title">Infrastructure</div>
+            <div class="menu-link-btn" onclick="openAddGssModal()"><i class="fa-solid fa-tower-cell" style="color:#3b82f6;"></i> Add New GSS</div>
+            <div class="menu-link-btn" onclick="toggleGssFolder()"><i class="fa-regular fa-folder-open" style="color:#f59e0b;"></i> GSS Directory <i class="fa-solid fa-chevron-down" id="gssFolderIcon" style="margin-left:auto; font-size:0.8rem;"></i></div>
             <div id="gssFolderContent" style="display:none; padding:10px; background:var(--bg-base); border-radius:8px;" class="folder-content"><div id="gssListContainer"></div></div>
             
-            <div class="menu-category-title">Feeder Management</div>
-            <div class="menu-link-btn" onclick="openFeederConfigModal()"><i class="fa-solid fa-plus-circle" style="color:#10b981;"></i> Add New Feeder</div>
-            <div class="menu-link-btn" onclick="toggleFeederFolder()"><i class="fa-solid fa-folder" style="color:#f59e0b;"></i> Feeder Folder <i class="fa-solid fa-chevron-down" id="feederFolderIcon" style="margin-left:auto; font-size:0.8rem;"></i></div>
+            <div class="menu-link-btn" onclick="openFeederConfigModal()"><i class="fa-solid fa-network-wired" style="color:#10b981;"></i> Add New Feeder</div>
+            <div class="menu-link-btn" onclick="toggleFeederFolder()"><i class="fa-regular fa-folder-open" style="color:#f59e0b;"></i> Feeder Directory <i class="fa-solid fa-chevron-down" id="feederFolderIcon" style="margin-left:auto; font-size:0.8rem;"></i></div>
             <div id="feederFolderContent" style="display:none; padding:10px; background:var(--bg-base); border-radius:8px;" class="folder-content"><div id="feederListContainer"></div></div>
             
-            <div class="menu-category-title">Export Data (Save Local)</div>
-            <div class="menu-link-btn" onclick="generateCadSLDPdf()"><i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> Export SLD PDF</div>
-            <div class="menu-link-btn" onclick="exportToAutoCAD_DXF()"><i class="fa-solid fa-bezier-curve" style="color:#10b981;"></i> Export DXF</div>
-            <div class="menu-link-btn" onclick="exportToGoogleEarth_KML()"><i class="fa-solid fa-earth-americas" style="color:#f97316;"></i> Export styled KML</div>
-            <div class="menu-link-btn" onclick="exportDataToCSV()"><i class="fa-solid fa-file-csv" style="color:#facc15;"></i> Export CSV (GE Ready)</div>
+            <div class="menu-category-title">Data Exports</div>
+            <div class="menu-link-btn" onclick="generateCadSLDPdf()"><i class="fa-solid fa-file-pdf" style="color:#ef4444;"></i> Export SLD (PDF)</div>
+            <div class="menu-link-btn" onclick="exportToAutoCAD_DXF()"><i class="fa-solid fa-compass-drafting" style="color:#10b981;"></i> Export to AutoCAD (DXF)</div>
+            <div class="menu-link-btn" onclick="exportToGoogleEarth_KML()"><i class="fa-solid fa-earth-asia" style="color:#f97316;"></i> Export to Earth (KML)</div>
+            <div class="menu-link-btn" onclick="exportDataToCSV()"><i class="fa-solid fa-file-csv" style="color:#facc15;"></i> Export Database (CSV)</div>
 
-            <div class="menu-category-title">Backup & Restore</div>
-            <div class="menu-link-btn" onclick="exportFullJSONBackup()"><i class="fa-solid fa-download" style="color:#3b82f6;"></i> Export Backup (JSON)</div>
-            <div class="menu-link-btn" onclick="document.getElementById('importBackupFile').click()"><i class="fa-solid fa-upload" style="color:#8b5cf6;"></i> Import Backup (JSON)</div>
+            <div class="menu-category-title">System & Backup</div>
+            <div class="menu-link-btn" onclick="exportFullJSONBackup()"><i class="fa-solid fa-cloud-arrow-down" style="color:#3b82f6;"></i> Download Backup</div>
+            <div class="menu-link-btn" onclick="document.getElementById('importBackupFile').click()"><i class="fa-solid fa-cloud-arrow-up" style="color:#8b5cf6;"></i> Upload Backup</div>
             <input type="file" id="importBackupFile" style="display:none;" accept=".json" onchange="handleImportChoice(event)">
             
-            <div class="menu-category-title">System</div>
-            <div class="menu-link-btn" onclick="openSettingsPage()"><i class="fa-solid fa-gear" style="color:#64748b;"></i> Settings</div>
-            <div class="menu-link-btn" style="color:#ef4444; margin-top:auto;" onclick="handleSupabaseLogout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout Securely</div>
+            <div class="menu-link-btn" onclick="openSettingsPage()"><i class="fa-solid fa-gears" style="color:#64748b;"></i> Application Settings</div>
+            <div class="menu-link-btn" style="color:#ef4444; margin-top:15px; background:rgba(239, 68, 68, 0.1);" onclick="handleSupabaseLogout()"><i class="fa-solid fa-right-from-bracket"></i> Secure Logout</div>
         </div>
     </div>
 
@@ -181,71 +182,54 @@
         <div class="sheet-drag-handle" onclick="closeObjectSheet()"></div>
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px;">
             <div style="flex:1;">
-                <h3 id="objSheetTitle" style="font-weight:900; margin-bottom:5px;">Object Title</h3>
-                <div id="objSheetDetails" style="font-size:0.85rem; color:var(--text-sub); line-height:1.5;">Details...</div>
+                <h3 id="objSheetTitle" style="font-weight:900; margin-bottom:5px; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-microchip" style="color:var(--accent);"></i> Object Title</h3>
+                <div id="objSheetDetails" style="font-size:0.85rem; color:var(--text-sub); line-height:1.6;">Details...</div>
             </div>
-            <div style="width:100px; height:100px; border-radius:12px; overflow:hidden; background:var(--bg-glass); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-left:15px;">
+            <div style="width:100px; height:100px; border-radius:12px; overflow:hidden; background:var(--bg-base); border:2px dashed var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-left:15px;">
                 <i id="objPhotoPlaceholder" class="fa-solid fa-image" style="color:var(--text-sub); font-size:24px;"></i>
                 <img id="objPhotoImg" src="" style="width:100%; height:100%; object-fit:cover; display:none;">
             </div>
         </div>
         <div style="display:flex; gap:10px;">
-            <button class="btn-action-primary" id="btnObjEdit" style="flex:1; background:var(--bg-glass); color:var(--text-main); border:1px solid var(--border);"><i class="fa-solid fa-pen"></i> Edit</button>
-            <button class="btn-action-primary" id="btnObjMove" style="flex:1;"><i class="fa-solid fa-arrows-up-down-left-right"></i> Move</button>
-            <button class="btn-action-primary" id="btnObjDelete" style="flex:1; background:#ef4444;"><i class="fa-solid fa-trash"></i></button>
+            <button class="btn-action-primary" id="btnObjEdit" style="flex:1; background:var(--bg-glass); color:var(--text-main); border:1px solid var(--border);"><i class="fa-solid fa-pen-to-square"></i> Edit</button>
+            <button class="btn-action-primary" id="btnObjMove" style="flex:1;"><i class="fa-solid fa-up-down-left-right"></i> Move</button>
+            <button class="btn-action-primary" id="btnObjDelete" style="flex:0.5; background:#ef4444;"><i class="fa-solid fa-trash-can"></i></button>
         </div>
-        <button class="btn-action-primary" style="margin-top:10px; width:100%; background:#0f172a;" onclick="captureObjectPhoto()"><i class="fa-solid fa-camera"></i> Capture New Photo</button>
+        <button class="btn-action-primary" style="margin-top:10px; width:100%; background:#0f172a;" onclick="captureObjectPhoto()"><i class="fa-solid fa-camera-viewfinder"></i> Update Photo</button>
     </div>
 
-    <!-- 7. Dynamic Form Modals (Add/Edit) -->
+    <!-- 7. Dynamic Form Modals -->
     <div class="modal-overlay" id="formModalOverlay">
-        <div class="modal-sheet" id="modalSheetContent">
-            <!-- JS dynamically injects form HTML here -->
-        </div>
+        <div class="modal-sheet" id="modalSheetContent"></div>
     </div>
 
-    <!-- 8. Settings Page Full Screen Modal -->
+    <!-- 8. Settings Page Modal -->
     <div id="settings-page">
         <div class="settings-header">
             <button class="sheet-close-btn" onclick="closeSettingsPage()"><i class="fa-solid fa-arrow-left"></i></button>
-            <h2 style="font-size:1.2rem; font-weight:800;">Settings</h2>
+            <h2 style="font-size:1.2rem; font-weight:800;">Preferences</h2>
         </div>
         <div class="settings-body">
             <div class="settings-card">
-                <div class="form-row">
-                    <label>Language</label>
-                    <select id="setLanguage" class="form-select" onchange="autoSaveSettings()">
-                        <option value="en">English</option><option value="hi">हिंदी (Hindi)</option>
-                    </select>
-                </div>
-                <div class="form-row">
-                    <label>Distance Unit</label>
-                    <select id="setUnit" class="form-select" onchange="autoSaveSettings()">
-                        <option value="m">Meters (M)</option><option value="km">Kilometers (KM)</option>
-                    </select>
-                </div>
-                <div class="form-row" style="margin-bottom:0;">
-                    <label>Theme</label>
-                    <select id="setTheme" class="form-select" onchange="autoSaveSettings()">
-                        <option value="light">Light Mode</option><option value="dark">Dark Mode</option>
-                    </select>
-                </div>
+                <div class="form-row"><label>Language</label><select id="setLanguage" class="form-select" onchange="autoSaveSettings()"><option value="en">English</option><option value="hi">हिंदी (Hindi)</option></select></div>
+                <div class="form-row"><label>Distance Unit</label><select id="setUnit" class="form-select" onchange="autoSaveSettings()"><option value="m">Meters (M)</option><option value="km">Kilometers (KM)</option></select></div>
+                <div class="form-row" style="margin-bottom:0;"><label>Theme</label><select id="setTheme" class="form-select" onchange="autoSaveSettings()"><option value="light">Light Mode</option><option value="dark">Dark Mode</option></select></div>
             </div>
             <div class="settings-card" style="display:flex; justify-content:space-between; align-items:center;">
-                <div><h3 style="font-size:0.9rem; font-weight:700;">Live Cloud Sync</h3><p style="font-size:0.75rem; color:var(--text-sub);">Auto-save to Supabase</p></div>
+                <div><h3 style="font-size:0.9rem; font-weight:700;"><i class="fa-solid fa-cloud-arrow-up" style="color:var(--accent);"></i> Live Cloud Sync</h3><p style="font-size:0.75rem; color:var(--text-sub);">Auto-save to Supabase DB</p></div>
                 <label class="switch"><input type="checkbox" id="setLiveSync" onchange="autoSaveSettings()"><span class="slider round"></span></label>
             </div>
-            <div class="settings-card" style="border-color:#ef4444; cursor:pointer;" onclick="openResetConfirmationModal()">
-                <h3 style="font-size:0.9rem; font-weight:700; color:#ef4444; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-triangle-exclamation"></i> Factory Reset</h3>
-                <p style="font-size:0.75rem; color:var(--text-sub); margin-top:4px;">Wipe all local data and settings</p>
+            <div class="settings-card" style="border-color:#ef4444; cursor:pointer; background:rgba(239, 68, 68, 0.05);" onclick="openResetConfirmationModal()">
+                <h3 style="font-size:0.9rem; font-weight:700; color:#ef4444; display:flex; align-items:center; gap:8px;"><i class="fa-solid fa-skull-crossbones"></i> Factory Reset</h3>
+                <p style="font-size:0.75rem; color:var(--text-sub); margin-top:4px;">Permanently wipe all local offline data</p>
             </div>
         </div>
     </div>
 
     <!-- 9. Toast Notification -->
-    <div id="app-toast"><i class="fa-solid fa-circle-info"></i> <span id="toast-msg">Success!</span></div>
+    <div id="app-toast"><i class="fa-solid fa-circle-check"></i> <span id="toast-msg">Success!</span></div>
 
-    <!-- JS Files (Modulized) -->
+    <!-- JS Files -->
     <script src="js/1_config.js"></script>
     <script src="js/2_db_sync.js"></script>
     <script src="js/3_map_render.js"></script>
