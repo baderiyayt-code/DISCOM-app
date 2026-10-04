@@ -113,13 +113,49 @@ window.centerMapOnGSS = function() {
     if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false}); 
 };
 
+// --- HELPER TO CALCULATE TOTAL CONSUMERS & LOAD FOR A DT ---
+window.getDTStatistics = function(dtCode) {
+    const net = window.getActiveNetwork();
+    if(!net || !net.consumers) return { count: 0, totalLoadKW: 0 };
+    
+    let count = 0;
+    let totalLoadKW = 0;
+
+    net.consumers.forEach(c => {
+        // Check if consumer belongs directly to this DT or to an LT pole under this DT
+        let isConnected = false;
+        if(String(c.parentRef) === String(dtCode) || String(c.parentRef) === String('DT_' + dtCode)) {
+            isConnected = true;
+        } else {
+            // Check if parent is an LT pole belonging to this DT
+            const pole = net.poles.find(p => String(p.poleNo) === String(c.parentRef) || String(p.id) === String('POLE_' + c.parentRef));
+            if(pole && String(pole.dtCode) === String(dtCode)) {
+                isConnected = true;
+            }
+        }
+
+        if(isConnected) {
+            count++;
+            // Extract numeric value from load string e.g. "2.5 kW" or "1 kW"
+            const loadStr = String(c.load || '0');
+            const numMatch = loadStr.match(/[\d.]+/);
+            if(numMatch) {
+                totalLoadKW += parseFloat(numMatch[0]) || 0;
+            }
+        }
+    });
+
+    return { count, totalLoadKW: totalLoadKW.toFixed(2) };
+};
+
 window.openDTFromSVG = function(e, id) {
     if(e) e.stopPropagation(); 
     const net = window.getActiveNetwork();
     if(!net) return;
     const d = net.dts.find(x => x.id === id);
     if(d) {
-        window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b>`);
+        const stats = window.getDTStatistics(d.code);
+        window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b><br>Total Consumers: <b style="color:var(--accent);">${stats.count}</b><br>Total Connected Load: <b style="color:#10b981;">${stats.totalLoadKW} kW</b>`);
     }
 };
 
@@ -288,7 +324,10 @@ window.renderEntireNetwork = function() {
                     const isOrphan = appState.orphanPoleIds.has(d.id); 
                     const svgHtml = window.getDTSVG(d.phase, d.rating);
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [34, 40], iconAnchor: [17, 20] }), zIndexOffset: 400 });
-                    m.on('click', () => { window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b>`); }); 
+                    m.on('click', () => { 
+                        const stats = window.getDTStatistics(d.code);
+                        window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b><br>Total Consumers: <b style="color:var(--accent);">${stats.count}</b><br>Total Connected Load: <b style="color:#10b981;">${stats.totalLoadKW} kW</b>`); 
+                    }); 
                     featureGroups.dts.addLayer(m);
                 }
             });
@@ -299,7 +338,6 @@ window.renderEntireNetwork = function() {
             if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
             const spec = window.getLineSpec(line.type, line.phase, line.conductor); if (!f[spec.filterKey]) return;
             
-            // --- FIX: INCREASED HIT POLYLINE WEIGHT TO 45 FOR ULTRA-EASY TOUCH CLICK ---
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 45, className: spec.lineClass }).addTo(featureGroups.lines);
             
             if(spec.lineClass === 'ryb-line-path') { 
