@@ -171,22 +171,22 @@ input:checked + .slider:before { transform: translateX(22px); }
 #app-toast { position: fixed; top: 120px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #1e293b; color: #ffffff; padding: 12px 20px; border-radius: 12px; font-size: 0.9rem; font-weight: 600; box-shadow: var(--shadow-md); z-index: 5000; opacity: 0; transition: all 0.3s; display: flex; align-items: center; gap: 10px; width: max-content; max-width: 90%; pointer-events: none; }
 #app-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 /* ==============================================================
-   DYNAMIC ZOOM SCALING FOR ICONS (MAP SIZE SYNC)
+   DYNAMIC ZOOM SCALING & ANCHOR LOCK FIX FOR ICONS
 ============================================================== */
 .pole-marker-icon svg, .consumer-marker-icon svg, .gss-marker svg, .dt-square-icon svg {
     transform: scale(var(--icon-scale, 1));
     transition: transform 0.1s linear;
 }
 
-/* Transform Origins (ताकि सिकुड़ते वक़्त वे अपनी सही जगह/Base पर ही टिके रहें) */
-.pole-marker-icon svg { transform-origin: bottom center; }
+/* Transform Origins - Har icon ka scaling point fix kiya gaya hai taaki zoom out par bhatke nahi */
+.pole-marker-icon svg { transform-origin: top center; }
+.dt-square-icon svg { transform-origin: top center; } /* DT hamesha pole ke niche top-origin se scale hogi */
 .consumer-marker-icon svg { transform-origin: center center; }
 .gss-marker svg { transform-origin: center center; }
-.dt-square-icon svg { transform-origin: center center; }
 
-/* पोल के नंबर को भी साथ में छोटा करने के लिए */
+/* Pole ke number aur DTs ko bhi sync rakhne ke liye */
 .pole-marker-icon span {
     transform: scale(var(--icon-scale, 1));
-    transform-origin: bottom center;
+    transform-origin: top center;
     transition: transform 0.1s linear;
 }
