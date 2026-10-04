@@ -123,9 +123,6 @@ window.openDTFromSVG = function(e, id) {
     }
 };
 
-/* ==============================================================
-   PERFECT ANCHOR & INSIDE-SVG NUMBER PILL RENDERER
-============================================================== */
 window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     const strokeC = isOrphan ? '#ef4444' : '#475569';
     const fillC = isOrphan ? '#fca5a5' : '#fb923c'; 
@@ -145,20 +142,16 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
 
     if(p.poleType === 'TOWER') {
         poleSvg = `<path d="M 30 10 L 10 95 M 30 10 L 50 95" stroke="${strokeC}" stroke-width="3"/><path d="M 23 35 L 37 35 M 19 55 L 41 55 M 14 75 L 46 75" stroke="${strokeC}" stroke-width="2"/><line x1="0" y1="35" x2="60" y2="35" stroke="${strokeC}" stroke-width="4"/><line x1="5" y1="55" x2="55" y2="55" stroke="${strokeC}" stroke-width="4"/><rect x="27" y="20" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
-        cx = 60; 
     } else if(p.poleType === 'RAIL POLE') {
         poleSvg = `<rect x="22" y="10" width="16" height="85" fill="${fillC}" stroke="${strokeC}" stroke-width="2"/><line x1="12" y1="20" x2="48" y2="20" stroke="${strokeC}" stroke-width="5"/><rect x="18" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="36" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
-        cx = 40; 
     } else if(p.poleType === 'PCC' && p.poleConfig === 'Double Pole') {
         poleSvg = `<polygon points="12,15 20,15 22,95 10,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><polygon points="40,15 48,15 50,95 38,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="6" y="25" width="48" height="5" fill="${strokeC}"/><rect x="6" y="45" width="48" height="5" fill="${strokeC}"/><rect x="13" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="41" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
-        cx = 60; 
     } else {
         if(isLT) {
             poleSvg = `<polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="18" y="25" width="24" height="6" fill="${strokeC}" rx="1"/><rect x="27" y="18" width="6" height="8" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
         } else {
             poleSvg = `<path d="M 10 20 L 30 35 L 50 20" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="7" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="47" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="25" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
         }
-        cx = 50; 
     }
 
     let dtSvgs = '';
@@ -226,15 +219,11 @@ window.getConsumerSVG = function(cType, status) {
     return `<div style="position:relative; width:34px; height:34px; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.6));"><svg viewBox="0 0 100 100" width="100%" height="100%"><path d="M 10 50 L 50 15 L 90 50 L 80 50 L 80 90 L 20 90 L 20 50 Z" fill="${bgColor}" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/><rect x="40" y="60" width="20" height="30" fill="#ffffff"/><rect x="25" y="55" width="10" height="15" fill="#e0f2fe"/><rect x="65" y="55" width="10" height="15" fill="#e0f2fe"/></svg></div>`;
 }
 
-// --- FIX: REMOVED WHITE BORDER/STROKE FROM SINGLE PHASE HT LINE ---
 window.getLineSpec = function(type, phase, conductor) {
     const t = (type || '').toUpperCase(); const cond = (conductor || '').toUpperCase();
     if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 3, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
-    
-    // Setting HT strokeColor to transparent to remove the white border
     let lineClass = 'ht-line-path'; let color = '#2563eb'; let weight = 3; let strokeColor = 'transparent'; 
-    
-    if (cond.includes('UNDERGROUND') || cond.includes('UG')) { color = '#000000'; weight = 5; strokeColor = 'transparent'; lineClass = 'ug-line-path'; } 
+    if (cond.includes('UNDERGROUND') || cond.includes('UG')) { color = '#000000'; weight: 5; strokeColor = 'transparent'; lineClass = 'ug-line-path'; } 
     else if (phase === 'Three Phase') { lineClass = 'ryb-line-path'; color = '#2563eb'; }
     return { name: '11 KV LINE', color: color, weight: weight, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: strokeColor };
 }
@@ -309,7 +298,9 @@ window.renderEntireNetwork = function() {
             const c1 = window.getNodeCoords(line.fromNode), c2 = window.getNodeCoords(line.toNode); 
             if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
             const spec = window.getLineSpec(line.type, line.phase, line.conductor); if (!f[spec.filterKey]) return;
-            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 35, className: spec.lineClass }).addTo(featureGroups.lines);
+            
+            // --- FIX: INCREASED HIT POLYLINE WEIGHT TO 45 FOR ULTRA-EASY TOUCH CLICK ---
+            const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 45, className: spec.lineClass }).addTo(featureGroups.lines);
             
             if(spec.lineClass === 'ryb-line-path') { 
                 const coordsR = window.getOffsetCoords(line.coords, 1.2); 
@@ -320,13 +311,15 @@ window.renderEntireNetwork = function() {
             } else if (spec.lineClass === 'ug-line-path') {
                 L.polyline(line.coords, { color: spec.color, weight: spec.weight, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
             } else { 
-                // Don't draw the stroke polyline if it's set to transparent (saves resources)
                 if (spec.strokeColor !== 'transparent') {
                     L.polyline(line.coords, { color: spec.strokeColor, weight: spec.weight + 4, opacity: 0.8, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
                 }
                 L.polyline(line.coords, { color: spec.color, weight: spec.weight, dashArray: spec.dash, lineCap: 'round', className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
             }
-            hitPoly.on('click', () => { window.openObjectSheet('LINE', line.id, spec.name, `Phase: <b>${line.phase || 'N/A'}</b><br>Conductor: <b>${line.conductor || 'Standard'}</b><br>From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Dist: <b>${window.formatDistance(line.distanceMeters||0)}</b>`); });
+            hitPoly.on('click', (e) => { 
+                L.DomEvent.stopPropagation(e);
+                window.openObjectSheet('LINE', line.id, spec.name, `Phase: <b>${line.phase || 'N/A'}</b><br>Conductor: <b>${line.conductor || 'Standard'}</b><br>From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Dist: <b>${window.formatDistance(line.distanceMeters||0)}</b>`); 
+            });
         });
         
         if (f.consumers) {
