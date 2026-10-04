@@ -111,7 +111,7 @@ window.centerMapOnGSS = function() {
 };
 
 /* ==============================================================
-   EMBEDDED POLE + DT RENDERER (DT AT BOTTOM & WHITE BG FOR NUMBER)
+   EMBEDDED POLE + DT RENDERER (PERFECTLY CENTERED, WHITE BG NUMBER)
 ============================================================== */
 window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     const strokeC = isOrphan ? '#ef4444' : '#475569';
@@ -121,29 +121,41 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
     let poleSvg = '';
+    // Calculate precise center dynamically based on pole type geometry
+    let cx = 50; 
+
     if(p.poleType === 'TOWER') {
         poleSvg = `<path d="M 40 10 L 20 95 M 40 10 L 60 95" stroke="${strokeC}" stroke-width="3"/><path d="M 33 35 L 47 35 M 29 55 L 51 55 M 24 75 L 56 75" stroke="${strokeC}" stroke-width="2"/><line x1="10" y1="35" x2="70" y2="35" stroke="${strokeC}" stroke-width="4"/><line x1="15" y1="55" x2="65" y2="55" stroke="${strokeC}" stroke-width="4"/><rect x="37" y="0" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+        cx = 60; // 40 + 20 transform
     } else if(p.poleType === 'RAIL POLE') {
         poleSvg = `<rect x="12" y="10" width="16" height="85" fill="${fillC}" stroke="${strokeC}" stroke-width="2"/><line x1="2" y1="20" x2="38" y2="20" stroke="${strokeC}" stroke-width="5"/><rect x="8" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="26" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+        cx = 40; // 20 + 20 transform
     } else if(p.poleType === 'PCC' && p.poleConfig === 'Double Pole') {
         poleSvg = `<polygon points="16,15 24,15 26,95 14,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><polygon points="56,15 64,15 66,95 54,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="10" y="25" width="60" height="5" fill="${strokeC}"/><rect x="10" y="45" width="60" height="5" fill="${strokeC}"/><rect x="17" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="37" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="57" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+        cx = 60; // 40 + 20 transform
     } else {
         if(isLT) {
             poleSvg = `<polygon points="26,20 34,20 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="18" y="15" width="24" height="6" fill="${strokeC}" rx="1"/><rect x="27" y="8" width="6" height="8" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
         } else {
             poleSvg = `<path d="M 10 25 L 30 40 L 50 25" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="7" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="47" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="30" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
         }
+        cx = 50; // 30 + 20 transform
     }
 
     let dtSvgs = '';
     if(associatedDTs && associatedDTs.length > 0) {
         associatedDTs.forEach((d, idx) => {
             const numRating = String(d.rating).replace(/[^0-9]/g, '');
-            // Both 1-Phase and 3-Phase positioned at bottom center
-            const xOffset = associatedDTs.length === 1 ? 11 : (idx === 0 ? -6 : 30); 
+            
+            // Mathematically precise centering under the pole's natural X-axis
+            let startX = cx;
+            if (associatedDTs.length > 1) {
+                startX = idx === 0 ? cx - 18 : cx + 18; 
+            }
             
             if(d.phase === 'Single Phase') {
-                dtSvgs += `<g transform="translate(${xOffset}, 55)">
+                // Width is 26, so offset by 13 to center
+                dtSvgs += `<g transform="translate(${startX - 13}, 65)">
                     <rect x="0" y="0" width="26" height="30" rx="2" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
                     <rect x="3" y="3" width="20" height="24" fill="#fdba74"/>
                     <polygon points="10,0 16,0 13,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
@@ -151,8 +163,8 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
                     <text x="13" y="19" font-size="13" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
                 </g>`;
             } else {
-                // Three Phase DT explicitly shifted to bottom (y: 52) to match Single Phase DT
-                dtSvgs += `<g transform="translate(${xOffset - 3}, 52)">
+                // Width is 32, so offset by 16 to center
+                dtSvgs += `<g transform="translate(${startX - 16}, 60)">
                     <rect x="0" y="0" width="32" height="36" rx="3" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
                     <polygon points="7,0 11,0 9,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
                     <polygon points="15,0 19,0 17,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
@@ -163,13 +175,36 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
         });
     }
 
-    return `<svg viewBox="0 0 100 115" style="width:50px;height:75px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6)); overflow:visible;">
+    // Number (span) is deliberately moved OUTSIDE the SVG tags so CSS background kicks in
+    return `<svg viewBox="0 0 100 110" style="width:50px;height:75px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6)); overflow:visible;">
         <g transform="translate(20, 0)">${poleSvg}</g>
         ${dtSvgs}
-        <g transform="translate(50, -6)">
-            <rect x="-14" y="-10" width="28" height="16" rx="4" fill="#ffffff" stroke="#0f172a" stroke-width="1.5" />
-            <text x="0" y="2" font-size="11" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${displayNo}</text>
-        </g>
+    </svg><span>${displayNo}</span>`;
+}
+
+window.getDTSVG = function(phase, rating) {
+    const numRating = String(rating).replace(/[^0-9]/g, ''); 
+    const lightOrange = '#fb923c'; 
+    const darkOrange = '#ea580c';  
+    
+    if(phase === 'Single Phase') return `<svg viewBox="0 0 40 50" style="width:20px;height:25px; filter:drop-shadow(0 3px 5px rgba(0,0,0,0.7));">
+        <rect x="5" y="15" width="30" height="35" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/>
+        <rect x="8" y="18" width="24" height="29" fill="#fdba74"/>
+        <polygon points="17,15 23,15 20,2" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <rect x="18" y="2" width="4" height="2" fill="#94a3b8"/>
+        <text x="20" y="40" font-size="16" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
+    </svg>`;
+    
+    return `<svg viewBox="0 0 60 70" style="width:34px;height:40px; filter:drop-shadow(0 5px 8px rgba(0,0,0,0.7));">
+        <rect x="15" y="20" width="30" height="40" rx="3" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/>
+        <rect x="8" y="25" width="7" height="30" fill="${darkOrange}" rx="1"/>
+        <rect x="5" y="28" width="7" height="24" fill="#c2410c" rx="1"/>
+        <rect x="45" y="25" width="7" height="30" fill="${darkOrange}" rx="1"/>
+        <rect x="48" y="28" width="7" height="24" fill="#c2410c" rx="1"/>
+        <polygon points="18,20 22,20 20,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <polygon points="28,20 32,20 30,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <polygon points="38,20 42,20 40,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <text x="30" y="45" font-size="12" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
     </svg>`;
 }
 
