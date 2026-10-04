@@ -47,3 +47,73 @@ window.startAppStartupSequence = function() {
 
 document.addEventListener('deviceready', window.startAppStartupSequence, false); 
 if (!window.cordova) { window.addEventListener('DOMContentLoaded', window.startAppStartupSequence); }
+/* ==========================================
+   LIVE TRACKING WITH ACCURACY CIRCLE & KPI
+========================================== */
+let liveTrackWatchId = null;
+let liveTrackMarker = null;
+let liveTrackCircle = null;
+
+window.toggleLiveTracking = function() {
+    const btn = document.getElementById('liveTrackBtn');
+    if (liveTrackWatchId) {
+        navigator.geolocation.clearWatch(liveTrackWatchId);
+        liveTrackWatchId = null;
+        if (liveTrackMarker && typeof map !== 'undefined') map.removeLayer(liveTrackMarker);
+        if (liveTrackCircle && typeof map !== 'undefined') map.removeLayer(liveTrackCircle);
+        liveTrackMarker = null;
+        liveTrackCircle = null;
+        btn.style.color = '';
+        if(window.showToast) window.showToast("Live Tracking Disabled");
+    } else {
+        btn.style.color = '#3b82f6'; 
+        if(window.showToast) window.showToast("Live Tracking Enabled");
+        
+        liveTrackWatchId = navigator.geolocation.watchPosition((pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const acc = pos.coords.accuracy; // Exact accuracy radius in meters
+            
+            if(!liveTrackMarker && typeof map !== 'undefined') {
+                // 1. Solid Blue Dot
+                liveTrackMarker = L.marker([lat, lng], {
+                    icon: L.divIcon({
+                        className: 'live-gps-dot',
+                        html: '<div style="width:16px;height:16px;background:#3b82f6;border:3px solid white;border-radius:50%;box-shadow:0 0 8px rgba(0,0,0,0.5);"></div>',
+                        iconSize: [16,16],
+                        iconAnchor: [8,8]
+                    }), zIndexOffset: 9999
+                }).addTo(map);
+                
+                // 2. Accuracy Light Blue Circle (Like Google Maps)
+                liveTrackCircle = L.circle([lat, lng], {
+                    radius: acc,
+                    color: '#3b82f6',
+                    weight: 1,
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.15
+                }).addTo(map);
+                
+                map.setView([lat, lng], 19);
+            } else if(liveTrackMarker && liveTrackCircle) {
+                liveTrackMarker.setLatLng([lat, lng]);
+                liveTrackCircle.setLatLng([lat, lng]);
+                liveTrackCircle.setRadius(acc); // Auto expand/shrink radius based on signal
+            }
+        }, (err) => {
+            console.error(err);
+            if(window.showToast) window.showToast("GPS Error: " + err.message);
+            btn.style.color = '';
+            liveTrackWatchId = null;
+        }, { enableHighAccuracy: true, maximumAge: 0 });
+    }
+};
+
+window.toggleKPIBar = function() {
+    const kpi = document.getElementById('kpi-container');
+    const icon = document.getElementById('kpi-toggle-icon');
+    if(!kpi || !icon) return;
+    kpi.classList.toggle('collapsed');
+    icon.className = kpi.classList.contains('collapsed') ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-up';
+};
+
