@@ -1,16 +1,17 @@
 /* --- js/3_map_render.js (Ultra Stable Mode) --- */
+/* --- Update this function in js/3_map_render.js --- */
 
 window.initMapLayers = function() {
     if (typeof L === 'undefined') return; 
     
-    // PERFECTLY STABLE MAP CONFIGURATION FOR MOBILE
+    // FIX 1: Disabled buggy animations for mobile stability
     map = L.map('map', { 
         zoomControl: false, 
         attributionControl: false, 
-        preferCanvas: true, // IMPORTANT: Forces objects to render fast on mobile
-        zoomAnimation: true, 
-        markerZoomAnimation: true, 
-        fadeAnimation: true 
+        preferCanvas: true, 
+        zoomAnimation: false,        // Changed to false
+        markerZoomAnimation: false,  // Changed to false
+        fadeAnimation: false         // Changed to false
     }).setView([26.9150, 75.7830], 16);
 
     map.on('zoomend', window.updateMapZoomClasses); 
@@ -34,6 +35,30 @@ window.initMapLayers = function() {
             }
         }
     });
+
+    // FIX 2: Added 'keepBuffer: 8' and 'updateWhenIdle: false' so tiles don't disappear on drag
+    tileLayers = { 
+        osm: { name: '<i class="fa-solid fa-map"></i> OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, keepBuffer: 8, updateWhenIdle: false }) }, 
+        hybrid: { name: '<i class="fa-solid fa-satellite-dish"></i> Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22, keepBuffer: 8, updateWhenIdle: false }) }, 
+        street: { name: '<i class="fa-solid fa-map-location-dot"></i> Street Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22, keepBuffer: 8, updateWhenIdle: false }) } 
+    };
+    layerKeys = Object.keys(tileLayers); tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
+    
+    featureGroups = { 
+        gss: L.featureGroup().addTo(map), 
+        lines: L.featureGroup().addTo(map), 
+        consumerLines: L.featureGroup().addTo(map), 
+        poles: L.featureGroup().addTo(map), 
+        dts: L.featureGroup().addTo(map), 
+        consumers: L.featureGroup().addTo(map) 
+    };
+    
+    const pcb = document.getElementById('placement-confirm-bar'); if(pcb && L.DomEvent) { L.DomEvent.disableClickPropagation(pcb); L.DomEvent.disableScrollPropagation(pcb); }
+    const bsa = document.getElementById('bottom-single-action'); if(bsa && L.DomEvent) { L.DomEvent.disableClickPropagation(bsa); L.DomEvent.disableScrollPropagation(bsa); }
+    const headerActions = document.querySelector('.header-actions'); 
+    if(headerActions) { const searchBtn = document.createElement('button'); searchBtn.className = 'action-btn-sm'; searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i>'; searchBtn.onclick = window.toggleSearchBox; headerActions.insertBefore(searchBtn, headerActions.firstChild); }
+}
+
 
     tileLayers = { 
         osm: { name: '<i class="fa-solid fa-map"></i> OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22 }) }, 
