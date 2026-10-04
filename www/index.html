@@ -146,19 +146,19 @@
                     <span>LT Pole</span>
                 </div>
 
-                <!-- Line (NEW CUSTOM SVG: 3-Phase connecting two poles) -->
+                                <!-- Line (Custom 3-Phase Match-Map SVG) -->
                 <div class="dial-card" onclick="openAddForm('LINE')">
-                    <svg viewBox="0 0 60 60" style="width:28px;height:38px; margin-bottom:5px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
-                        <!-- Left Node (Pole) -->
-                        <rect x="10" y="35" width="4" height="20" fill="#475569" rx="1"/>
-                        <line x1="6" y1="38" x2="18" y2="46" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
-                        <!-- Right Node (Pole) -->
-                        <rect x="46" y="5" width="4" height="20" fill="#475569" rx="1"/>
-                        <line x1="42" y1="8" x2="54" y2="16" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
-                        <!-- 3-Phase Wires (R, Y, B) -->
-                        <line x1="8" y1="38" x2="44" y2="8" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
-                        <line x1="12" y1="42" x2="48" y2="12" stroke="#facc15" stroke-width="2" stroke-linecap="round"/>
-                        <line x1="16" y1="46" x2="52" y2="16" stroke="#3b82f6" stroke-width="2" stroke-linecap="round"/>
+                    <svg viewBox="0 0 60 60" style="width:32px;height:32px; margin-bottom:8px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
+                        <!-- Left Pole -->
+                        <rect x="8" y="32" width="5" height="22" fill="#475569" rx="1"/>
+                        <line x1="4" y1="36" x2="17" y2="44" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+                        <!-- Right Pole -->
+                        <rect x="47" y="6" width="5" height="22" fill="#475569" rx="1"/>
+                        <line x1="43" y1="10" x2="56" y2="18" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+                        <!-- 3-Phase Wires (Red, Yellow, Blue with slight curve) -->
+                        <path d="M 10 36 Q 30 18 49 10" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>
+                        <path d="M 10 40 Q 30 22 49 14" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round"/>
+                        <path d="M 10 44 Q 30 26 49 18" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round"/>
                     </svg>
                     <span>Line</span>
                 </div>
