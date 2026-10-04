@@ -33,17 +33,27 @@
         <div class="loader-text">SURVEY PRO</div>
     </div>
 
-    <!-- 2. Authentication Screen -->
+        <!-- 2. Authentication Screen -->
     <div id="auth-screen">
         <div class="auth-card">
             <div class="auth-logo"><i class="fa-solid fa-bolt"></i></div>
             <h2>DISCOM Survey Pro</h2>
+            
+            <!-- Signup Name Field (Fix Applied) -->
             <input type="text" id="authName" class="auth-input-glass" placeholder="Full Name" style="display:none;">
+            
             <input type="email" id="authEmail" class="auth-input-glass" placeholder="Email Address">
             <input type="password" id="authPassword" class="auth-input-glass" placeholder="Password">
+            
             <button id="loginBtn" class="btn-action-primary" onclick="handleSupabaseAuth('login')">Login to Continue</button>
             <button id="signupBtn" class="btn-action-primary btn-signup" style="display:none;" onclick="handleSupabaseAuth('signup')">Create Account</button>
+            
             <div class="auth-toggle-link" id="authToggleText" onclick="toggleAuthMode()">Need an account? Sign Up</div>
+            
+            <!-- OFFLINE BYPASS BUTTON (नया फीचर) -->
+            <div style="margin-top:20px; border-top:1px solid rgba(255,255,255,0.2); padding-top:15px;">
+                <button class="btn-action-primary" style="background:transparent; border:1px solid white; color:white;" onclick="skipLoginOffline()">Skip Login (Use Offline)</button>
+            </div>
         </div>
     </div>
 
