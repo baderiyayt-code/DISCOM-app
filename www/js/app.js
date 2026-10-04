@@ -49,6 +49,12 @@ function initMapLayers() {
     tileLayers = { osm: { name: 'OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22 }) }, hybrid: { name: 'Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22 }) }, street: { name: 'Google Street Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22 }) } };
     layerKeys = Object.keys(tileLayers); tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
     featureGroups = { gss: L.featureGroup().addTo(map), lines: L.featureGroup().addTo(map), consumerLines: L.featureGroup().addTo(map), poles: L.featureGroup().addTo(map), dts: L.featureGroup().addTo(map), consumers: L.featureGroup().addTo(map) };
+    
+    const pcb = document.getElementById('placement-confirm-bar');
+    if(pcb) { L.DomEvent.disableClickPropagation(pcb); L.DomEvent.disableScrollPropagation(pcb); }
+    const bsa = document.getElementById('bottom-single-action');
+    if(bsa) { L.DomEvent.disableClickPropagation(bsa); L.DomEvent.disableScrollPropagation(bsa); }
+
     const headerActions = document.querySelector('.header-actions');
     if(headerActions) { const searchBtn = document.createElement('button'); searchBtn.className = 'action-btn-sm'; searchBtn.innerHTML = '<i class="fa-solid fa-search"></i>'; searchBtn.onclick = window.toggleSearchBox; headerActions.insertBefore(searchBtn, headerActions.firstChild); }
 }
@@ -104,6 +110,7 @@ window.syncToSupabase = async function() {
     } catch (err) { console.warn("Sync error", err); setSyncStatus('offline'); updateUnsyncedBadge(); }
 }
 
+/* --- app.js PART 2 --- */
 async function pullFromSupabase() {
     if (!supabaseClient || !appState.user.isLoggedIn || !appState.user.id) return; setSyncStatus('syncing');
     try {
@@ -115,6 +122,10 @@ async function pullFromSupabase() {
         if(objData) { objData.forEach(row => { const fCode = row.feeder_code; if(appState.feeders[fCode]) { row.details.synced = true; if(row.object_type === 'POLE') appState.feeders[fCode].poles.push(row.details); if(row.object_type === 'DT') appState.feeders[fCode].dts.push(row.details); if(row.object_type === 'LINE') appState.feeders[fCode].lines.push(row.details); if(row.object_type === 'CONSUMER') appState.feeders[fCode].consumers.push(row.details); } }); }
         const { data: photoData } = await supabaseClient.from('object_photos').select('id, object_type, object_id, photo_url').eq('user_id', appState.user.id);
         if(photoData) { appState.photos = photoData.map(p => ({ id: p.id, object_type: p.object_type, object_id: p.object_id, photo_url: p.photo_url, synced: true })); } else appState.photos = [];
+        
+        // Critical Fix: Restore the Sets
+        if(!(appState.orphanPoleIds instanceof Set)) appState.orphanPoleIds = new Set();
+        
         if(typeof localforage !== 'undefined') await localforage.setItem(DB_KEY, appState); 
         applyTranslations(); applyTheme(); if(map) map.invalidateSize(); renderEntireNetwork(); window.updateFeederDropdown(); setSyncStatus('synced'); centerMapOnGSS(); checkOnboardingFlow(); updateUnsyncedBadge();
     } catch (err) { console.error("Sync error:", err); setSyncStatus('offline'); if(map) map.invalidateSize(); checkOnboardingFlow(); updateUnsyncedBadge(); }
@@ -152,7 +163,6 @@ window.toggleLiveTracking = function() {
     else { showToast("Fetching location..."); window.isFirstLocationLock = true; window.liveTrackingId = navigator.geolocation.watchPosition((pos) => { const lat = pos.coords.latitude, lng = pos.coords.longitude; if(!map) return; if (!window.liveUserMarker) { const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [44,44] }); window.liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map); } else window.liveUserMarker.setLatLng([lat, lng]); if (window.isFirstLocationLock) { map.setView([lat, lng], 18); window.isFirstLocationLock = false; } document.getElementById('liveTrackBtn').style.color = '#10b981'; }, (err) => alert("GPS Error."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }); }
 }
 
-/* --- app.js PART 3 --- */
 document.getElementById('formModalOverlay').addEventListener('click', function(e) { if(e.target === this) { window.closeModal(); } });
 window.toggleSpeedDial = function(e) { if(e) { e.preventDefault(); e.stopPropagation(); } const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); if (!dial || !fab) return; const isOpen = !dial.classList.contains('active'); dial.classList.toggle('active', isOpen); fab.classList.toggle('open', isOpen); }
 document.addEventListener('click', function(e) { const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) { dial.classList.remove('active'); fab.classList.remove('open'); } } });
@@ -234,6 +244,7 @@ window.captureObjectPhoto = function() {
     navigator.camera.getPicture(function(imageData) { showToast("Saving photo..."); const base64Data = "data:image/jpeg;base64," + imageData; if(!appState.photos) appState.photos = []; appState.photos = appState.photos.filter(x => x.object_id !== window.currentSelectedObj.id); appState.photos.push({ id: 'PH_' + Date.now(), object_type: window.currentSelectedObj.type, object_id: window.currentSelectedObj.id, photo_url: base64Data, synced: false }); const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder'); imgEl.src = base64Data; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; triggerPersistence(); }, function(message) { alert('Camera cancelled or failed: ' + message); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false });
 };
 
+/* --- app.js PART 3 --- */
 const C_YELLOW = '#facc15'; const W_BASE = '#ffffff';
 function getPoleSVG(type, config, isOrphan) {
     const fill = isOrphan ? '#ef4444' : C_YELLOW;
@@ -272,7 +283,19 @@ window.getOffsetCoords = function(coords, offsetMeters) {
     return [[lat1 + dLat, lng1 + dLng], [lat2 + dLat, lng2 + dLng]];
 };
 
-/* --- app.js PART 4 --- */
+function updateOrphanStatus() {
+    // CRITICAL FIX: Ensure Set exists before calling .clear()
+    if(!appState.orphanPoleIds || typeof appState.orphanPoleIds.clear !== 'function') appState.orphanPoleIds = new Set();
+    appState.orphanPoleIds.clear(); const net = getActiveNetwork(); if(!net) return; 
+    const adj = {}, gssCode = net.feeder.parentGss, gssId = 'GSS_' + gssCode; adj[gssId] = [];
+    net.poles.forEach(p => adj['POLE_' + p.poleNo] = []); net.dts.forEach(d => adj['DT_' + d.code] = []);
+    net.dts.forEach(d => { if(d.parentPole) { const pId = 'POLE_' + d.parentPole; if (!adj[pId]) adj[pId] = []; adj[pId].push('DT_' + d.code); adj['DT_' + d.code].push(pId); } });
+    net.lines.forEach(l => { const u = String(l.fromNode), v = String(l.toNode); if (!adj[u]) adj[u] = []; if (!adj[v]) adj[v] = []; adj[u].push(v); adj[v].push(u); });
+    const visited = new Set([gssId]), queue = [gssId];
+    while (queue.length > 0) { const curr = queue.shift(); (adj[curr] || []).forEach(neighbor => { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } }); }
+    net.poles.forEach(p => { if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id); }); net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
+}
+
 function renderEntireNetwork() {
     if(!map) return; window.updateFeederDropdown();
     try {
@@ -362,6 +385,7 @@ function renderEntireNetwork() {
 function saveSnapshot() { const net = getActiveNetwork(); if(!net) return; historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); if (historyStack.length > 15) historyStack.shift(); }
 window.undoLastAction = function() { if (historyStack.length === 0) return showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = getActiveNetwork(); if(!net) return; net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; renderEntireNetwork(); triggerPersistence(); showToast("Undo Successful ↺"); }
 
+/* --- app.js PART 4 --- */
 window.openFilterModal = function() {
     const f = appState.filters;
     openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-filter" style="color:#d97706;"></i> Object Filter</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="capsule-filter-group"><label class="capsule"><input type="checkbox" id="flt11" ${f.lines11?'checked':''}><span>11 KV Line</span></label><label class="capsule"><input type="checkbox" id="fltLT" ${f.linesLT?'checked':''}><span>LT Line</span></label><label class="capsule"><input type="checkbox" id="fltPoles" ${f.poles?'checked':''}><span>Poles</span></label><label class="capsule"><input type="checkbox" id="fltDTs" ${f.dts?'checked':''}><span>DT</span></label><label class="capsule"><input type="checkbox" id="fltCons" ${f.consumers?'checked':''}><span>Consumers</span></label></div><button class="btn-action-primary" onclick="window.saveFilters()" style="margin-top:20px;">Apply Filters</button>`);
@@ -385,6 +409,10 @@ window.selectSearchResult = function(type, id) { const net = getActiveNetwork();
 window.toggleSidebar = function(open) { document.getElementById('sidebar-drawer').classList.toggle('open', open); document.getElementById('sidebarBackdrop').classList.toggle('open', open); if(open) { window.renderGssSidebarList(); window.renderFeederSidebarList(); } }
 window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); window.tempPhotoUrl = null; }
 window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); window.isSetupModalOpen = false; document.getElementById('live-distance-indicator').style.display='none'; if(appState.user && appState.user.isLoggedIn) { setTimeout(window.checkOnboardingFlow, 400); } }
+
+/* ====== FIX 6: Folder Toggle Fix (For Dropdowns) ====== */
+window.toggleGssFolder = function() { const content = document.getElementById('gssFolderContent'), icon = document.getElementById('gssFolderIcon'); if (!content || !icon) return; const isHidden = content.style.display !== 'block'; content.style.display = isHidden ? 'block' : 'none'; icon.className = isHidden ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'; if (isHidden) window.renderGssSidebarList(); };
+window.toggleFeederFolder = function() { const content = document.getElementById('feederFolderContent'), icon = document.getElementById('feederFolderIcon'); if (!content || !icon) return; const isHidden = content.style.display !== 'block'; content.style.display = isHidden ? 'block' : 'none'; icon.className = isHidden ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'; if (isHidden) window.renderFeederSidebarList(); };
 
 /* ====== CONSTANT RATING HTML INJECTION FOR DT ====== */
 const dtRatingOptionsHtml = `<option value="10">10 kVA</option><option value="16">16 kVA</option><option value="25" selected>25 kVA</option><option value="40">40 kVA</option><option value="63">63 kVA</option><option value="100">100 kVA</option><option value="160">160 kVA</option><option value="250">250 kVA</option><option value="315">315 kVA</option><option value="500">500 kVA</option>`;
@@ -443,8 +471,6 @@ window.filterConsumerPoles = function() {
     const dtObj = net.dts.find(d => String(d.code) === String(cleanDT)); if(dtObj) nodes.push({id: 'DT_' + cleanDT, title: 'Direct to DT: '+cleanDT, lat: dtObj.lat, lng: dtObj.lng});
     nodes = window.sortByDistance(nodes, centerLat, centerLng); document.getElementById('inpConsParent').innerHTML = nodes.map(n => `<option value="${n.id}">${n.title} (${window.getDistStr(n.lat, n.lng)})</option>`).join('');
 }
-
-/* --- app.js PART 5 --- */
 window.saveNewPole = function() { 
     try {
         const no = document.getElementById('inpPoleNo').value.trim(); const category = document.getElementById('inpPoleCategory').value; const lat = parseFloat(document.getElementById('inpLat').value); const lng = parseFloat(document.getElementById('inpLng').value); const pType = document.getElementById('inpMainPoleType').value; const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A'; const condition = document.getElementById('inpPoleCondition').value;
@@ -453,6 +479,8 @@ window.saveNewPole = function() {
         window.attachTempPhoto('POLE', objId); window.closeModal(); renderEntireNetwork(); triggerPersistence(); showToast("HT Pole added!");
     } catch(err) { console.error(err); alert("Error saving pole: " + err.message); }
 }
+
+/* --- app.js PART 5 --- */
 window.saveNewLTPole = function() {
     try {
         const dtCodeRaw = document.getElementById('inpLTPoleDT').value; const dtCode = dtCodeRaw.replace('DT_', ''); const category = document.getElementById('inpPoleCategory').value; const lat = parseFloat(document.getElementById('inpLat').value); const lng = parseFloat(document.getElementById('inpLng').value); const pType = document.getElementById('inpMainPoleType').value; const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A'; const condition = document.getElementById('inpPoleCondition').value;
@@ -613,7 +641,7 @@ async function initializeAppPostPermissions() {
         if (typeof supabase !== 'undefined') supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         let data = null; if (typeof localforage !== 'undefined') data = await localforage.getItem(DB_KEY); 
         if (!data) { const lsData = localStorage.getItem(DB_KEY); if (lsData) data = JSON.parse(lsData); }
-        if (data && data.feeders) appState = data; 
+        if (data && data.feeders) { appState = data; if(!(appState.orphanPoleIds instanceof Set)) appState.orphanPoleIds = new Set(); }
         applyTranslations(); applyTheme();
         
         if (appState.user && appState.user.isLoggedIn) { 
