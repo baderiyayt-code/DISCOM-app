@@ -58,7 +58,6 @@ window.updateMapZoomClasses = function() {
 }
 window.toggleMapLayer = function() { if(!map) return; map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name; }
 
-/* ====== MISSING FEEDER FUNCTIONS ADDED BACK ====== */
 window.updateFeederDropdown = function() { 
     const header = document.getElementById('activeFeederLabel'); if(!header) return; 
     const keys = Object.keys(appState.feeders || {}); 
@@ -89,23 +88,25 @@ window.centerMapOnGSS = function() {
 };
 
 /* ==============================================================
-   NEW REALISTIC ICONS GENERATOR (LIGHT ORANGE BASE, V-CROSS ARM)
+   NEW PRO-LEVEL REALISTIC ICONS (POLES, V-CROSS, TOWER, RAIL)
 ============================================================== */
 window.getPoleSVG = function(type, config, isOrphan) {
     const strokeC = isOrphan ? '#ef4444' : '#475569';
     const fillC = isOrphan ? '#fca5a5' : '#fb923c'; // Light Orange Base
     
-    if(type === 'TOWER') return `<svg viewBox="0 0 80 100" style="width:40px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><path d="M 40 10 L 20 95 M 40 10 L 60 95" stroke="${strokeC}" stroke-width="3"/><path d="M 33 35 L 47 35 M 29 55 L 51 55 M 24 75 L 56 75" stroke="${strokeC}" stroke-width="2"/><path d="M 33 35 L 51 55 M 47 35 L 29 55 M 29 55 L 56 75 M 51 55 L 24 75" stroke="${strokeC}" stroke-width="1.5"/><line x1="10" y1="35" x2="70" y2="35" stroke="${strokeC}" stroke-width="3"/><line x1="15" y1="55" x2="65" y2="55" stroke="${strokeC}" stroke-width="3"/><circle cx="40" cy="8" r="3" fill="${fillC}"/></svg>`;
-    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 100" style="width:20px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><rect x="12" y="10" width="16" height="85" fill="${fillC}" stroke="${strokeC}" stroke-width="2"/><line x1="5" y1="20" x2="35" y2="20" stroke="${strokeC}" stroke-width="4"/><circle cx="12" cy="16" r="3" fill="#78350f"/><circle cx="28" cy="16" r="3" fill="#78350f"/></svg>`;
-    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 80 100" style="width:40px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><polygon points="16,15 24,15 26,95 14,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><polygon points="56,15 64,15 66,95 54,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="10" y="25" width="60" height="4" fill="${strokeC}"/><rect x="10" y="45" width="60" height="4" fill="${strokeC}"/><rect x="18" y="18" width="4" height="7" fill="#78350f" rx="1"/><rect x="38" y="18" width="4" height="7" fill="#78350f" rx="1"/><rect x="58" y="18" width="4" height="7" fill="#78350f" rx="1"/></svg>`;
+    if(type === 'TOWER') return `<svg viewBox="0 0 80 100" style="width:40px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><path d="M 40 10 L 20 95 M 40 10 L 60 95" stroke="${strokeC}" stroke-width="3"/><path d="M 33 35 L 47 35 M 29 55 L 51 55 M 24 75 L 56 75" stroke="${strokeC}" stroke-width="2"/><path d="M 33 35 L 51 55 M 47 35 L 29 55 M 29 55 L 56 75 M 51 55 L 24 75" stroke="${strokeC}" stroke-width="1.5"/><line x1="10" y1="35" x2="70" y2="35" stroke="${strokeC}" stroke-width="4"/><line x1="15" y1="55" x2="65" y2="55" stroke="${strokeC}" stroke-width="4"/><rect x="37" y="0" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/></svg>`;
     
-    // Single Pole with V-Cross Arm and 3 Insulators
+    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 100" style="width:20px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><rect x="12" y="10" width="16" height="85" fill="${fillC}" stroke="${strokeC}" stroke-width="2"/><line x1="2" y1="20" x2="38" y2="20" stroke="${strokeC}" stroke-width="5"/><rect x="8" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="26" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/></svg>`;
+    
+    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 80 100" style="width:40px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><polygon points="16,15 24,15 26,95 14,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><polygon points="56,15 64,15 66,95 54,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="10" y="25" width="60" height="5" fill="${strokeC}"/><rect x="10" y="45" width="60" height="5" fill="${strokeC}"/><rect x="17" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="37" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="57" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/></svg>`;
+    
+    // Default Single Pole with V-Cross Arm and 3 Insulators
     return `<svg viewBox="0 0 60 100" style="width:30px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));">
-        <path d="M 8 20 L 30 35 L 52 20" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M 10 25 L 30 40 L 50 25" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
         <polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/>
-        <rect x="5" y="10" width="6" height="10" fill="#78350f" rx="2"/>
-        <rect x="49" y="10" width="6" height="10" fill="#78350f" rx="2"/>
-        <rect x="27" y="25" width="6" height="10" fill="#78350f" rx="2"/>
+        <rect x="7" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>
+        <rect x="47" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>
+        <rect x="27" y="30" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>
     </svg>`;
 }
 
@@ -114,17 +115,25 @@ window.getDTSVG = function(phase, rating) {
     const lightOrange = '#fb923c'; 
     const darkOrange = '#ea580c';  
     
-    if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:25px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.7));"><circle cx="25" cy="30" r="18" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><polygon points="23,12 27,12 25,2" fill="#78350f"/><text x="25" y="35" font-size="14" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
+    // Rectangular Single Phase DT [] with 1 Bushing Insulator
+    if(phase === 'Single Phase') return `<svg viewBox="0 0 40 50" style="width:20px;height:25px; filter:drop-shadow(0 3px 5px rgba(0,0,0,0.7));">
+        <rect x="5" y="15" width="30" height="35" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/>
+        <rect x="8" y="18" width="24" height="29" fill="#fdba74"/>
+        <polygon points="17,15 23,15 20,2" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <rect x="18" y="2" width="4" height="2" fill="#94a3b8"/>
+        <text x="20" y="40" font-size="16" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
+    </svg>`;
     
+    // Three Phase DT
     return `<svg viewBox="0 0 60 70" style="width:34px;height:40px; filter:drop-shadow(0 5px 8px rgba(0,0,0,0.7));">
         <rect x="15" y="20" width="30" height="40" rx="3" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/>
         <rect x="8" y="25" width="7" height="30" fill="${darkOrange}" rx="1"/>
         <rect x="5" y="28" width="7" height="24" fill="#c2410c" rx="1"/>
         <rect x="45" y="25" width="7" height="30" fill="${darkOrange}" rx="1"/>
         <rect x="48" y="28" width="7" height="24" fill="#c2410c" rx="1"/>
-        <polygon points="18,20 22,20 20,5" fill="#78350f"/>
-        <polygon points="28,20 32,20 30,5" fill="#78350f"/>
-        <polygon points="38,20 42,20 40,5" fill="#78350f"/>
+        <polygon points="18,20 22,20 20,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <polygon points="28,20 32,20 30,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+        <polygon points="38,20 42,20 40,5" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
         <text x="30" y="45" font-size="12" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
     </svg>`;
 }
@@ -138,7 +147,8 @@ window.getLineSpec = function(type, phase, conductor) {
     const t = (type || '').toUpperCase(); const cond = (conductor || '').toUpperCase();
     if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 3, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
     let lineClass = 'ht-line-path'; let color = '#2563eb'; let weight = 3; let strokeColor = '#ffffff';
-    // Solid Black Simple Line for UG
+    
+    // UG Line is Solid Black with No Special Transform Offset
     if (cond.includes('UNDERGROUND') || cond.includes('UG')) { color = '#000000'; weight = 5; strokeColor = 'transparent'; lineClass = 'ug-line-path'; } 
     else if (phase === 'Three Phase') { lineClass = 'ryb-line-path'; color = '#2563eb'; }
     return { name: '11 KV LINE', color: color, weight: weight, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: strokeColor };
@@ -161,16 +171,18 @@ window.renderEntireNetwork = function() {
     if(!map) return; window.updateFeederDropdown();
     try {
         window.updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); 
+        
         Object.values(appState.gssNodes).forEach(gss => {
             if (typeof gss.lat === 'number' && !isNaN(gss.lat)) {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
-                // GSS as Red Rectangle with White Text Inside
-                const gssSvg = `<div style="background:transparent; border:none; display:flex; justify-content:center; align-items:center; width:100%; height:100%;"><svg viewBox="0 0 100 50" style="width:50px;height:25px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><rect x="2" y="2" width="96" height="46" rx="4" fill="#ef4444" stroke="#ffffff" stroke-width="3"/><text x="50" y="34" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="sans-serif">GSS</text></svg></div>`;
-                const m = L.marker([gss.lat, gss.lng], { icon: L.divIcon({ className: 'gss-marker', html: gssSvg, iconSize: [50,25], iconAnchor: [25,12] }), zIndexOffset: 500 });
+                // GSS Red Rectangular Box
+                const gssSvg = `<div style="background:transparent; border:none; display:flex; justify-content:center; align-items:center; width:100%; height:100%;"><svg viewBox="0 0 100 50" style="width:60px;height:30px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><rect x="2" y="2" width="96" height="46" rx="6" fill="#dc2626" stroke="#ffffff" stroke-width="4"/><text x="50" y="34" font-size="28" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="sans-serif">GSS</text></svg></div>`;
+                const m = L.marker([gss.lat, gss.lng], { icon: L.divIcon({ className: 'gss-marker', html: gssSvg, iconSize: [60,30], iconAnchor: [30,15] }), zIndexOffset: 500 });
                 m.on('click', () => { window.openObjectSheet('GSS', gss.code, gss.name, `Code: <b>${gss.code}</b>`); }); 
                 featureGroups.gss.addLayer(m);
             }
         });
+
         const net = window.getActiveNetwork(); if(!net) return; const f = appState.filters;
 
         if (f.poles) {
@@ -186,6 +198,7 @@ window.renderEntireNetwork = function() {
                 featureGroups.poles.addLayer(m);
             });
         }
+        
         if (f.dts) {
             let dtGroups = {}; net.dts.forEach(d => { let pk = d.parentPole || `${d.lat},${d.lng}`; if(!dtGroups[pk]) dtGroups[pk] = []; dtGroups[pk].push(d); });
             net.dts.forEach(d => {
@@ -193,15 +206,24 @@ window.renderEntireNetwork = function() {
                 if (d.lat && d.lng && !isNaN(d.lat)) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const svgHtml = window.getDTSVG(d.phase, d.rating);
                     let pk = d.parentPole || `${d.lat},${d.lng}`; let sIdx = dtGroups[pk].findIndex(x => x.id === d.id);
-                    let aX = 17; let aY = -10; 
-                    if(d.phase === 'Single Phase') { aX = -10 - (sIdx * 25); aY = 20; } 
-                    else { if(sIdx > 0) { aX = 17 - (sIdx * 35); } } 
+                    let aX = 17; let aY = 45; 
+                    
+                    // Logic to visually separate multiple DTs on the same pole
+                    if(d.phase === 'Single Phase') { 
+                        aX = -12 - (sIdx * 22); // Shift Right Side
+                        aY = 40; // High on pole
+                    } else { 
+                        aX = 17 + (sIdx * 36); // Shift Left Side
+                        aY = 45; // Center/Low on pole
+                    } 
+                    
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [34, 40], iconAnchor: [aX, aY] }), zIndexOffset: 400 });
                     m.on('click', () => { window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b>`); }); 
                     featureGroups.dts.addLayer(m);
                 }
             });
         }
+        
         net.lines.forEach(line => {
             const c1 = window.getNodeCoords(line.fromNode), c2 = window.getNodeCoords(line.toNode); 
             if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
@@ -221,6 +243,7 @@ window.renderEntireNetwork = function() {
             }
             hitPoly.on('click', () => { window.openObjectSheet('LINE', line.id, spec.name, `Phase: <b>${line.phase || 'N/A'}</b><br>Conductor: <b>${line.conductor || 'Standard'}</b><br>From-To: <b>${line.fromNode} ➔ ${line.toNode}</b><br>Dist: <b>${window.formatDistance(line.distanceMeters||0)}</b>`); });
         });
+        
         if (f.consumers) {
             net.consumers.forEach(c => {
                 if (isNaN(c.lat) || isNaN(c.lng) || (appState.activeMove && appState.activeMove.id === c.id)) return; 
@@ -232,6 +255,7 @@ window.renderEntireNetwork = function() {
                 if (pCoords && !isNaN(pCoords.lat)) L.polyline([[c.lat, c.lng], [pCoords.lat, pCoords.lng]], { color: '#000000', weight: 1.5, dashArray: '3, 5', interactive: false, className: 'consumer-line-path' }).addTo(featureGroups.consumerLines);
             });
         }
+        
         window.updateMapZoomClasses();
         let t11 = 0, tLT = 0, dt3ph = 0, dt1ph = 0; net.lines.forEach(l => { if (window.getLineSpec(l.type).name.includes('LT')) tLT += (l.distanceMeters || 0); else t11 += (l.distanceMeters || 0); }); net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
         if(document.getElementById('kpi11')) document.getElementById('kpi11').innerText = window.formatDistance(t11); if(document.getElementById('kpiLT')) document.getElementById('kpiLT').innerText = window.formatDistance(tLT); document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph; document.getElementById('kpiCons').innerText = net.consumers.length;
