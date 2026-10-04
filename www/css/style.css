@@ -102,9 +102,9 @@ body.dark-mode .pole-marker-icon span { background: #1e293b; color: #f8fafc; bor
 .live-human-icon { font-size: 32px; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #ffffff; border-radius: 50%; border: 3px solid #ef4444; box-shadow: 0px 4px 12px rgba(239, 68, 68, 0.8); z-index: 5000 !important; animation: liveBlink 1s infinite alternate; }
 @keyframes liveBlink { 0% { transform: scale(1); box-shadow: 0 0 10px rgba(239,68,68,0.5); } 100% { transform: scale(1.15); box-shadow: 0 0 25px rgba(239,68,68,1); border-color: #b91c1c; } }
 
-/* CSS TRICK TO SHIFT LINES RELATIVE TO ANCHORS - REMOVED FOR CENTERED POLES */
+/* LINES CSS (Underground uses transform to shift up to the top of the pole, Normal is Center) */
 .ht-line-path, .lt-line-path, .ryb-line-path { transform: none; }
-.ug-line-path { transform: none; }
+.ug-line-path { transform: translateY(-27px); }
 .consumer-line-path { transform: none; }
 
 /* ====== PROPER ZOOM HIDE LOGIC ====== */
