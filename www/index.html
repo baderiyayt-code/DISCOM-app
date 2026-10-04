@@ -106,18 +106,40 @@
             </div>
         </div>
 
-        <!-- Floating Overlays -->
-        <div id="layer-indicator"><i class="fa-solid fa-map-location-dot"></i> Street Map</div>
-        <div id="reticle-coordinates"><i class="fa-solid fa-satellite"></i> 26.915000, 75.783000</div>
-        <div id="center-placement-pin"><i class="fa-solid fa-crosshairs" style="color:#ef4444; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5)); font-size:40px;"></i></div>
-        <div id="live-distance-indicator"></div>
-
-        <!-- Right Side Tools -->
+                <!-- Right Side Tools (Filter Button Added Here) -->
         <div class="right-tools-stack">
             <div class="round-tool-btn" onclick="toggleMapLayer()"><i class="fa-solid fa-layer-group"></i></div>
             <div class="round-tool-btn" id="liveTrackBtn" onclick="toggleLiveTracking()"><i class="fa-solid fa-location-crosshairs"></i></div>
+            
+            <!-- NEW: Filter Button -->
+            <div class="round-tool-btn" onclick="openFilterModal()" title="Filters"><i class="fa-solid fa-filter" style="color:#d97706;"></i></div>
+            
             <div class="round-tool-btn undo-btn" onclick="undoLastAction()"><i class="fa-solid fa-clock-rotate-left"></i></div>
             
+            <!-- Map Rotation Tool -->
+            <div class="round-tool-btn" title="Rotate Map" style="position:relative; overflow:visible;">
+                <i class="fa-solid fa-compass"></i>
+                <input type="range" min="0" max="360" value="0" id="mapRotateSlider" oninput="rotateMapFromSlider(this.value)" style="position:absolute; bottom:55px; right:0; width:120px; background:var(--bg-sheet); accent-color:var(--accent); writing-mode:vertical-lr; direction:rtl; display:none; padding:5px; border-radius:10px; border:1px solid var(--border); box-shadow:var(--shadow-md);" onclick="event.stopPropagation()">
+            </div>
+        </div>
+
+        <!-- Bottom Single Action (Modern FAB) -->
+        <div id="bottom-single-action">
+            <div class="center-plus-fab" id="mainFabBtn" onclick="toggleSpeedDial(event)"><i class="fa-solid fa-plus"></i></div>
+        </div>
+
+        <!-- Speed Dial Menu (Cleaned - 4 Options Only) -->
+        <div id="speed-dial-menu">
+            <div class="dial-grid" style="grid-template-columns: repeat(2, 1fr);">
+                <div class="dial-card" onclick="openAddForm('POLE')"><div class="icon-wrap bg-blue"><i class="fa-solid fa-bolt"></i></div><span>HT Pole</span></div>
+                <div class="dial-card" onclick="openAddForm('LTPOLE')"><div class="icon-wrap bg-green"><i class="fa-solid fa-lightbulb"></i></div><span>LT Pole</span></div>
+                <div class="dial-card" onclick="openAddForm('LINE')"><div class="icon-wrap bg-cyan"><i class="fa-solid fa-route"></i></div><span>Line</span></div>
+                <div class="dial-card" onclick="openAddForm('CONSUMER')"><div class="icon-wrap bg-purple"><i class="fa-solid fa-house-chimney-user"></i></div><span>Consumer</span></div>
+            </div>
+        </div>
+
+    </div> <!-- End of App Container -->
+
             <!-- NEW: Map Rotation Slider Tool -->
             <div class="round-tool-btn" title="Rotate Map" style="position:relative; overflow:visible;">
                 <i class="fa-solid fa-compass"></i>
