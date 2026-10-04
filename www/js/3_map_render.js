@@ -110,12 +110,9 @@ window.centerMapOnGSS = function() {
     if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false}); 
 };
 
-/* ==============================================================
-   REALISTIC ICONS & TOP ANCHOR ALIGNMENT
-============================================================== */
 window.getPoleSVG = function(type, config, isOrphan) {
     const strokeC = isOrphan ? '#ef4444' : '#475569';
-    const fillC = isOrphan ? '#fca5a5' : '#fb923c';
+    const fillC = isOrphan ? '#fca5a5' : '#fb923c'; 
     
     if(type === 'TOWER') return `<svg viewBox="0 0 80 100" style="width:40px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><path d="M 40 10 L 20 95 M 40 10 L 60 95" stroke="${strokeC}" stroke-width="3"/><path d="M 33 35 L 47 35 M 29 55 L 51 55 M 24 75 L 56 75" stroke="${strokeC}" stroke-width="2"/><path d="M 33 35 L 51 55 M 47 35 L 29 55 M 29 55 L 56 75 M 51 55 L 24 75" stroke="${strokeC}" stroke-width="1.5"/><line x1="10" y1="35" x2="70" y2="35" stroke="${strokeC}" stroke-width="4"/><line x1="15" y1="55" x2="65" y2="55" stroke="${strokeC}" stroke-width="4"/><rect x="37" y="0" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/></svg>`;
     
@@ -212,7 +209,6 @@ window.renderEntireNetwork = function() {
                 const svgHtml = window.getPoleSVG(p.poleType, p.poleConfig, isOrphan);
                 const poleClass = isLT ? 'lt-pole' : 'ht-pole';
                 
-                // --- CRITICAL UPDATE: ANCHOR ALIGNED TO TOP CROSS-ARM ([15, 12]) FOR REALISTIC LINE CONNECTION ---
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: `pole-marker-icon ${poleClass} ${isOrphan ? 'orphan-pulse' : ''}`, html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [30, 50], iconAnchor: [15, 12] }), zIndexOffset: 200 });
                 
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'} ${p.poleConfig&&p.poleConfig!=='N/A'?'('+p.poleConfig+')':''}</b><br>Condition: <b>${p.condition||'Good'}</b><br>Parent: <b>${p.dtCode || 'Feeder'}</b>`); }); 
@@ -227,14 +223,16 @@ window.renderEntireNetwork = function() {
                 if (d.lat && d.lng && !isNaN(d.lat)) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const svgHtml = window.getDTSVG(d.phase, d.rating);
                     let pk = d.parentPole || `${d.lat},${d.lng}`; let sIdx = dtGroups[pk].findIndex(x => x.id === d.id);
-                    let aX = 17; let aY = 45; 
+                    
+                    // --- FIXED ANCHOR: DT ab pole ke BOTTOM par judegi (iconAnchor: [X, 0]) ---
+                    let aX = 17; let aY = 0; 
                     
                     if(d.phase === 'Single Phase') { 
                         aX = -12 - (sIdx * 22); 
-                        aY = 40; 
+                        aY = 0; 
                     } else { 
                         aX = 17 + (sIdx * 36); 
-                        aY = 45; 
+                        aY = 0; 
                     } 
                     
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [34, 40], iconAnchor: [aX, aY] }), zIndexOffset: 400 });
