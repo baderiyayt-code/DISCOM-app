@@ -20,16 +20,20 @@
 </head>
 <body>
 
-    <!-- Splash Screen -->
+    <!-- Professional Splash / Loading Screen -->
     <div id="erection-loader">
-        <div class="loader-scene">
-            <div class="loader-pole lp1"></div>
-            <div class="loader-pole lp2"></div>
-            <div class="loader-pole lp3"></div>
-            <div class="loader-pole lp4"></div>
-            <div class="loader-wire"></div>
+        <div class="pro-splash-content">
+            <div class="pro-splash-logo"><i class="fa-solid fa-bolt"></i></div>
+            <h1 class="pro-splash-title">DISCOM Survey Pro</h1>
+            <p class="pro-splash-subtitle">Electrical Asset Management GIS</p>
+            
+            <div class="pro-loader-spinner" id="appLoaderSpinner" style="display:none;"></div>
+            
+            <div class="pro-splash-footer">
+                <span>Developed by</span>
+                <strong>Suraj Singh Mehta</strong>
+            </div>
         </div>
-        <div class="loader-text">SURVEY PRO</div>
     </div>
 
     <!-- Authentication Screen -->
@@ -120,7 +124,7 @@
             <div class="center-plus-fab" id="mainFabBtn" onclick="toggleSpeedDial(event)"><i class="fa-solid fa-plus"></i></div>
         </div>
 
-        <!-- UPGRADED Speed Dial Menu with Custom Match-Map SVGs -->
+        <!-- Speed Dial Menu -->
         <div id="speed-dial-menu">
             <div class="dial-grid">
                 
@@ -146,16 +150,13 @@
                     <span>LT Pole</span>
                 </div>
 
-                                <!-- Line (Custom 3-Phase Match-Map SVG) -->
+                <!-- Line -->
                 <div class="dial-card" onclick="openAddForm('LINE')">
                     <svg viewBox="0 0 60 60" style="width:32px;height:32px; margin-bottom:8px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
-                        <!-- Left Pole -->
                         <rect x="8" y="32" width="5" height="22" fill="#475569" rx="1"/>
                         <line x1="4" y1="36" x2="17" y2="44" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
-                        <!-- Right Pole -->
                         <rect x="47" y="6" width="5" height="22" fill="#475569" rx="1"/>
                         <line x1="43" y1="10" x2="56" y2="18" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
-                        <!-- 3-Phase Wires (Red, Yellow, Blue with slight curve) -->
                         <path d="M 10 36 Q 30 18 49 10" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/>
                         <path d="M 10 40 Q 30 22 49 14" fill="none" stroke="#facc15" stroke-width="2.5" stroke-linecap="round"/>
                         <path d="M 10 44 Q 30 26 49 18" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round"/>
@@ -178,7 +179,7 @@
                     <span>DT</span>
                 </div>
 
-                <!-- Consumer (Home) -->
+                <!-- Consumer -->
                 <div class="dial-card" onclick="openAddForm('CONSUMER')">
                     <i class="fa-solid fa-house" style="color:#8b5cf6; font-size:30px; margin-bottom:8px;"></i>
                     <span>Consumer</span>
