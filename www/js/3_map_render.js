@@ -113,7 +113,6 @@ window.centerMapOnGSS = function() {
     if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false}); 
 };
 
-// --- HELPER TO CALCULATE TOTAL CONSUMERS & LOAD FOR A DT ---
 window.getDTStatistics = function(dtCode) {
     const net = window.getActiveNetwork();
     if(!net || !net.consumers) return { count: 0, totalLoadKW: 0 };
@@ -122,12 +121,10 @@ window.getDTStatistics = function(dtCode) {
     let totalLoadKW = 0;
 
     net.consumers.forEach(c => {
-        // Check if consumer belongs directly to this DT or to an LT pole under this DT
         let isConnected = false;
         if(String(c.parentRef) === String(dtCode) || String(c.parentRef) === String('DT_' + dtCode)) {
             isConnected = true;
         } else {
-            // Check if parent is an LT pole belonging to this DT
             const pole = net.poles.find(p => String(p.poleNo) === String(c.parentRef) || String(p.id) === String('POLE_' + c.parentRef));
             if(pole && String(pole.dtCode) === String(dtCode)) {
                 isConnected = true;
@@ -136,7 +133,6 @@ window.getDTStatistics = function(dtCode) {
 
         if(isConnected) {
             count++;
-            // Extract numeric value from load string e.g. "2.5 kW" or "1 kW"
             const loadStr = String(c.load || '0');
             const numMatch = loadStr.match(/[\d.]+/);
             if(numMatch) {
@@ -250,9 +246,40 @@ window.getDTSVG = function(phase, rating) {
     </svg>`;
 }
 
+// ==========================================
+// CUSTOM CONSUMER SVG ICONS BY TYPE
+// ==========================================
 window.getConsumerSVG = function(cType, status) {
-    let bgColor = '#10b981'; if(status === 'DC') bgColor = '#facc15'; else if(status === 'PDC') bgColor = '#ef4444'; 
-    return `<div style="position:relative; width:34px; height:34px; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.6));"><svg viewBox="0 0 100 100" width="100%" height="100%"><path d="M 10 50 L 50 15 L 90 50 L 80 50 L 80 90 L 20 90 L 20 50 Z" fill="${bgColor}" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/><rect x="40" y="60" width="20" height="30" fill="#ffffff"/><rect x="25" y="55" width="10" height="15" fill="#e0f2fe"/><rect x="65" y="55" width="10" height="15" fill="#e0f2fe"/></svg></div>`;
+    let bgColor = '#10b981'; // Regular (Green)
+    if(status === 'DC') bgColor = '#facc15'; // Disconnected (Yellow)
+    else if(status === 'PDC') bgColor = '#ef4444'; // Permanent Disconnected (Red)
+
+    const t = (cType || 'Domestic').toLowerCase();
+    let innerSvg = '';
+
+    if (t.includes('nondomestic') || t.includes('commercial')) {
+        // 🏬 NonDomestic / Commercial Building
+        innerSvg = `<rect x="30" y="35" width="40" height="50" fill="#ffffff" rx="2"/><rect x="38" y="45" width="8" height="12" fill="#0f172a"/><rect x="54" y="45" width="8" height="12" fill="#0f172a"/><rect x="38" y="65" width="24" height="18" fill="#2563eb"/>`;
+    } else if (t.includes('agri')) {
+        // 🌾 Agriculture (Wheat / Plant icon)
+        innerSvg = `<path d="M 50 80 L 50 35 M 40 45 Q 50 35 60 45 M 40 55 Q 50 45 60 55 M 40 65 Q 50 55 60 65" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>`;
+    } else if (t.includes('sip') || t.includes('mip') || t.includes('indus')) {
+        // 🏭 SIP / MIP / Industrial Factory
+        innerSvg = `<rect x="25" y="50" width="50" height="35" fill="#ffffff"/><polygon points="35,50 35,35 45,35 45,50" fill="#ffffff"/><rect x="60" y="40" width="8" height="15" fill="#ffffff"/><path d="M 35 30 L 40 22 L 45 30" fill="none" stroke="#ffffff" stroke-width="4"/>`;
+    } else if (t.includes('govt')) {
+        // 🏦 Government Building (Bank / Pillars)
+        innerSvg = `<rect x="25" y="75" width="50" height="10" fill="#ffffff"/><polygon points="50,25 20,40 80,40" fill="#ffffff"/><rect x="30" y="45" width="6" height="30" fill="#ffffff"/><rect x="42" y="45" width="6" height="30" fill="#ffffff"/><rect x="54" y="45" width="6" height="30" fill="#ffffff"/><rect x="66" y="45" width="6" height="30" fill="#ffffff"/>`;
+    } else {
+        // 🏠 Domestic (Default Home)
+        innerSvg = `<path d="M 20 50 L 50 20 L 80 50 L 70 50 L 70 85 L 30 85 L 30 50 Z" fill="#ffffff"/><rect x="42" y="60" width="16" height="25" fill="${bgColor}"/><rect x="35" y="40" width="10" height="12" fill="#e0f2fe"/><rect x="55" y="40" width="10" height="12" fill="#e0f2fe"/>`;
+    }
+
+    return `<div style="position:relative; width:36px; height:36px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5));">
+        <svg viewBox="0 0 100 100" width="100%" height="100%">
+            <circle cx="50" cy="50" r="46" fill="${bgColor}" stroke="#ffffff" stroke-width="6"/>
+            ${innerSvg}
+        </svg>
+    </div>`;
 }
 
 window.getLineSpec = function(type, phase, conductor) {
