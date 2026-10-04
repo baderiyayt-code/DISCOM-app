@@ -261,3 +261,16 @@ window.renderEntireNetwork = function() {
         if(document.getElementById('kpi11')) document.getElementById('kpi11').innerText = window.formatDistance(t11); if(document.getElementById('kpiLT')) document.getElementById('kpiLT').innerText = window.formatDistance(tLT); document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph; document.getElementById('kpiCons').innerText = net.consumers.length;
     } catch(err) { console.error("Rendering error:", err); }
 }
+/* ====== MISSING SAVE SNAPSHOT & UNDO FUNCTIONS ====== */
+window.saveSnapshot = function() { 
+    const net = window.getActiveNetwork(); if(!net) return; 
+    historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); 
+    if (historyStack.length > 15) historyStack.shift(); 
+}
+
+window.undoLastAction = function() { 
+    if (historyStack.length === 0) return window.showToast("No actions to Undo!"); 
+    const prevState = historyStack.pop(), net = window.getActiveNetwork(); if(!net) return; 
+    net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; 
+    window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Undo Successful ↺"); 
+}
