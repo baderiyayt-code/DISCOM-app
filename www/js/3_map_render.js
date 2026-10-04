@@ -113,9 +113,8 @@ window.centerMapOnGSS = function() {
     if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false}); 
 };
 
-// --- NEW FIX: HANDLE CLICK ON DT INSIDE COMBINED SVG ---
 window.openDTFromSVG = function(e, id) {
-    if(e) e.stopPropagation(); // Stops click from opening the pole sheet
+    if(e) e.stopPropagation(); 
     const net = window.getActiveNetwork();
     if(!net) return;
     const d = net.dts.find(x => x.id === id);
@@ -125,7 +124,7 @@ window.openDTFromSVG = function(e, id) {
 };
 
 /* ==============================================================
-   EMBEDDED POLE + DT RENDERER (CLICK SEPARATION INCLUDED)
+   PERFECT ANCHOR & INSIDE-SVG NUMBER PILL RENDERER
 ============================================================== */
 window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     const strokeC = isOrphan ? '#ef4444' : '#475569';
@@ -134,25 +133,32 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     const isLT = p.lineType === 'LT';
     if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
+    // Number Pill embedded INSIDE SVG so it scales perfectly and doesn't push the anchor down
+    let numberPill = `
+        <g transform="translate(0, -18)">
+            <rect x="30" y="0" width="40" height="20" rx="6" fill="#ffffff" stroke="#0f172a" stroke-width="2.5"/>
+            <text x="50" y="14" font-size="13" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${displayNo}</text>
+        </g>
+    `;
+
+    // Uniform Geometry: All Poles have their main central axis perfectly at local X=30
     let poleSvg = '';
     let cx = 50; 
 
     if(p.poleType === 'TOWER') {
-        poleSvg = `<path d="M 40 10 L 20 95 M 40 10 L 60 95" stroke="${strokeC}" stroke-width="3"/><path d="M 33 35 L 47 35 M 29 55 L 51 55 M 24 75 L 56 75" stroke="${strokeC}" stroke-width="2"/><line x1="10" y1="35" x2="70" y2="35" stroke="${strokeC}" stroke-width="4"/><line x1="15" y1="55" x2="65" y2="55" stroke="${strokeC}" stroke-width="4"/><rect x="37" y="0" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
-        cx = 60; 
+        poleSvg = `<path d="M 30 10 L 10 95 M 30 10 L 50 95" stroke="${strokeC}" stroke-width="3"/><path d="M 23 35 L 37 35 M 19 55 L 41 55 M 14 75 L 46 75" stroke="${strokeC}" stroke-width="2"/><line x1="0" y1="35" x2="60" y2="35" stroke="${strokeC}" stroke-width="4"/><line x1="5" y1="55" x2="55" y2="55" stroke="${strokeC}" stroke-width="4"/><rect x="27" y="20" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
     } else if(p.poleType === 'RAIL POLE') {
-        poleSvg = `<rect x="12" y="10" width="16" height="85" fill="${fillC}" stroke="${strokeC}" stroke-width="2"/><line x1="2" y1="20" x2="38" y2="20" stroke="${strokeC}" stroke-width="5"/><rect x="8" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="26" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
-        cx = 40; 
+        poleSvg = `<rect x="22" y="10" width="16" height="85" fill="${fillC}" stroke="${strokeC}" stroke-width="2"/><line x1="12" y1="20" x2="48" y2="20" stroke="${strokeC}" stroke-width="5"/><rect x="18" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="36" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
     } else if(p.poleType === 'PCC' && p.poleConfig === 'Double Pole') {
-        poleSvg = `<polygon points="16,15 24,15 26,95 14,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><polygon points="56,15 64,15 66,95 54,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="10" y="25" width="60" height="5" fill="${strokeC}"/><rect x="10" y="45" width="60" height="5" fill="${strokeC}"/><rect x="17" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="37" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="57" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
-        cx = 60; 
+        poleSvg = `<polygon points="12,15 20,15 22,95 10,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><polygon points="40,15 48,15 50,95 38,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="6" y="25" width="48" height="5" fill="${strokeC}"/><rect x="6" y="45" width="48" height="5" fill="${strokeC}"/><rect x="13" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="41" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
     } else {
         if(isLT) {
-            poleSvg = `<polygon points="26,20 34,20 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="18" y="15" width="24" height="6" fill="${strokeC}" rx="1"/><rect x="27" y="8" width="6" height="8" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+            // LT Bracket adjusted to Y=25, Insulator to Y=18
+            poleSvg = `<polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="18" y="25" width="24" height="6" fill="${strokeC}" rx="1"/><rect x="27" y="18" width="6" height="8" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
         } else {
-            poleSvg = `<path d="M 10 25 L 30 40 L 50 25" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="7" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="47" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="30" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
+            // V-Cross adjusted so Center Insulator is exactly at Y=25
+            poleSvg = `<path d="M 10 20 L 30 35 L 50 20" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="7" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="47" y="10" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="25" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
         }
-        cx = 50; 
     }
 
     let dtSvgs = '';
@@ -160,11 +166,8 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
         associatedDTs.forEach((d, idx) => {
             const numRating = String(d.rating).replace(/[^0-9]/g, '');
             let startX = cx;
-            if (associatedDTs.length > 1) {
-                startX = idx === 0 ? cx - 18 : cx + 18; 
-            }
+            if (associatedDTs.length > 1) { startX = idx === 0 ? cx - 18 : cx + 18; }
             
-            // Added onclick wrapper mapped directly to the DT's separate ID
             if(d.phase === 'Single Phase') {
                 dtSvgs += `<g transform="translate(${startX - 13}, 65)" onclick="window.openDTFromSVG(event, '${d.id}')" style="cursor:pointer;">
                     <rect x="0" y="0" width="26" height="30" rx="2" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
@@ -185,10 +188,12 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
         });
     }
 
-    return `<svg viewBox="0 0 100 110" style="width:50px;height:75px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6)); overflow:visible;">
+    // Only SVG returned, meaning divIcon size matches perfectly, and Anchor calculation holds true
+    return `<svg viewBox="0 -20 100 130" style="width:50px;height:75px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6)); overflow:visible;">
+        ${numberPill}
         <g transform="translate(20, 0)">${poleSvg}</g>
         ${dtSvgs}
-    </svg><span>${displayNo}</span>`;
+    </svg>`;
 }
 
 window.getDTSVG = function(phase, rating) {
@@ -278,7 +283,10 @@ window.renderEntireNetwork = function() {
                 const associatedDTs = poleDTMap[String(p.poleNo)] || [];
                 const svgHtml = window.getPoleWithDTHTML(p, associatedDTs, isOrphan);
                 
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pole-marker-icon', html: svgHtml, iconSize: [50, 75], iconAnchor: [25, 12] }), zIndexOffset: 200 });
+                // --- EXACT MATHEMATICAL ANCHOR TO HIT THE INSULATORS ---
+                // viewBox = "0 -20 100 130". width=50, height=75
+                // Insulators are exactly at local Y=25 (which is CSS Y=16px from top of SVG)
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pole-marker-icon', html: svgHtml, iconSize: [50, 75], iconAnchor: [25, 16] }), zIndexOffset: 200 });
                 
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'}</b><br>Condition: <b>${p.condition||'Good'}</b>`); }); 
                 featureGroups.poles.addLayer(m);
@@ -304,7 +312,9 @@ window.renderEntireNetwork = function() {
             const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 35, className: spec.lineClass }).addTo(featureGroups.lines);
             
             if(spec.lineClass === 'ryb-line-path') { 
-                const coordsR = window.getOffsetCoords(line.coords, 2); const coordsB = window.getOffsetCoords(line.coords, -2); 
+                // --- REDUCED OFFSET SO R/B LINES HIT EXACTLY ON SIDE INSULATORS ---
+                const coordsR = window.getOffsetCoords(line.coords, 1.2); 
+                const coordsB = window.getOffsetCoords(line.coords, -1.2); 
                 L.polyline(coordsR, { color: '#ef4444', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
                 L.polyline(line.coords, { color: '#facc15', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
                 L.polyline(coordsB, { color: '#3b82f6', weight: 2, className: spec.lineClass, interactive: false }).addTo(featureGroups.lines); 
