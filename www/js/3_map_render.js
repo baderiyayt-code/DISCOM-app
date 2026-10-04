@@ -1,4 +1,40 @@
 /* --- js/3_map_render.js --- */
+/* --- MISSING FEEDER DROPDOWN FUNCTIONS --- */
+window.updateFeederDropdown = function() { 
+    const header = document.getElementById('activeFeederLabel'); 
+    if(!header) return; 
+    const keys = Object.keys(appState.feeders || {}); 
+    if(keys.length === 0) { 
+        header.innerText = 'No Feeder'; 
+        appState.currentFeederCode = null; 
+    } else { 
+        if(!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode]) { 
+            appState.currentFeederCode = keys[0]; 
+        } 
+        const currentFeeder = appState.feeders[appState.currentFeederCode]; 
+        header.innerText = (currentFeeder && currentFeeder.feeder && currentFeeder.feeder.name) ? currentFeeder.feeder.name : 'Unnamed Feeder'; 
+    } 
+};
+
+window.switchFeeder = function(code) { 
+    if (appState.feeders[code]) { 
+        appState.currentFeederCode = code; 
+        window.updateFeederDropdown(); 
+        if(window.renderEntireNetwork) window.renderEntireNetwork(); 
+        if(window.triggerPersistence) window.triggerPersistence(); 
+        if(window.centerMapOnGSS) window.centerMapOnGSS(); 
+        if(window.toggleSidebar) window.toggleSidebar(false); 
+    } 
+};
+
+window.centerMapOnGSS = function() { 
+    if(!map) return; 
+    map.invalidateSize(); 
+    const net = window.getActiveNetwork(); 
+    if(!net) return; 
+    const gss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; 
+    if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false}); 
+};
 
 window.initMapLayers = function() {
     if (typeof L === 'undefined') return; 
