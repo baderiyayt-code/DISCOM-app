@@ -111,11 +111,11 @@ window.centerMapOnGSS = function() {
 };
 
 /* ==============================================================
-   UNIFIED POLE + DT EMBEDDED RENDERER (NO DRIFT ON ZOOM OUT)
+   EMBEDDED POLE + DT RENDERER (DT PERFECTLY CENTERED AT BOTTOM)
 ============================================================== */
 window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     const strokeC = isOrphan ? '#ef4444' : '#475569';
-    const fillC = isOrphan ? '#fca5a5' : '#fb923c';
+    const fillC = isOrphan ? '#fca5a5' : '#fb923c'; 
     let displayNo = p.poleNo; 
     if (p.lineType === 'LT' && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
 
@@ -127,7 +127,6 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     } else if(p.poleType === 'PCC' && p.poleConfig === 'Double Pole') {
         poleSvg = `<polygon points="16,15 24,15 26,95 14,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><polygon points="56,15 64,15 66,95 54,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="10" y="25" width="60" height="5" fill="${strokeC}"/><rect x="10" y="45" width="60" height="5" fill="${strokeC}"/><rect x="17" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="37" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="57" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
     } else {
-        // Single Pole with V-Cross Arm
         poleSvg = `<path d="M 10 25 L 30 40 L 50 25" fill="none" stroke="${strokeC}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><polygon points="26,30 34,30 36,95 24,95" fill="${fillC}" stroke="${strokeC}" stroke-width="1.5"/><rect x="7" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="47" y="15" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/><rect x="27" y="30" width="6" height="10" fill="#78350f" rx="2" stroke="#0f172a" stroke-width="1"/>`;
     }
 
@@ -135,34 +134,33 @@ window.getPoleWithDTHTML = function(p, associatedDTs, isOrphan) {
     if(associatedDTs && associatedDTs.length > 0) {
         associatedDTs.forEach((d, idx) => {
             const numRating = String(d.rating).replace(/[^0-9]/g, '');
-            const xOffset = idx === 0 ? -28 : (idx * 32); // Side-by-side positioning at bottom
+            // Perfect bottom alignment centered directly under the pole base
+            const xOffset = associatedDTs.length === 1 ? 13 : (idx === 0 ? -4 : 32); 
             
             if(d.phase === 'Single Phase') {
-                // Rectangular Single Phase DT [] with Bushing
-                dtSvgs += `<g transform="translate(${15 + xOffset}, 50)">
-                    <rect x="0" y="0" width="28" height="32" rx="2" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
-                    <rect x="3" y="3" width="22" height="26" fill="#fdba74"/>
-                    <polygon points="11,0 17,0 14,-8" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
-                    <rect x="12" y="-10" width="4" height="2" fill="#94a3b8"/>
-                    <text x="14" y="21" font-size="14" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
+                dtSvgs += `<g transform="translate(${xOffset}, 55)">
+                    <rect x="0" y="0" width="26" height="30" rx="2" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
+                    <rect x="3" y="3" width="20" height="24" fill="#fdba74"/>
+                    <polygon points="10,0 16,0 13,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+                    <rect x="11" y="-9" width="4" height="2" fill="#94a3b8"/>
+                    <text x="13" y="19" font-size="13" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
                 </g>`;
             } else {
-                // Three Phase DT
-                dtSvgs += `<g transform="translate(${10 + xOffset}, 45)">
-                    <rect x="0" y="0" width="35" height="38" rx="3" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
-                    <polygon points="8,0 12,0 10,-8" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
-                    <polygon points="17,0 21,0 19,-8" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
-                    <polygon points="26,0 30,0 28,-8" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
-                    <text x="17.5" y="25" font-size="12" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
+                dtSvgs += `<g transform="translate(${xOffset}, 50)">
+                    <rect x="0" y="0" width="32" height="35" rx="3" fill="${fillC}" stroke="#0f172a" stroke-width="2"/>
+                    <polygon points="7,0 11,0 9,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+                    <polygon points="15,0 19,0 17,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+                    <polygon points="23,0 27,0 25,-7" fill="#78350f" stroke="#0f172a" stroke-width="1"/>
+                    <text x="16" y="23" font-size="12" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
                 </g>`;
             }
         });
     }
 
-    return `<svg viewBox="0 0 100 100" style="width:50px;height:70px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6)); overflow:visible;">
+    return `<svg viewBox="0 0 100 110" style="width:50px;height:75px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6)); overflow:visible;">
         <g transform="translate(20, 0)">${poleSvg}</g>
         ${dtSvgs}
-        <text x="50" y="-5" font-size="12" font-weight="900" fill="var(--text-main)" text-anchor="middle" style="background:#fff; padding:2px;">${displayNo}</text>
+        <text x="50" y="-4" font-size="12" font-weight="900" fill="var(--text-main)" text-anchor="middle">${displayNo}</text>
     </svg>`;
 }
 
@@ -211,7 +209,6 @@ window.renderEntireNetwork = function() {
 
         const net = window.getActiveNetwork(); if(!net) return; const f = appState.filters;
 
-        // Map DTs by their parent pole number for embedded rendering
         let poleDTMap = {};
         net.dts.forEach(d => {
             if(d.parentPole) {
@@ -229,15 +226,13 @@ window.renderEntireNetwork = function() {
                 const associatedDTs = poleDTMap[String(p.poleNo)] || [];
                 const svgHtml = window.getPoleWithDTHTML(p, associatedDTs, isOrphan);
                 
-                // Anchor [25, 12] matches top cross-arm for line termination while embedding DT at bottom
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pole-marker-icon', html: svgHtml, iconSize: [50, 70], iconAnchor: [25, 12] }), zIndexOffset: 200 });
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'pole-marker-icon', html: svgHtml, iconSize: [50, 75], iconAnchor: [25, 12] }), zIndexOffset: 200 });
                 
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'}</b><br>Condition: <b>${p.condition||'Good'}</b>`); }); 
                 featureGroups.poles.addLayer(m);
             });
         }
         
-        // Standalone DTs (those without parent pole) still rendered via dts group
         if (f.dts) {
             net.dts.forEach(d => {
                 if(!d.parentPole && d.lat && d.lng && !isNaN(d.lat)) {
