@@ -58,6 +58,36 @@ window.updateMapZoomClasses = function() {
 }
 window.toggleMapLayer = function() { if(!map) return; map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name; }
 
+/* ====== MISSING FEEDER FUNCTIONS ADDED BACK ====== */
+window.updateFeederDropdown = function() { 
+    const header = document.getElementById('activeFeederLabel'); if(!header) return; 
+    const keys = Object.keys(appState.feeders || {}); 
+    if(keys.length === 0) { header.innerText = 'No Feeder'; appState.currentFeederCode = null; } 
+    else { 
+        if(!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode]) { appState.currentFeederCode = keys[0]; } 
+        const currentFeeder = appState.feeders[appState.currentFeederCode]; 
+        header.innerText = (currentFeeder && currentFeeder.feeder && currentFeeder.feeder.name) ? currentFeeder.feeder.name : 'Unnamed Feeder'; 
+    } 
+};
+
+window.switchFeeder = function(code) { 
+    if (appState.feeders[code]) { 
+        appState.currentFeederCode = code; 
+        window.updateFeederDropdown(); 
+        if(window.renderEntireNetwork) window.renderEntireNetwork(); 
+        if(window.triggerPersistence) window.triggerPersistence(); 
+        window.centerMapOnGSS(); 
+        if(window.toggleSidebar) window.toggleSidebar(false); 
+    } 
+};
+
+window.centerMapOnGSS = function() { 
+    if(!map) return; map.invalidateSize(); 
+    const net = window.getActiveNetwork(); if(!net) return; 
+    const gss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; 
+    if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false}); 
+};
+
 /* ==============================================================
    NEW REALISTIC ICONS GENERATOR (LIGHT ORANGE BASE, V-CROSS ARM)
 ============================================================== */
@@ -81,7 +111,7 @@ window.getPoleSVG = function(type, config, isOrphan) {
 
 window.getDTSVG = function(phase, rating) {
     const numRating = String(rating).replace(/[^0-9]/g, ''); 
-    const lightOrange = '#fb923c'; // Light Orange Base matches Pole
+    const lightOrange = '#fb923c'; 
     const darkOrange = '#ea580c';  
     
     if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:25px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.7));"><circle cx="25" cy="30" r="18" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><polygon points="23,12 27,12 25,2" fill="#78350f"/><text x="25" y="35" font-size="14" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
@@ -151,7 +181,6 @@ window.renderEntireNetwork = function() {
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
                 const svgHtml = window.getPoleSVG(p.poleType, p.poleConfig, isOrphan);
                 const poleClass = isLT ? 'lt-pole' : 'ht-pole';
-                // CENTER ANCHOR FOR POLES
                 const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: `pole-marker-icon ${poleClass} ${isOrphan ? 'orphan-pulse' : ''}`, html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [30, 50], iconAnchor: [15, 50] }), zIndexOffset: 200 });
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'} ${p.poleConfig&&p.poleConfig!=='N/A'?'('+p.poleConfig+')':''}</b><br>Condition: <b>${p.condition||'Good'}</b><br>Parent: <b>${p.dtCode || 'Feeder'}</b>`); }); 
                 featureGroups.poles.addLayer(m);
