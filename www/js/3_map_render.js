@@ -29,7 +29,11 @@ window.getNodeCoords = function(nodeId) {
 window.initMapLayers = function() {
     if (typeof L === 'undefined') return; 
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
+    
+    // NEW: 'zoom' event joda gaya hai taki pinch-zoom karte waqt live size chota-bada ho
+    map.on('zoom', window.updateMapZoomClasses); 
     map.on('zoomend', window.updateMapZoomClasses); 
+    
     map.on('move', () => { 
         const c = map.getCenter(); document.getElementById('reticle-coordinates').innerText = `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
         if (appState.placementType && document.getElementById('center-placement-pin').style.display === 'block') {
@@ -53,9 +57,35 @@ window.initMapLayers = function() {
 }
 
 window.updateMapZoomClasses = function() {
-    if(!map) return; const z = map.getZoom(); const mapEl = document.getElementById('map'); mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-ht-lines', 'hide-dt', 'hide-gss');
-    if (z <= 18) mapEl.classList.add('hide-consumers'); if (z <= 17) mapEl.classList.add('hide-lt-poles'); if (z <= 16) mapEl.classList.add('hide-lt-lines'); if (z <= 15) mapEl.classList.add('hide-ht-poles'); if (z <= 14) mapEl.classList.add('hide-ht-lines'); if (z <= 13) mapEl.classList.add('hide-dt'); if (z <= 12) mapEl.classList.add('hide-gss'); 
+    if(!map) return; 
+    const z = map.getZoom(); 
+    const mapEl = document.getElementById('map'); 
+    mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-ht-lines', 'hide-dt', 'hide-gss');
+    
+    // Zoom Visibility Logic
+    if (z <= 18) mapEl.classList.add('hide-consumers'); 
+    if (z <= 17) mapEl.classList.add('hide-lt-poles'); 
+    if (z <= 16) mapEl.classList.add('hide-lt-lines'); 
+    if (z <= 15) mapEl.classList.add('hide-ht-poles'); 
+    if (z <= 14) mapEl.classList.add('hide-ht-lines'); 
+    if (z <= 13) mapEl.classList.add('hide-dt'); 
+    if (z <= 12) mapEl.classList.add('hide-gss'); 
+    
+    // --- NEW: DYNAMIC ICON SCALING MATH ---
+    // Zoom Level 19 par icon apne 100% (1.0) size me hain
+    let scale = 1;
+    if (z < 19) {
+        // Jaise-jaise zoom out karenge, icons chote hote jayenge (Min Scale 35% tak jayega)
+        scale = Math.max(0.35, 1 - ((19 - z) * 0.15));
+    } else if (z > 19) {
+        // Zoom in karne par halke se bade honge (Max Scale 1.5x)
+        scale = Math.min(1.5, 1 + ((z - 19) * 0.2));
+    }
+    
+    // CSS Variable me scale value bhejna
+    document.documentElement.style.setProperty('--icon-scale', scale);
 }
+
 window.toggleMapLayer = function() { if(!map) return; map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name; }
 
 window.updateFeederDropdown = function() { 
@@ -88,7 +118,7 @@ window.centerMapOnGSS = function() {
 };
 
 /* ==============================================================
-   NEW PRO-LEVEL REALISTIC ICONS (POLES, V-CROSS, TOWER, RAIL)
+   PRO-LEVEL REALISTIC ICONS (POLES, V-CROSS, TOWER, RAIL)
 ============================================================== */
 window.getPoleSVG = function(type, config, isOrphan) {
     const strokeC = isOrphan ? '#ef4444' : '#475569';
@@ -208,13 +238,12 @@ window.renderEntireNetwork = function() {
                     let pk = d.parentPole || `${d.lat},${d.lng}`; let sIdx = dtGroups[pk].findIndex(x => x.id === d.id);
                     let aX = 17; let aY = 45; 
                     
-                    // Logic to visually separate multiple DTs on the same pole
                     if(d.phase === 'Single Phase') { 
-                        aX = -12 - (sIdx * 22); // Shift Right Side
-                        aY = 40; // High on pole
+                        aX = -12 - (sIdx * 22); 
+                        aY = 40; 
                     } else { 
-                        aX = 17 + (sIdx * 36); // Shift Left Side
-                        aY = 45; // Center/Low on pole
+                        aX = 17 + (sIdx * 36); 
+                        aY = 45; 
                     } 
                     
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [34, 40], iconAnchor: [aX, aY] }), zIndexOffset: 400 });
@@ -261,7 +290,7 @@ window.renderEntireNetwork = function() {
         if(document.getElementById('kpi11')) document.getElementById('kpi11').innerText = window.formatDistance(t11); if(document.getElementById('kpiLT')) document.getElementById('kpiLT').innerText = window.formatDistance(tLT); document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph; document.getElementById('kpiCons').innerText = net.consumers.length;
     } catch(err) { console.error("Rendering error:", err); }
 }
-/* ====== MISSING SAVE SNAPSHOT & UNDO FUNCTIONS ====== */
+
 window.saveSnapshot = function() { 
     const net = window.getActiveNetwork(); if(!net) return; 
     historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); 
