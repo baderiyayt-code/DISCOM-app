@@ -1,25 +1,25 @@
-/* --- js/3_map_render.js (Ultra Stable Mode) --- */
-/* --- Update this function in js/3_map_render.js --- */
+/* --- js/3_map_render.js (With Map Rotation Fix) --- */
 
 window.initMapLayers = function() {
     if (typeof L === 'undefined') return; 
     
-    // FIX 1: Disabled buggy animations for mobile stability
+    // MAP INITIALIZED WITH PROPER ROTATION OPTIONS
     map = L.map('map', { 
         zoomControl: false, 
         attributionControl: false, 
-        preferCanvas: true, 
-        zoomAnimation: false,        // Changed to false
-        markerZoomAnimation: false,  // Changed to false
-        fadeAnimation: false         // Changed to false
+        preferCanvas: false, 
+        rotate: true,                // Enables rotation capability
+        touchRotate: true,           // Enables two-finger pinch-to-rotate on mobile
+        shiftKeyRotate: true,        // Enables Shift + Drag to rotate on desktop
+        bearing: 0, 
+        zoomAnimation: false, 
+        markerZoomAnimation: false, 
+        fadeAnimation: false 
     }).setView([26.9150, 75.7830], 16);
 
     map.on('zoomend', window.updateMapZoomClasses); 
     map.on('move', () => { 
-        const c = map.getCenter(); 
-        const rc = document.getElementById('reticle-coordinates');
-        if(rc) rc.innerHTML = `<i class="fa-solid fa-satellite"></i> ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
-        
+        const c = map.getCenter(); document.getElementById('reticle-coordinates').innerHTML = `<i class="fa-solid fa-satellite"></i> ${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`; 
         if (appState.placementType && document.getElementById('center-placement-pin').style.display === 'block') {
             const net = window.getActiveNetwork();
             if (net) {
@@ -28,37 +28,10 @@ window.initMapLayers = function() {
                 net.poles.forEach(p => checkNode(p.lat, p.lng, `Pole ${p.poleNo}`)); net.dts.forEach(d => checkNode(d.lat, d.lng, `DT ${d.code}`));
                 const gss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; if(gss) checkNode(gss.lat, gss.lng, 'GSS');
                 const ind = document.getElementById('live-distance-indicator');
-                if(ind) {
-                    if (nearestDist === Infinity) { ind.style.display = 'none'; } 
-                    else { ind.style.display = 'block'; ind.innerText = `Nearest: ${nearestName} (${window.formatDistance(nearestDist)})`; }
-                }
+                if (nearestDist === Infinity) { ind.style.display = 'none'; } else { ind.style.display = 'block'; ind.innerText = `Nearest: ${nearestName} (${window.formatDistance(nearestDist)})`; }
             }
         }
     });
-
-    // FIX 2: Added 'keepBuffer: 8' and 'updateWhenIdle: false' so tiles don't disappear on drag
-    tileLayers = { 
-        osm: { name: '<i class="fa-solid fa-map"></i> OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, keepBuffer: 8, updateWhenIdle: false }) }, 
-        hybrid: { name: '<i class="fa-solid fa-satellite-dish"></i> Google Hybrid', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 22, keepBuffer: 8, updateWhenIdle: false }) }, 
-        street: { name: '<i class="fa-solid fa-map-location-dot"></i> Street Map', layer: L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 22, keepBuffer: 8, updateWhenIdle: false }) } 
-    };
-    layerKeys = Object.keys(tileLayers); tileLayers[layerKeys[currentTileIndex]].layer.addTo(map);
-    
-    featureGroups = { 
-        gss: L.featureGroup().addTo(map), 
-        lines: L.featureGroup().addTo(map), 
-        consumerLines: L.featureGroup().addTo(map), 
-        poles: L.featureGroup().addTo(map), 
-        dts: L.featureGroup().addTo(map), 
-        consumers: L.featureGroup().addTo(map) 
-    };
-    
-    const pcb = document.getElementById('placement-confirm-bar'); if(pcb && L.DomEvent) { L.DomEvent.disableClickPropagation(pcb); L.DomEvent.disableScrollPropagation(pcb); }
-    const bsa = document.getElementById('bottom-single-action'); if(bsa && L.DomEvent) { L.DomEvent.disableClickPropagation(bsa); L.DomEvent.disableScrollPropagation(bsa); }
-    const headerActions = document.querySelector('.header-actions'); 
-    if(headerActions) { const searchBtn = document.createElement('button'); searchBtn.className = 'action-btn-sm'; searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i>'; searchBtn.onclick = window.toggleSearchBox; headerActions.insertBefore(searchBtn, headerActions.firstChild); }
-}
-
 
     tileLayers = { 
         osm: { name: '<i class="fa-solid fa-map"></i> OpenStreetMap', layer: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22 }) }, 
@@ -79,12 +52,13 @@ window.initMapLayers = function() {
     const pcb = document.getElementById('placement-confirm-bar'); if(pcb && L.DomEvent) { L.DomEvent.disableClickPropagation(pcb); L.DomEvent.disableScrollPropagation(pcb); }
     const bsa = document.getElementById('bottom-single-action'); if(bsa && L.DomEvent) { L.DomEvent.disableClickPropagation(bsa); L.DomEvent.disableScrollPropagation(bsa); }
     const headerActions = document.querySelector('.header-actions'); 
-    if(headerActions) { const searchBtn = document.createElement('button'); searchBtn.className = 'action-btn-sm'; searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i>'; searchBtn.onclick = window.toggleSearchBox; headerActions.insertBefore(searchBtn, headerActions.firstChild); }
+    if(headerActions) { 
+        const searchBtn = document.createElement('button'); searchBtn.className = 'action-btn-sm'; searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i>'; searchBtn.onclick = window.toggleSearchBox; headerActions.insertBefore(searchBtn, headerActions.firstChild); 
+    }
 }
 
 window.updateMapZoomClasses = function() {
-    if(!map) return; const z = map.getZoom(); const mapEl = document.getElementById('map'); if(!mapEl) return;
-    mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-ht-lines', 'hide-dt', 'hide-gss');
+    if(!map) return; const z = map.getZoom(); const mapEl = document.getElementById('map'); mapEl.classList.remove('hide-consumers', 'hide-lt-poles', 'hide-lt-lines', 'hide-ht-poles', 'hide-ht-lines', 'hide-dt', 'hide-gss');
     if (z <= 18) mapEl.classList.add('hide-consumers'); if (z <= 17) mapEl.classList.add('hide-lt-poles'); if (z <= 16) mapEl.classList.add('hide-lt-lines'); if (z <= 15) mapEl.classList.add('hide-ht-poles'); if (z <= 14) mapEl.classList.add('hide-ht-lines'); if (z <= 13) mapEl.classList.add('hide-dt'); if (z <= 12) mapEl.classList.add('hide-gss'); 
 }
 
@@ -111,6 +85,7 @@ window.calcDistance = function(lat1, lon1, lat2, lon2) { const R = 6371e3, p1 = 
 window.formatDistance = function(m) { return (appState.settings.unit === 'km') ? (m / 1000).toFixed(3) + ' KM' : m.toFixed(1) + ' M'; }
 window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a, b) => window.calcDistance(lat, lng, a.lat, a.lng) - window.calcDistance(lat, lng, b.lat, b.lng)); }
 window.getOffsetCoords = function(coords, offsetMeters) { if(!coords || !coords[0] || !coords[1]) return coords; const lat1 = coords[0][0], lng1 = coords[0][1]; const lat2 = coords[1][0], lng2 = coords[1][1]; const dx = (lng2 - lng1) * 111139 * Math.cos(lat1 * Math.PI / 180); const dy = (lat2 - lat1) * 111139; const len = Math.sqrt(dx * dx + dy * dy); if (len === 0) return coords; const nx = -dy / len; const ny = dx / len; const dLng = (nx * offsetMeters) / (111139 * Math.cos(lat1 * Math.PI / 180)); const dLat = (ny * offsetMeters) / 111139; return [[lat1 + dLat, lng1 + dLng], [lat2 + dLat, lng2 + dLng]]; };
+
 window.getNodeCoords = function(nodeId) { 
     const net = window.getActiveNetwork(); if(!net) return null; const idStr = String(nodeId); 
     if (idStr.startsWith('GSS_')) { const code = idStr.replace('GSS_', ''); if (appState.gssNodes[code]) return { lat: appState.gssNodes[code].lat, lng: appState.gssNodes[code].lng }; } 
@@ -119,7 +94,7 @@ window.getNodeCoords = function(nodeId) {
     const p = net.poles.find(x => String(x.poleNo) === idStr); if (p) return { lat: p.lat, lng: p.lng }; 
     const d = net.dts.find(x => String(x.code) === idStr); if (d) return { lat: d.lat, lng: d.lng }; 
     if (appState.gssNodes[idStr]) return { lat: appState.gssNodes[idStr].lat, lng: appState.gssNodes[idStr].lng }; 
-    if (idStr === 'GSS' || (net.feeder && idStr === net.feeder.code)) { const g = appState.gssNodes[net.feeder.parentGss]; if(g) return { lat: g.lat, lng: g.lng }; } 
+    if (idStr === 'GSS' || idStr === net.feeder.code) { const g = appState.gssNodes[net.feeder.parentGss]; if(g) return { lat: g.lat, lng: g.lng }; } 
     return null; 
 }
 
@@ -159,6 +134,7 @@ window.getDTSVG = function(phase, rating) {
     if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:24px;height:30px; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.6));">${defs}<rect x="22" y="0" width="6" height="10" fill="#94a3b8" stroke="#0f172a" stroke-width="1.5" rx="1"/><rect x="8" y="10" width="34" height="42" rx="4" fill="url(#dtGrad)" stroke="#0f172a" stroke-width="2.5"/><text x="25" y="38" font-size="16" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="Inter, sans-serif">${numRating}</text></svg>`;
     return `<svg viewBox="0 0 70 70" style="width:36px;height:36px; filter:drop-shadow(0 6px 12px rgba(0,0,0,0.6));">${defs}<rect x="18" y="2" width="6" height="14" fill="#94a3b8" stroke="#0f172a" stroke-width="1.5" rx="1"/><rect x="32" y="2" width="6" height="14" fill="#94a3b8" stroke="#0f172a" stroke-width="1.5" rx="1"/><rect x="46" y="2" width="6" height="14" fill="#94a3b8" stroke="#0f172a" stroke-width="1.5" rx="1"/><rect x="10" y="16" width="50" height="46" rx="4" fill="url(#dtGrad)" stroke="#0f172a" stroke-width="3"/><text x="35" y="47" font-size="18" font-weight="900" fill="#ffffff" text-anchor="middle" font-family="Inter, sans-serif">${numRating}</text></svg>`;
 }
+
 window.getConsumerSVG = function(cType, status) {
     let iconClass = 'fa-house'; if(cType === 'NonDomestic') iconClass = 'fa-building'; else if(cType === 'Agriculture') iconClass = 'fa-leaf'; else if(cType === 'SIP MIP') iconClass = 'fa-industry'; else if(cType === 'Other') iconClass = 'fa-house';
     let bgColor = 'linear-gradient(135deg, #10b981, #059669)'; if(status === 'DC') bgColor = 'linear-gradient(135deg, #facc15, #eab308)'; else if(status === 'PDC') bgColor = 'linear-gradient(135deg, #ef4444, #b91c1c)'; const iconColor = status === 'DC' ? '#0f172a' : '#ffffff';
@@ -174,32 +150,10 @@ window.getLineSpec = function(type, phase, conductor) {
     return { name: '11 KV LINE', color: color, weight: weight, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: strokeColor };
 }
 
-window.updateOrphanStatus = function() {
-    if(!appState.orphanPoleIds) appState.orphanPoleIds = new Set();
-    appState.orphanPoleIds.clear(); 
-    if (appState.settings && appState.settings.checkOrphanNode === false) return; 
-    
-    const net = window.getActiveNetwork(); if(!net) return; 
-    const gssCode = (net.feeder && net.feeder.parentGss) ? net.feeder.parentGss : 'UNKNOWN';
-    const gssId = 'GSS_' + gssCode; 
-    const adj = {}; adj[gssId] = [];
-    
-    net.poles.forEach(p => adj['POLE_' + p.poleNo] = []); 
-    net.dts.forEach(d => adj['DT_' + d.code] = []);
-    net.dts.forEach(d => { if(d.parentPole) { const pId = 'POLE_' + d.parentPole; if (!adj[pId]) adj[pId] = []; adj[pId].push('DT_' + d.code); adj['DT_' + d.code].push(pId); } });
-    net.lines.forEach(l => { const u = String(l.fromNode), v = String(l.toNode); if (!adj[u]) adj[u] = []; if (!adj[v]) adj[v] = []; adj[u].push(v); adj[v].push(u); });
-    
-    const visited = new Set([gssId]), queue = [gssId];
-    while (queue.length > 0) { const curr = queue.shift(); (adj[curr] || []).forEach(neighbor => { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } }); }
-    net.poles.forEach(p => { if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id); }); 
-    net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
-}
-
 window.renderEntireNetwork = function() {
     if(!map) return; window.updateFeederDropdown();
     try {
         window.updateOrphanStatus(); Object.values(featureGroups).forEach(g => g.clearLayers()); 
-        
         Object.values(appState.gssNodes).forEach(gss => {
             if (typeof gss.lat === 'number' && !isNaN(gss.lat)) {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
@@ -209,9 +163,7 @@ window.renderEntireNetwork = function() {
                 featureGroups.gss.addLayer(m);
             }
         });
-        
-        const net = window.getActiveNetwork(); if(!net) return; 
-        const f = appState.filters || { lines11: true, linesLT: true, poles: true, dts: true, consumers: true };
+        const net = window.getActiveNetwork(); if(!net) return; const f = appState.filters;
 
         if (f.poles) {
             net.poles.forEach(p => {
@@ -233,7 +185,7 @@ window.renderEntireNetwork = function() {
                 if (d.lat && d.lng && !isNaN(d.lat)) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const svgHtml = window.getDTSVG(d.phase, d.rating);
                     let pk = d.parentPole || `${d.lat},${d.lng}`; let sIdx = dtGroups[pk].findIndex(x => x.id === d.id);
-                    let aX = 18; let aY = -15; if(d.phase === 'Single Phase') { aX = -12 - (sIdx * 25); aY = 20; } else { if(sIdx > 0) { aX = 18 - (sIdx * 40); } }
+                    let aX = 18; let aY = -15; if(d.phase === 'Single Phase') { aX = -12 - (sIdx * 25); aY = 20; } else { if(sIdx > 0) { aX = 18 - (sIdx * 35); } }
                     const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [36, 36], iconAnchor: [aX, aY] }), zIndexOffset: 400 });
                     m.on('click', () => { window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b>`); }); 
                     featureGroups.dts.addLayer(m);
@@ -272,11 +224,9 @@ window.renderEntireNetwork = function() {
         }
         window.updateMapZoomClasses();
         let t11 = 0, tLT = 0, dt3ph = 0, dt1ph = 0; net.lines.forEach(l => { if (window.getLineSpec(l.type).name.includes('LT')) tLT += (l.distanceMeters || 0); else t11 += (l.distanceMeters || 0); }); net.dts.forEach(d => { if(d.phase === 'Single Phase') dt1ph++; else dt3ph++; });
-        
-        const elKpi11 = document.getElementById('kpi11'); if(elKpi11) elKpi11.innerText = window.formatDistance(t11); 
-        const elKpiLT = document.getElementById('kpiLT'); if(elKpiLT) elKpiLT.innerText = window.formatDistance(tLT); 
-        const elKpi3ph = document.getElementById('kpi3Ph'); if(elKpi3ph) elKpi3ph.innerText = dt3ph; 
-        const elKpi1ph = document.getElementById('kpi1Ph'); if(elKpi1ph) elKpi1ph.innerText = dt1ph; 
-        const elKpiCons = document.getElementById('kpiCons'); if(elKpiCons) elKpiCons.innerText = net.consumers.length;
+        if(document.getElementById('kpi11')) document.getElementById('kpi11').innerText = window.formatDistance(t11); if(document.getElementById('kpiLT')) document.getElementById('kpiLT').innerText = window.formatDistance(tLT); document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph; document.getElementById('kpiCons').innerText = net.consumers.length;
     } catch(err) { console.error("Rendering error:", err); }
 }
+
+window.saveSnapshot = function() { const net = window.getActiveNetwork(); if(!net) return; historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); if (historyStack.length > 15) historyStack.shift(); }
+window.undoLastAction = function() { if (historyStack.length === 0) return window.showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = window.getActiveNetwork(); if(!net) return; net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Undo Successful ↺"); }
