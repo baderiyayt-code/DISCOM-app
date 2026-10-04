@@ -168,18 +168,76 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
     document.getElementById('btnObjMove').onclick = () => window.startObjectMove(type, id, title); document.getElementById('btnObjDelete').onclick = () => { window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
 };
 
+/* ====== OBJECT MOVE FIX ====== */
 window.startObjectMove = function(type, id, title) {
-    window.closeObjectSheet(); appState.activeMove = { type: type, id: id }; document.getElementById('center-placement-pin').style.display = 'block'; document.getElementById('bottom-single-action').style.display = 'none';
+    window.closeObjectSheet(); 
+    appState.activeMove = { type: type, id: id }; 
+    
+    const pin = document.getElementById('center-placement-pin');
+    if(pin) pin.style.display = 'block'; 
+    
+    const bsa = document.getElementById('bottom-single-action');
+    if(bsa) bsa.style.display = 'none';
+    
     let moveBar = document.getElementById('move-confirm-bar');
-    if(!moveBar) { moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar'; moveBar.style.cssText = 'position:absolute; bottom:20px; left:50%; transform:translateX(-50%); z-index:4000; display:flex; gap:10px; width:90%; max-width:400px;'; moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white;" onclick="window.cancelMove()">Cancel</button><button class="btn-action-primary" style="margin-top:0;" onclick="window.confirmMove()">Confirm Move</button>`; document.getElementById('app-container').appendChild(moveBar); }
-    moveBar.style.display = 'flex'; renderEntireNetwork(); 
+    if(!moveBar) { 
+        moveBar = document.createElement('div'); 
+        moveBar.id = 'move-confirm-bar'; 
+        // FIX: Added High Z-index and explicit pointer-events to prevent Map from blocking touches
+        moveBar.style.cssText = 'position:absolute; bottom:calc(20px + env(safe-area-inset-bottom, 0px)); left:50%; transform:translateX(-50%); z-index:99999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; 
+        
+        moveBar.innerHTML = `
+            <button type="button" class="btn-danger-outline" style="background:white; pointer-events:auto;" onclick="event.stopPropagation(); window.cancelMove();">Cancel</button>
+            <button type="button" class="btn-action-primary" style="margin-top:0; pointer-events:auto;" onclick="event.stopPropagation(); window.confirmMove();">Confirm Move</button>
+        `; 
+        document.getElementById('app-container').appendChild(moveBar); 
+    }
+    moveBar.style.display = 'flex'; 
+    renderEntireNetwork(); 
 }
-window.cancelMove = function() { appState.activeMove = null; document.getElementById('center-placement-pin').style.display = 'none'; const moveBar = document.getElementById('move-confirm-bar'); if(moveBar) moveBar.style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; renderEntireNetwork(); }
+
+window.cancelMove = function() { 
+    appState.activeMove = null; 
+    
+    const pin = document.getElementById('center-placement-pin');
+    if(pin) pin.style.display = 'none'; 
+    
+    const moveBar = document.getElementById('move-confirm-bar'); 
+    if(moveBar) moveBar.style.display = 'none'; 
+    
+    const bsa = document.getElementById('bottom-single-action');
+    if(bsa) bsa.style.display = 'block'; 
+    
+    renderEntireNetwork(); 
+}
+
 window.confirmMove = function() {
-    if(!appState.activeMove) return; const net = getActiveNetwork(); const center = map.getCenter(); const { type, id } = appState.activeMove;
-    let objList = null; if(type === 'POLE') objList = net.poles; else if(type === 'DT') objList = net.dts; else if(type === 'CONSUMER') objList = net.consumers; else if(type === 'GSS') { if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } }
-    if(objList) { const obj = objList.find(x => x.id === id); if(obj) { obj.lat = center.lat; obj.lng = center.lng; obj.synced = false; } }
-    saveSnapshot(); triggerPersistence(); window.cancelMove(); showToast("Location Updated!");
+    if(!appState.activeMove) return; 
+    const net = getActiveNetwork(); 
+    const center = map.getCenter(); 
+    const { type, id } = appState.activeMove;
+    
+    let objList = null; 
+    if(type === 'POLE') objList = net.poles; 
+    else if(type === 'DT') objList = net.dts; 
+    else if(type === 'CONSUMER') objList = net.consumers; 
+    else if(type === 'GSS') { 
+        if(appState.gssNodes[id]) { 
+            appState.gssNodes[id].lat = center.lat; 
+            appState.gssNodes[id].lng = center.lng; 
+        } 
+    }
+    
+    if(objList) { 
+        const obj = objList.find(x => x.id === id); 
+        if(obj) { obj.lat = center.lat; obj.lng = center.lng; obj.synced = false; } 
+    }
+    
+    if(typeof saveSnapshot === 'function') saveSnapshot(); 
+    if(typeof triggerPersistence === 'function') triggerPersistence(); 
+    
+    window.cancelMove(); 
+    showToast("Location Updated!");
 }
 
 /* FIX 1: THE MISSING PHOTO ATTACHMENT LOGIC */
