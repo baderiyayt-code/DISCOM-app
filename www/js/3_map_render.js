@@ -1,3 +1,5 @@
+/* --- js/3_map_render.js --- */
+
 window.initMapLayers = function() {
     if (typeof L === 'undefined') return; 
     map = L.map('map', { zoomControl: false, attributionControl: false, preferCanvas: false, rotate: true, touchRotate: true, shiftKeyRotate: true, bearing: 0, zoomAnimation: false, markerZoomAnimation: false, fadeAnimation: false }).setView([26.9150, 75.7830], 16);
@@ -22,7 +24,6 @@ window.initMapLayers = function() {
     
     const pcb = document.getElementById('placement-confirm-bar'); if(pcb && L.DomEvent) { L.DomEvent.disableClickPropagation(pcb); L.DomEvent.disableScrollPropagation(pcb); }
     const bsa = document.getElementById('bottom-single-action'); if(bsa && L.DomEvent) { L.DomEvent.disableClickPropagation(bsa); L.DomEvent.disableScrollPropagation(bsa); }
-    const headerActions = document.querySelector('.header-actions'); if(headerActions) { const searchBtn = document.createElement('button'); searchBtn.className = 'action-btn-sm'; searchBtn.innerHTML = '<i class="fa-solid fa-search"></i>'; searchBtn.onclick = window.toggleSearchBox; headerActions.insertBefore(searchBtn, headerActions.firstChild); }
 }
 
 window.updateMapZoomClasses = function() {
@@ -30,39 +31,52 @@ window.updateMapZoomClasses = function() {
     if (z <= 18) mapEl.classList.add('hide-consumers'); if (z <= 17) mapEl.classList.add('hide-lt-poles'); if (z <= 16) mapEl.classList.add('hide-lt-lines'); if (z <= 15) mapEl.classList.add('hide-ht-poles'); if (z <= 14) mapEl.classList.add('hide-ht-lines'); if (z <= 13) mapEl.classList.add('hide-dt'); if (z <= 12) mapEl.classList.add('hide-gss'); 
 }
 window.toggleMapLayer = function() { if(!map) return; map.removeLayer(tileLayers[layerKeys[currentTileIndex]].layer); currentTileIndex = (currentTileIndex + 1) % layerKeys.length; tileLayers[layerKeys[currentTileIndex]].layer.addTo(map); document.getElementById('layer-indicator').innerText = tileLayers[layerKeys[currentTileIndex]].name; }
-window.updateFeederDropdown = function() { const header = document.getElementById('activeFeederLabel'); if(!header) return; const keys = Object.keys(appState.feeders || {}); if(keys.length === 0) { header.innerText = 'No Feeder'; appState.currentFeederCode = null; } else { if(!appState.currentFeederCode || !appState.feeders[appState.currentFeederCode]) { appState.currentFeederCode = keys[0]; } const currentFeeder = appState.feeders[appState.currentFeederCode]; header.innerText = (currentFeeder && currentFeeder.feeder && currentFeeder.feeder.name) ? currentFeeder.feeder.name : 'Unnamed Feeder'; } };
-window.switchFeeder = function(code) { if (appState.feeders[code]) { appState.currentFeederCode = code; window.updateFeederDropdown(); window.renderEntireNetwork(); window.triggerPersistence(); window.centerMapOnGSS(); window.toggleSidebar(false); } }
-window.centerMapOnGSS = function() { if(!map) return; map.invalidateSize(); const net = window.getActiveNetwork(); if(!net) return; const gss = (net.feeder && net.feeder.parentGss) ? appState.gssNodes[net.feeder.parentGss] : null; if (gss && typeof gss.lat === 'number' && !isNaN(gss.lat)) map.setView([gss.lat, gss.lng], 16, {animate: false}); }
-window.calcDistance = function(lat1, lon1, lat2, lon2) { const R = 6371e3, p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180, dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180; const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2; return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); }
-window.formatDistance = function(m) { return (appState.settings.unit === 'km') ? (m / 1000).toFixed(3) + ' KM' : m.toFixed(1) + ' M'; }
-window.sortByDistance = function(nodes, lat, lng) { return nodes.slice().sort((a, b) => window.calcDistance(lat, lng, a.lat, a.lng) - window.calcDistance(lat, lng, b.lat, b.lng)); }
-window.getOffsetCoords = function(coords, offsetMeters) { if(!coords || !coords[0] || !coords[1]) return coords; const lat1 = coords[0][0], lng1 = coords[0][1]; const lat2 = coords[1][0], lng2 = coords[1][1]; const dx = (lng2 - lng1) * 111139 * Math.cos(lat1 * Math.PI / 180); const dy = (lat2 - lat1) * 111139; const len = Math.sqrt(dx * dx + dy * dy); if (len === 0) return coords; const nx = -dy / len; const ny = dx / len; const dLng = (nx * offsetMeters) / (111139 * Math.cos(lat1 * Math.PI / 180)); const dLat = (ny * offsetMeters) / 111139; return [[lat1 + dLat, lng1 + dLng], [lat2 + dLat, lng2 + dLng]]; };
-window.getNodeCoords = function(nodeId) { const net = window.getActiveNetwork(); if(!net) return null; const idStr = String(nodeId); if (idStr.startsWith('GSS_')) { const code = idStr.replace('GSS_', ''); if (appState.gssNodes[code]) return { lat: appState.gssNodes[code].lat, lng: appState.gssNodes[code].lng }; } if (idStr.startsWith('DT_')) { const code = idStr.replace('DT_', ''); const d = net.dts.find(x => String(x.code) === code); if (d) return { lat: d.lat, lng: d.lng }; } if (idStr.startsWith('POLE_')) { const code = idStr.replace('POLE_', ''); const p = net.poles.find(x => String(x.poleNo) === code); if (p) return { lat: p.lat, lng: p.lng }; } const p = net.poles.find(x => String(x.poleNo) === idStr); if (p) return { lat: p.lat, lng: p.lng }; const d = net.dts.find(x => String(x.code) === idStr); if (d) return { lat: d.lat, lng: d.lng }; if (appState.gssNodes[idStr]) return { lat: appState.gssNodes[idStr].lat, lng: appState.gssNodes[idStr].lng }; if (idStr === 'GSS' || idStr === net.feeder.code) { const g = appState.gssNodes[net.feeder.parentGss]; if(g) return { lat: g.lat, lng: g.lng }; } return null; }
 
-window.toggleLiveTracking = function() {
-    if (!navigator.geolocation) return alert("Geolocation API not found.");
-    if (liveTrackingId) { navigator.geolocation.clearWatch(liveTrackingId); liveTrackingId = null; if (liveUserMarker && map) { map.removeLayer(liveUserMarker); liveUserMarker = null; } document.getElementById('liveTrackBtn').style.color = '#ef4444'; window.showToast("Live tracking disabled."); } 
-    else { window.showToast("Fetching location..."); isFirstLocationLock = true; liveTrackingId = navigator.geolocation.watchPosition((pos) => { const lat = pos.coords.latitude, lng = pos.coords.longitude; if(!map) return; if (!liveUserMarker) { const humanIcon = L.divIcon({ className: 'live-human-icon', html: '🚶‍♂️', iconSize: [44,44] }); liveUserMarker = L.marker([lat, lng], {icon: humanIcon, zIndexOffset: 1000}).addTo(map); } else liveUserMarker.setLatLng([lat, lng]); if (isFirstLocationLock) { map.setView([lat, lng], 18); isFirstLocationLock = false; } document.getElementById('liveTrackBtn').style.color = '#10b981'; }, (err) => alert("GPS Error."), { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }); }
-}
-
-const C_YELLOW = '#facc15'; const W_BASE = '#ffffff';
+/* ==============================================================
+   NEW REALISTIC ICONS GENERATOR (POLES, DT, CONSUMERS, GSS)
+============================================================== */
 window.getPoleSVG = function(type, config, isOrphan) {
-    const fill = isOrphan ? '#ef4444' : C_YELLOW;
-    if(type === 'TOWER') return `<svg viewBox="0 0 60 80" style="width:36px;height:54px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="#1e293b" stroke-width="8" stroke-linecap="round"/><path d="M 30 10 L 10 75 M 30 10 L 50 75" stroke="${fill}" stroke-width="5" stroke-linecap="round"/><line x1="18" y1="40" x2="42" y2="40" stroke="#1e293b" stroke-width="5"/><line x1="12" y1="60" x2="48" y2="60" stroke="#1e293b" stroke-width="5"/><circle cx="30" cy="5" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
-    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 80" style="width:24px;height:54px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><rect x="12" y="10" width="16" height="65" fill="${fill}" stroke="#1e293b" stroke-width="4"/><line x1="5" y1="20" x2="35" y2="20" stroke="#1e293b" stroke-width="5"/><circle cx="12" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/><circle cx="28" cy="15" r="3" fill="#fff" stroke="#000" stroke-width="1.5"/></svg>`;
-    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 70 80" style="width:40px;height:54px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><line x1="20" y1="15" x2="20" y2="75" stroke="#1e293b" stroke-width="8"/><line x1="20" y1="15" x2="20" y2="75" stroke="${fill}" stroke-width="5"/><line x1="50" y1="15" x2="50" y2="75" stroke="#1e293b" stroke-width="8"/><line x1="50" y1="15" x2="50" y2="75" stroke="${fill}" stroke-width="5"/><line x1="10" y1="25" x2="60" y2="25" stroke="#1e293b" stroke-width="6"/><line x1="10" y1="45" x2="60" y2="45" stroke="#1e293b" stroke-width="5"/><circle cx="15" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="35" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="55" cy="18" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
-    return `<svg viewBox="0 0 50 80" style="width:30px;height:54px; filter:drop-shadow(0px 2px 4px rgba(0,0,0,0.8));"><line x1="25" y1="20" x2="25" y2="75" stroke="#1e293b" stroke-width="8" stroke-linecap="round"/><line x1="25" y1="20" x2="25" y2="75" stroke="${fill}" stroke-width="5" stroke-linecap="round"/><path d="M 8 15 L 25 25 L 42 15" fill="none" stroke="#1e293b" stroke-width="6" stroke-linejoin="round"/><circle cx="8" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="42" cy="10" r="4" fill="#fff" stroke="#000" stroke-width="2"/><circle cx="25" cy="14" r="4" fill="#fff" stroke="#000" stroke-width="2"/></svg>`;
+    const strokeC = isOrphan ? '#ef4444' : '#475569';
+    if(type === 'TOWER') return `<svg viewBox="0 0 80 100" style="width:40px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><path d="M 40 10 L 20 95 M 40 10 L 60 95" stroke="${strokeC}" stroke-width="3"/><path d="M 33 35 L 47 35 M 29 55 L 51 55 M 24 75 L 56 75" stroke="${strokeC}" stroke-width="2"/><path d="M 33 35 L 51 55 M 47 35 L 29 55 M 29 55 L 56 75 M 51 55 L 24 75" stroke="${strokeC}" stroke-width="1.5"/><line x1="10" y1="35" x2="70" y2="35" stroke="${strokeC}" stroke-width="3"/><line x1="15" y1="55" x2="65" y2="55" stroke="${strokeC}" stroke-width="3"/><circle cx="40" cy="8" r="3" fill="${isOrphan?'#ef4444':'#facc15'}"/></svg>`;
+    if(type === 'RAIL POLE') return `<svg viewBox="0 0 40 100" style="width:20px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><rect x="12" y="10" width="16" height="85" fill="#94a3b8" stroke="${strokeC}" stroke-width="2"/><line x1="5" y1="20" x2="35" y2="20" stroke="${strokeC}" stroke-width="4"/><circle cx="12" cy="16" r="3" fill="#78350f"/><circle cx="28" cy="16" r="3" fill="#78350f"/></svg>`;
+    if(type === 'PCC' && config === 'Double Pole') return `<svg viewBox="0 0 80 100" style="width:40px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><polygon points="16,15 24,15 26,95 14,95" fill="#cbd5e1" stroke="${strokeC}" stroke-width="1.5"/><polygon points="56,15 64,15 66,95 54,95" fill="#cbd5e1" stroke="${strokeC}" stroke-width="1.5"/><rect x="10" y="25" width="60" height="4" fill="${strokeC}"/><rect x="10" y="45" width="60" height="4" fill="${strokeC}"/><rect x="18" y="18" width="4" height="7" fill="#78350f" rx="1"/><rect x="38" y="18" width="4" height="7" fill="#78350f" rx="1"/><rect x="58" y="18" width="4" height="7" fill="#78350f" rx="1"/></svg>`;
+    
+    // Standard Single PCC Pole (Realistic)
+    return `<svg viewBox="0 0 60 100" style="width:30px;height:50px; filter:drop-shadow(0px 4px 6px rgba(0,0,0,0.6));"><polygon points="26,10 34,10 36,95 24,95" fill="#cbd5e1" stroke="${strokeC}" stroke-width="1.5"/><path d="M 10 30 L 30 15 L 50 30" fill="none" stroke="${strokeC}" stroke-width="3" stroke-linejoin="round"/><rect x="28" y="5" width="4" height="6" fill="#78350f" rx="1"/><rect x="8" y="22" width="4" height="6" fill="#78350f" rx="1"/><rect x="48" y="22" width="4" height="6" fill="#78350f" rx="1"/></svg>`;
 }
+
 window.getDTSVG = function(phase, rating) {
-    const numRating = String(rating).replace(/[^0-9]/g, ''); const lightOrange = '#f97316';
-    if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:24px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="23" y="2" width="4" height="8" fill="#cbd5e1" stroke="#000" stroke-width="1"/><rect x="10" y="10" width="30" height="40" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2"/><text x="25" y="36" font-size="14" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
-    return `<svg viewBox="0 0 70 70" style="width:32px;height:32px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.8));"><rect x="18" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="32" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="46" y="3" width="6" height="12" fill="#cbd5e1" stroke="#000" stroke-width="1" rx="1"/><rect x="12" y="15" width="46" height="45" rx="2" fill="${lightOrange}" stroke="#0f172a" stroke-width="2.5"/><text x="35" y="44" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
+    const numRating = String(rating).replace(/[^0-9]/g, ''); 
+    // Single Phase DT (Small round tank, 1 Bushing)
+    if(phase === 'Single Phase') return `<svg viewBox="0 0 50 60" style="width:25px;height:30px; filter:drop-shadow(0 4px 6px rgba(0,0,0,0.7));"><circle cx="25" cy="30" r="18" fill="#94a3b8" stroke="#0f172a" stroke-width="2"/><polygon points="23,12 27,12 25,2" fill="#78350f"/><text x="25" y="35" font-size="14" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text></svg>`;
+    
+    // 3-Phase DT (Realistic Gray Tank, Cooling Fins, 3 Bushings)
+    return `<svg viewBox="0 0 60 70" style="width:34px;height:40px; filter:drop-shadow(0 5px 8px rgba(0,0,0,0.7));">
+        <rect x="15" y="20" width="30" height="40" rx="3" fill="#64748b" stroke="#0f172a" stroke-width="2"/>
+        <rect x="17" y="25" width="26" height="30" fill="#94a3b8"/> <!-- Tank Highlight -->
+        <rect x="8" y="25" width="7" height="30" fill="#334155" rx="1"/> <!-- Left Fins -->
+        <rect x="5" y="28" width="7" height="24" fill="#475569" rx="1"/>
+        <rect x="45" y="25" width="7" height="30" fill="#334155" rx="1"/> <!-- Right Fins -->
+        <rect x="48" y="28" width="7" height="24" fill="#475569" rx="1"/>
+        <polygon points="18,20 22,20 20,5" fill="#78350f"/> <!-- Bushings -->
+        <polygon points="28,20 32,20 30,5" fill="#78350f"/>
+        <polygon points="38,20 42,20 40,5" fill="#78350f"/>
+        <text x="30" y="45" font-size="12" font-weight="900" fill="#0f172a" text-anchor="middle" font-family="sans-serif">${numRating}</text>
+    </svg>`;
 }
+
 window.getConsumerSVG = function(cType, status) {
-    let iconClass = 'fa-house'; if(cType === 'NonDomestic') iconClass = 'fa-building'; else if(cType === 'Agriculture') iconClass = 'fa-leaf'; else if(cType === 'SIP MIP') iconClass = 'fa-industry'; else if(cType === 'Other') iconClass = 'fa-house';
-    let bgColor = '#10b981'; if(status === 'DC') bgColor = '#facc15'; else if(status === 'PDC') bgColor = '#ef4444'; const iconColor = status === 'DC' ? '#000' : '#fff';
-    return `<div style="position:relative; width:26px; height:26px; display:flex; align-items:center; justify-content:center;"><div style="background:${bgColor}; border:2.5px solid #fff; border-radius:50%; width:100%; height:100%; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.8); z-index:2;"><i class="fa-solid ${iconClass}" style="color:${iconColor}; font-size:12px;"></i></div><div style="position:absolute; bottom:-6px; width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:8px solid ${bgColor}; z-index:1; filter:drop-shadow(0 2px 2px rgba(0,0,0,0.4));"></div></div>`;
+    let bgColor = '#10b981'; if(status === 'DC') bgColor = '#facc15'; else if(status === 'PDC') bgColor = '#ef4444'; 
+    // Realistic House Icon
+    return `<div style="position:relative; width:34px; height:34px; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.6));">
+        <svg viewBox="0 0 100 100" width="100%" height="100%">
+            <path d="M 10 50 L 50 15 L 90 50 L 80 50 L 80 90 L 20 90 L 20 50 Z" fill="${bgColor}" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+            <rect x="40" y="60" width="20" height="30" fill="#ffffff"/>
+            <rect x="25" y="55" width="10" height="15" fill="#e0f2fe"/><rect x="65" y="55" width="10" height="15" fill="#e0f2fe"/>
+        </svg>
+    </div>`;
 }
+
 window.getLineSpec = function(type, phase, conductor) {
     const t = (type || '').toUpperCase(); const cond = (conductor || '').toUpperCase();
     if (t.includes('LT')) return { name: 'LT LINE', color: '#10b981', weight: 3, dash: null, filterKey: 'linesLT', lineClass: 'lt-line-path', strokeColor: '#000000' };
@@ -72,17 +86,6 @@ window.getLineSpec = function(type, phase, conductor) {
     return { name: '11 KV LINE', color: color, weight: weight, dash: null, filterKey: 'lines11', lineClass: lineClass, strokeColor: strokeColor };
 }
 
-window.updateOrphanStatus = function() {
-    appState.orphanPoleIds.clear(); const net = window.getActiveNetwork(); if(!net) return; 
-    const adj = {}, gssCode = net.feeder.parentGss, gssId = 'GSS_' + gssCode; adj[gssId] = [];
-    net.poles.forEach(p => adj['POLE_' + p.poleNo] = []); net.dts.forEach(d => adj['DT_' + d.code] = []);
-    net.dts.forEach(d => { if(d.parentPole) { const pId = 'POLE_' + d.parentPole; if (!adj[pId]) adj[pId] = []; adj[pId].push('DT_' + d.code); adj['DT_' + d.code].push(pId); } });
-    net.lines.forEach(l => { const u = String(l.fromNode), v = String(l.toNode); if (!adj[u]) adj[u] = []; if (!adj[v]) adj[v] = []; adj[u].push(v); adj[v].push(u); });
-    const visited = new Set([gssId]), queue = [gssId];
-    while (queue.length > 0) { const curr = queue.shift(); (adj[curr] || []).forEach(neighbor => { if (!visited.has(neighbor)) { visited.add(neighbor); queue.push(neighbor); } }); }
-    net.poles.forEach(p => { if (!visited.has('POLE_' + p.poleNo)) appState.orphanPoleIds.add(p.id); }); net.dts.forEach(d => { if (!visited.has('DT_' + d.code)) appState.orphanPoleIds.add(d.id); });
-}
-
 window.renderEntireNetwork = function() {
     if(!map) return; window.updateFeederDropdown();
     try {
@@ -90,8 +93,9 @@ window.renderEntireNetwork = function() {
         Object.values(appState.gssNodes).forEach(gss => {
             if (typeof gss.lat === 'number' && !isNaN(gss.lat)) {
                 if (appState.activeMove && appState.activeMove.id === gss.code) return; 
-                const gssIcon = L.divIcon({ className: 'gss-square-icon', html: `<span>GSS</span>`, iconSize: [36,36], iconAnchor: [18,18] });
-                const m = L.marker([gss.lat, gss.lng], { icon: gssIcon, zIndexOffset: 500 });
+                // Realistic Substation Box
+                const gssSvg = `<svg viewBox="0 0 100 100" style="width:40px;height:40px; filter:drop-shadow(0px 6px 10px rgba(0,0,0,0.6));"><rect x="10" y="10" width="80" height="80" rx="10" fill="#1e293b" stroke="#94a3b8" stroke-width="4"/><rect x="20" y="30" width="60" height="40" fill="#334155" stroke="#cbd5e1" stroke-width="2"/><path d="M 25 30 L 25 15 M 50 30 L 50 15 M 75 30 L 75 15" stroke="#ef4444" stroke-width="4"/><circle cx="25" cy="15" r="4" fill="#facc15"/><circle cx="50" cy="15" r="4" fill="#facc15"/><circle cx="75" cy="15" r="4" fill="#facc15"/><text x="50" y="60" font-size="24" font-weight="900" fill="#ffffff" text-anchor="middle">GSS</text></svg>`;
+                const m = L.marker([gss.lat, gss.lng], { icon: L.divIcon({ className: 'gss-marker', html: gssSvg, iconSize: [40,40], iconAnchor: [20,20] }), zIndexOffset: 500 });
                 m.on('click', () => { window.openObjectSheet('GSS', gss.code, gss.name, `Code: <b>${gss.code}</b>`); }); 
                 featureGroups.gss.addLayer(m);
             }
@@ -106,7 +110,8 @@ window.renderEntireNetwork = function() {
                 let displayNo = p.poleNo; if (isLT && String(p.poleNo).includes('-')) displayNo = String(p.poleNo).split('-')[1];
                 const svgHtml = window.getPoleSVG(p.poleType, p.poleConfig, isOrphan);
                 const poleClass = isLT ? 'lt-pole' : 'ht-pole';
-                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: `pole-marker-icon ${poleClass} ${isOrphan ? 'orphan-pulse' : ''}`, html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [40, 54], iconAnchor: [20, 27] }), zIndexOffset: 200 });
+                // CENTER ANCHOR FOR REALISTIC POLES [15, 50]
+                const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: `pole-marker-icon ${poleClass} ${isOrphan ? 'orphan-pulse' : ''}`, html: `${svgHtml}<span>${displayNo}</span>`, iconSize: [30, 50], iconAnchor: [15, 50] }), zIndexOffset: 200 });
                 m.on('click', () => { window.openObjectSheet('POLE', p.id, `Pole ${p.poleNo}`, `Type: <b>${p.lineType || 'HT'}</b><br>Config: <b>${p.poleType || 'Standard'} ${p.poleConfig&&p.poleConfig!=='N/A'?'('+p.poleConfig+')':''}</b><br>Condition: <b>${p.condition||'Good'}</b><br>Parent: <b>${p.dtCode || 'Feeder'}</b>`); }); 
                 featureGroups.poles.addLayer(m);
             });
@@ -118,8 +123,10 @@ window.renderEntireNetwork = function() {
                 if (d.lat && d.lng && !isNaN(d.lat)) {
                     const isOrphan = appState.orphanPoleIds.has(d.id); const svgHtml = window.getDTSVG(d.phase, d.rating);
                     let pk = d.parentPole || `${d.lat},${d.lng}`; let sIdx = dtGroups[pk].findIndex(x => x.id === d.id);
-                    let aX = 18; let aY = -15; if(d.phase === 'Single Phase') { aX = -10 - (sIdx * 25); aY = 20; } else { if(sIdx > 0) { aX = 18 - (sIdx * 35); } }
-                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [36, 36], iconAnchor: [aX, aY] }), zIndexOffset: 400 });
+                    let aX = 17; let aY = -10; // Default Bottom Center Hang
+                    if(d.phase === 'Single Phase') { aX = -10 - (sIdx * 25); aY = 20; } // Side mount for single phase
+                    else { if(sIdx > 0) { aX = 17 - (sIdx * 35); } } // Side by side for multi 3-phase
+                    const m = L.marker([d.lat, d.lng], { icon: L.divIcon({ className: `dt-square-icon ${isOrphan ? 'orphan-pulse' : ''}`, html: svgHtml, iconSize: [34, 40], iconAnchor: [aX, aY] }), zIndexOffset: 400 });
                     m.on('click', () => { window.openObjectSheet('DT', d.id, `DT Code: ${d.code}`, `Rating: <b>${d.rating} kVA</b><br>Phase: <b>${d.phase || 'Three Phase'}</b><br>Mounted On: <b>${d.mountedOn || 'Double Pole (DP)'}</b><br>Loc: <b>${d.location||'N/A'}</b>`); }); 
                     featureGroups.dts.addLayer(m);
                 }
@@ -148,7 +155,7 @@ window.renderEntireNetwork = function() {
             net.consumers.forEach(c => {
                 if (isNaN(c.lat) || isNaN(c.lng) || (appState.activeMove && appState.activeMove.id === c.id)) return; 
                 const latOffset = (Math.random() - 0.5) * 0.00003; const lngOffset = (Math.random() - 0.5) * 0.00003;
-                const m = L.marker([c.lat + latOffset, c.lng + lngOffset], { icon: L.divIcon({ className: 'consumer-marker-icon', html: window.getConsumerSVG(c.cType, c.status), iconSize: [28,34], iconAnchor: [14, 17] }), zIndexOffset: 100 });
+                const m = L.marker([c.lat + latOffset, c.lng + lngOffset], { icon: L.divIcon({ className: 'consumer-marker-icon', html: window.getConsumerSVG(c.cType, c.status), iconSize: [34,34], iconAnchor: [17, 17] }), zIndexOffset: 100 });
                 m.on('click', () => { window.openObjectSheet('CONSUMER', c.id, c.name, `Type: <b>${c.cType||'Domestic'}</b><br>Status: <b>${c.status||'Regular'}</b><br>K-No: <b>${c.kno}</b><br>Load: <b>${c.load||'N/A'}</b>`); }); 
                 featureGroups.consumers.addLayer(m);
                 let parentStr = c.parentType === 'DT' ? `DT_${c.parentRef}` : `POLE_${c.parentRef}`; const pCoords = window.getNodeCoords(parentStr);
@@ -160,6 +167,3 @@ window.renderEntireNetwork = function() {
         if(document.getElementById('kpi11')) document.getElementById('kpi11').innerText = window.formatDistance(t11); if(document.getElementById('kpiLT')) document.getElementById('kpiLT').innerText = window.formatDistance(tLT); document.getElementById('kpi3Ph').innerText = dt3ph; document.getElementById('kpi1Ph').innerText = dt1ph; document.getElementById('kpiCons').innerText = net.consumers.length;
     } catch(err) { console.error("Rendering error:", err); }
 }
-
-window.saveSnapshot = function() { const net = window.getActiveNetwork(); if(!net) return; historyStack.push(JSON.parse(JSON.stringify({ poles: net.poles, lines: net.lines, dts: net.dts, consumers: net.consumers }))); if (historyStack.length > 15) historyStack.shift(); }
-window.undoLastAction = function() { if (historyStack.length === 0) return window.showToast("No actions to Undo!"); const prevState = historyStack.pop(), net = window.getActiveNetwork(); if(!net) return; net.poles = prevState.poles; net.lines = prevState.lines; net.dts = prevState.dts; net.consumers = prevState.consumers; window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Undo Successful ↺"); }
