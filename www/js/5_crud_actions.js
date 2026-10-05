@@ -13,37 +13,39 @@ window.getPhotoUrl = function(id) {
     return (appState.photos && appState.photos[id]) ? appState.photos[id] : null;
 };
 
-// ==========================================
-// MAGIC POLE AUTO-SPLIT LOGIC
-// ==========================================
+/* --- Replace checkAndSplitLineOnPoleInsert inside js/5_crud_actions.js --- */
+
 window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
     if(!net || !net.lines || !net.poles) return;
     
     let targetLineIndex = -1;
     let matchedLine = null;
 
+    // Search for the exact line segment that the new pole is intersecting
     for (let i = 0; i < net.lines.length; i++) {
         const l = net.lines[i];
         const n1 = window.getNodeCoords(l.fromNode);
         const n2 = window.getNodeCoords(l.toNode);
         
         if (n1 && n2) {
+            // Check perpendicular distance to the line segment (Strictly within 4 meters)
             const distToSegment = window.calculatePointToSegmentDistance(
                 { lat: newPole.lat, lng: newPole.lng },
                 { lat: n1.lat, lng: n1.lng },
                 { lat: n2.lat, lng: n2.lng }
             );
 
+            // Verify the pole lies strictly between the segment endpoints
             const isBetweenEndpoints = window.isPointOnSegment(
                 { lat: newPole.lat, lng: newPole.lng },
                 { lat: n1.lat, lng: n1.lng },
                 { lat: n2.lat, lng: n2.lng }
             );
 
-            if (distToSegment <= 5.0 && isBetweenEndpoints) {
+            if (distToSegment <= 4.0 && isBetweenEndpoints) {
                 targetLineIndex = i;
                 matchedLine = l;
-                break; 
+                break; // Stop at the first exact intersected line
             }
         }
     }
@@ -55,37 +57,48 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
         const linePhase = matchedLine.phase;
         const lineCond = matchedLine.conductor;
 
-        // 1. Remove the old single line
+        // 1. Remove the old single line securely
         net.lines.splice(targetLineIndex, 1);
 
-        // 2. Create Segment 1: From -> Magic Pole
-        const segment1 = {
-            id: 'LINE_' + Date.now() + '_1',
-            type: lineType,
-            phase: linePhase,
-            conductor: lineCond,
-            fromNode: originalFrom,
-            toNode: 'POLE_' + newPole.poleNo
-        };
+        const newPoleNodeId = 'POLE_' + newPole.poleNo;
 
-        // 3. Create Segment 2: Magic Pole -> To
-        const segment2 = {
-            id: 'LINE_' + Date.now() + '_2',
-            type: lineType,
-            phase: linePhase,
-            conductor: lineCond,
-            fromNode: 'POLE_' + newPole.poleNo,
-            toNode: originalTo
-        };
+        // Prevent self-loops or duplicate segments
+        if (originalFrom !== newPoleNodeId && originalTo !== newPoleNodeId) {
+            // 2. Create Segment 1: Original From -> New Pole
+            const segment1 = {
+                id: 'LINE_' + Date.now() + '_1',
+                type: lineType,
+                phase: linePhase,
+                conductor: lineCond,
+                fromNode: originalFrom,
+                toNode: newPoleNodeId
+            };
 
-        net.lines.push(segment1);
-        net.lines.push(segment2);
+            // 3. Create Segment 2: New Pole -> Original To
+            const segment2 = {
+                id: 'LINE_' + Date.now() + '_2',
+                type: lineType,
+                phase: linePhase,
+                conductor: lineCond,
+                fromNode: newPoleNodeId,
+                toNode: originalTo
+            };
 
-        if(window.showToast) {
-            window.showToast(`✨ Magic Pole Activated! Line split via Pole ${newPole.poleNo}`);
+            net.lines.push(segment1);
+            net.lines.push(segment2);
+
+            // Run network deduplication to ensure no overlapping lines exist
+            if(window.deduplicateNetworkData) {
+                window.deduplicateNetworkData();
+            }
+
+            if(window.showToast) {
+                window.showToast(`✨ Magic Pole Split Successful via Pole ${newPole.poleNo}`);
+            }
         }
     }
 };
+
 
 window.isPointOnSegment = function(p, a, b) {
     const dxy = Math.hypot(b.lat - a.lat, b.lng - a.lng);
