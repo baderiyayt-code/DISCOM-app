@@ -4,12 +4,7 @@ window.savePhotoData = function(id, base64) {
     if(!appState.photos) appState.photos = {};
     appState.photos[id] = base64;
     window.triggerPersistence();
-    // Background sync to Supabase object_photos table
-    if(window.syncPhotosToCloud) {
-        window.syncPhotosToCloud(id, base64);
-    }
 };
-
 window.getPhotoUrl = function(id) {
     return (appState.photos && appState.photos[id]) ? appState.photos[id] : null;
 };
@@ -81,6 +76,7 @@ window.saveNewConsumer = function() {
     net.consumers.push(newObj); appState.placementType = null; return true;
 };
 
+// --- FIX: SAFE EDIT SAVING LOGIC ---
 window.saveEditedGss = function(code) { 
     const gss = appState.gssNodes[code]; if(!gss) return false;
     const newName = document.getElementById('editGssName').value.trim();
@@ -108,26 +104,12 @@ window.saveEditedLine = function(id) {
     l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase; l.conductor = document.getElementById('editLineConductor').value; return true; 
 };
 
-// --- OBJECT DELETION WITH PHOTO CLEANUP FROM CLOUD ---
 window.deleteEntity = function(type, id) {
     const net = window.getActiveNetwork(); if(!net) return;
     if(!confirm("Are you sure you want to delete this?")) return;
     if(window.saveSnapshot) window.saveSnapshot();
     if(!appState.deletedObjectIds) appState.deletedObjectIds = []; appState.deletedObjectIds.push(id);
-    
-    if (type === 'pole') net.poles = net.poles.filter(x => x.id !== id); 
-    else if (type === 'dt') net.dts = net.dts.filter(x => x.id !== id); 
-    else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); 
-    else if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
-    
-    // Remove local photo and delete from Supabase object_photos table
-    if(appState.photos && appState.photos[id]) {
-        delete appState.photos[id];
-        if(window.deletePhotoFromCloud) {
-            window.deletePhotoFromCloud(id);
-        }
-    }
-    
+    if (type === 'pole') net.poles = net.poles.filter(x => x.id !== id); else if (type === 'dt') net.dts = net.dts.filter(x => x.id !== id); else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); else if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
     window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted successfully");
 };
 
