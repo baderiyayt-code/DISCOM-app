@@ -1,11 +1,11 @@
 /* --- js/6_export.js --- */
 
 // ==========================================
-// UNIVERSAL FILE DOWNLOADER (SMART PERMISSION LOGIC)
+// UNIVERSAL FILE DOWNLOADER (WEB + APK FIX)
 // ==========================================
 window.downloadFileUniversal = function(blob, filename, mimeType) {
     
-    // 1. Web Browser (Vercel/Chrome)
+    // 1. Agar App Web Browser (Vercel/Chrome) par chal rahi hai
     if (typeof cordova === 'undefined' || !window.cordova) {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -19,87 +19,41 @@ window.downloadFileUniversal = function(blob, filename, mimeType) {
         return;
     }
 
-    // 2. Native Cordova APK 
+    // 2. Agar App Native Android APK me chal rahi hai (Cordova Fix)
     if (window.cordova && cordova.file) {
-        
-        // Asli File Save Karne ka Logic
-        const executeSaveProcess = function() {
-            const reader = new FileReader();
-            reader.onloadend = function() {
-                const arrayBuffer = reader.result;
-                
-                // Pehli koshish: Public Download Folder (Permission milne par yahan aayega)
-                let storagePath = cordova.file.externalRootDirectory + 'Download/';
-                
-                window.resolveLocalFileSystemURL(storagePath, function(dirEntry) {
-                    saveDataToDir(dirEntry, filename, arrayBuffer);
-                }, function(err) {
-                    // Dusri koshish (Fallback): Agar naye Android ne block kiya toh Secure Data Folder
-                    const fallbackPath = cordova.file.externalDataDirectory || cordova.file.dataDirectory;
-                    window.resolveLocalFileSystemURL(fallbackPath, function(fallbackDir) {
-                        saveDataToDir(fallbackDir, filename, arrayBuffer);
-                    }, function(err2) {
-                        alert("Storage access completely blocked by Android Security.");
-                    });
-                });
-            };
-            reader.readAsArrayBuffer(blob);
-        };
-
-        function saveDataToDir(dirEntry, fileName, dataBuffer) {
-            dirEntry.getFile(fileName, { create: true, exclusive: false }, function(fileEntry) {
+        // Native Cordova File Plugin se direct 'Downloads' folder me save karega
+        const storagePath = cordova.file.externalRootDirectory + 'Download/';
+        window.resolveLocalFileSystemURL(storagePath, function(dirEntry) {
+            dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) {
                 fileEntry.createWriter(function(fileWriter) {
                     fileWriter.onwriteend = function() {
-                        alert("✅ File Saved Successfully!\n\nLocation: " + fileEntry.nativeURL);
+                        alert("✅ Saved successfully to your Downloads folder!\nFile: " + filename);
                     };
                     fileWriter.onerror = function(e) { alert("Write Error: " + JSON.stringify(e)); };
-                    fileWriter.write(dataBuffer);
+                    fileWriter.write(blob);
                 });
-            }, function(err) { alert("File create error: " + JSON.stringify(err)); });
-        }
-
-        // --- PERMISSION ASK LOGIC ---
-        if (cordova.plugins && cordova.plugins.permissions) {
-            var permissions = cordova.plugins.permissions;
-            permissions.checkPermission(permissions.WRITE_EXTERNAL_STORAGE, function(status) {
-                if (status.hasPermission) {
-                    // Agar permission pehle se hai toh seedha save karo
-                    executeSaveProcess();
-                } else {
-                    // Agar permission nahi hai toh user se maango (Popup aayega)
-                    permissions.requestPermission(permissions.WRITE_EXTERNAL_STORAGE, function(status) {
-                        if(status.hasPermission) {
-                            executeSaveProcess();
-                        } else {
-                            alert("⚠️ Storage Permission Denied! File will be saved in App's secure folder.");
-                            executeSaveProcess(); // Deny karne par bhi hum private folder try karenge
-                        }
-                    }, function() {
-                        executeSaveProcess();
-                    });
-                }
-            });
-        } else {
-            // Agar permission plugin nahi hai toh direct koshish karo
-            executeSaveProcess(); 
-        }
-
+            }, function(err) { alert("File create error. Check Storage Permissions in App Info."); });
+        }, function(err) { alert("Directory access error. Check Storage Permissions."); });
     } else {
-        // Fallback method
+        // Fallback Fix: Agar File Plugin install nahi hai, toh Base64 me convert karke force download karega
         const reader = new FileReader();
         reader.onloadend = function() {
+            const base64data = reader.result;
             const a = document.createElement('a');
-            a.style.display = 'none'; a.href = reader.result; a.download = filename;
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            alert("Downloading... Check notifications.");
+            a.style.display = 'none';
+            a.href = base64data;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            alert("File downloading... Check your notifications.");
         };
         reader.readAsDataURL(blob);
     }
 };
-       
 
 // ==========================================
-// 1. GENERATE PROFESSIONAL SLD PDF
+// 1. GENERATE PROFESSIONAL SLD PDF (AUTO-ROTATE FIT)
 // ==========================================
 window.generateCadSLDPdf = function() {
     const net = window.getActiveNetwork();
@@ -178,6 +132,7 @@ window.generateCadSLDPdf = function() {
         doc.text(`Total HT Length: ${(totalHT/1000).toFixed(3)} km`, pageWidth - margin - 43, pageHeight - margin - 5.5);
         doc.text(`Total DTs: ${(net.dts||[]).length}`, pageWidth - margin - 43, pageHeight - margin - 2.5);
 
+        // --- NEW SAFE EXPORT LOGIC ---
         const blob = doc.output('blob');
         const filename = `${fName.replace(/\s+/g, '_')}_SLD.pdf`;
         window.downloadFileUniversal(blob, filename, 'application/pdf');
@@ -256,6 +211,8 @@ window.exportDataToCSV = function() {
 // ==========================================
 window.exportFullJSONBackup = function() {
     if(!appState) return;
+    
+    // Backup export karte waqt photos nikal dein taki file size bahut bada na ho jaye
     const stateToExport = JSON.parse(JSON.stringify(appState));
     delete stateToExport.photos; 
     
@@ -273,9 +230,9 @@ window.handleImportChoice = function(e) {
         try {
             const importedData = JSON.parse(ev.target.result);
             if(!importedData.feeders || !importedData.gssNodes) return alert("Invalid Backup File!");
-            const localPhotos = appState.photos || {}; 
+            const localPhotos = appState.photos || {}; // Save existing photos
             appState = importedData;
-            appState.photos = localPhotos; 
+            appState.photos = localPhotos; // Restore photos
             
             window.triggerPersistence(); window.renderEntireNetwork();
             alert("Backup Restored Successfully!");
