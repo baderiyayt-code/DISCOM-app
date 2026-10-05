@@ -265,3 +265,91 @@ window.handleImportChoice = function(e) {
     };
     reader.readAsText(file);
 }
+/* --- Add inside js/6_export.js --- */
+
+window.exportDtReportPdf = function(dtId) {
+    const net = window.getActiveNetwork(); if(!net) return;
+    const d = (net.dts||[]).find(x => x.id === dtId); if(!d) return;
+
+    if (typeof window.jspdf === 'undefined') {
+        return alert("PDF Library is still loading. Please try again in a moment.");
+    }
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        
+        let y = 15;
+        doc.setFontSize(14); doc.setTextColor(15, 23, 42);
+        doc.text(`DISCOM SURVEY PRO - DT INSPECTION REPORT`, 15, y);
+        
+        y += 8;
+        doc.setFontSize(10); doc.setTextColor(100, 116, 139);
+        doc.text(`Feeder: ${(net.feeder && net.feeder.name) ? net.feeder.name : 'N/A'}`, 15, y);
+        
+        y += 10;
+        doc.setFillColor(241, 245, 249);
+        doc.rect(15, y, 180, 20, 'F');
+        
+        doc.setFontSize(9); doc.setTextColor(15, 23, 42);
+        doc.text(`DT Code: ${d.code}`, 20, y + 7);
+        doc.text(`Rating: ${d.rating} kVA`, 80, y + 7);
+        doc.text(`Phase: ${d.phase || 'Three Phase'}`, 140, y + 7);
+        doc.text(`Mounted On: ${d.mountedOn || 'Double Pole (DP)'}`, 20, y + 14);
+        doc.text(`Location: ${d.location || 'N/A'}`, 80, y + 14);
+
+        y += 28;
+        doc.setFontSize(11); doc.setTextColor(15, 23, 42);
+        doc.text(`Connected Consumers List`, 15, y);
+
+        y += 4;
+        const connectedConsumers = [];
+        (net.consumers||[]).forEach(c => {
+            let isConnected = false;
+            if(String(c.parentRef) === String(d.code) || String(c.parentRef) === String('DT_' + d.code)) {
+                isConnected = true;
+            } else {
+                const pole = (net.poles||[]).find(p => String(p.poleNo) === String(c.parentRef) || String(p.id) === String('POLE_' + c.parentRef));
+                if(pole && String(pole.dtCode) === String(d.code)) { isConnected = true; }
+            }
+            if(isConnected) connectedConsumers.push(c);
+        });
+
+        // Table Headers
+        doc.setFillColor(30, 41, 59);
+        doc.rect(15, y, 180, 8, 'F');
+        doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+        doc.text("#", 18, y + 5);
+        doc.text("K-Number", 30, y + 5);
+        doc.text("Consumer Name", 70, y + 5);
+        doc.text("Category", 130, y + 5);
+        doc.text("Load", 175, y + 5);
+
+        y += 8;
+        doc.setTextColor(0, 0, 0);
+        
+        if(connectedConsumers.length === 0) {
+            doc.text("No consumers connected.", 15, y + 8);
+        } else {
+            connectedConsumers.forEach((c, idx) => {
+                if(y > 270) { doc.addPage(); y = 15; }
+                doc.text(String(idx + 1), 18, y + 6);
+                doc.text(String(c.kno || 'N/A'), 30, y + 6);
+                doc.text(String(c.name || 'Unknown'), 70, y + 6);
+                doc.text(String(c.cType || 'Domestic'), 130, y + 6);
+                doc.text(String(c.load || '1 kW'), 175, y + 6);
+                
+                doc.setDrawColor(226, 232, 240);
+                doc.line(15, y + 8, 195, y + 8);
+                y += 9;
+            });
+        }
+
+        const pdfBlob = doc.output('blob');
+        window.downloadFileNative(pdfBlob, `DT_${d.code}_Report.pdf`);
+
+    } catch(err) {
+        console.error("DT Report PDF Error:", err);
+        alert("Error generating DT PDF report.");
+    }
+};
