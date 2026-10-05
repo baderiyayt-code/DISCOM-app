@@ -244,15 +244,39 @@ window.saveNewLTPole = function() {
     const dt = document.getElementById('inpLTPoleDT').value, pType = document.getElementById('inpMainPoleType').value, pCond = document.getElementById('inpPoleCondition').value;
     if(!dt) { alert("Associated DT is required!"); return false; }
     
+    let dtCodeClean = dt.replace('DT_','');
     let maxL = 0;
-    (net.poles||[]).filter(p => p.lineType === 'LT' && String(p.dtCode) === dt.replace('DT_','')).forEach(p => { const pts = String(p.poleNo).split('-'); if(pts.length > 1) { const num = parseInt(pts[1]); if(!isNaN(num) && num > maxL) maxL = num; } });
-    const poleNo = dt.replace('DT_','') + '-' + (maxL + 1);
+    (net.poles||[]).filter(p => p.lineType === 'LT' && String(p.dtCode) === dtCodeClean).forEach(p => { const pts = String(p.poleNo).split('-'); if(pts.length > 1) { const num = parseInt(pts[1]); if(!isNaN(num) && num > maxL) maxL = num; } });
+    const poleNo = dtCodeClean + '-' + (maxL + 1);
     
     if(window.saveSnapshot) window.saveSnapshot();
-    const newObj = { id: 'POLE_' + Date.now(), poleNo: poleNo, lineType: 'LT', dtCode: dt.replace('DT_',''), poleType: pType, condition: pCond, lat: parseFloat(document.getElementById('inpLat').value), lng: parseFloat(document.getElementById('inpLng').value) };
-    if(window.tempPhotoUrl) { window.savePhotoData(newObj.id, window.tempPhotoUrl); window.tempPhotoUrl = null; }
-    net.poles.push(newObj); appState.placementType = null; return true;
+    const newObj = { 
+        id: 'POLE_' + Date.now(), 
+        poleNo: poleNo, 
+        lineType: 'LT', 
+        dtCode: dtCodeClean, 
+        poleType: pType, 
+        condition: pCond, 
+        lat: parseFloat(document.getElementById('inpLat.value') || document.getElementById('inpLat').value), 
+        lng: parseFloat(document.getElementById('inpLng.value') || document.getElementById('inpLng').value) 
+    };
+    
+    if(window.tempPhotoUrl) { 
+        window.savePhotoData(newObj.id, window.tempPhotoUrl); 
+        window.tempPhotoUrl = null; 
+    }
+    
+    net.poles.push(newObj); 
+
+    // --- TRIGGER MAGIC POLE SPLIT FOR LT LINE ---
+    if(window.checkAndSplitLineOnPoleInsert) {
+        window.checkAndSplitLineOnPoleInsert(net, newObj);
+    }
+
+    appState.placementType = null; 
+    return true;
 };
+
 
 window.saveNewLine = function() {
     const net = window.getActiveNetwork(); if(!net) return false;
