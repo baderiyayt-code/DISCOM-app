@@ -13,8 +13,9 @@ window.getPhotoUrl = function(id) {
     return (appState.photos && appState.photos[id]) ? appState.photos[id] : null;
 };
 
-/* --- Replace checkAndSplitLineOnPoleInsert inside js/5_crud_actions.js --- */
-
+// ==========================================
+// MAGIC POLE SPLIT LOGIC (HT & DT-Restricted LT)
+// ==========================================
 window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
     if(!net || !net.lines || !net.poles) return;
     
@@ -26,9 +27,19 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
         const l = net.lines[i];
         const isLineLT = l.type && l.type.includes('LT');
         
-        // HT can only split HT lines, LT can only split LT lines
         if (isLT && !isLineLT) continue;
         if (!isLT && isLineLT) continue;
+
+        if (isLT && newPole.dtCode) {
+            const lineBelongsToThisDT = (nodeId) => {
+                if (nodeId === 'DT_' + newPole.dtCode || nodeId === newPole.dtCode) return true;
+                const foundP = (net.poles||[]).find(x => 'POLE_' + x.poleNo === nodeId || x.id === nodeId || x.poleNo === nodeId);
+                return foundP && String(foundP.dtCode) === String(newPole.dtCode);
+            };
+            if (!lineBelongsToThisDT(l.fromNode) || !lineBelongsToThisDT(l.toNode)) {
+                continue;
+            }
+        }
 
         const n1 = window.getNodeCoords(l.fromNode);
         const n2 = window.getNodeCoords(l.toNode);
@@ -46,8 +57,7 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
                 { lat: n2.lat, lng: n2.lng }
             );
 
-            // Using a slightly wider threshold (6 meters) for precise line capture
-            if (distToSegment <= 6.0 && isBetweenEndpoints) {
+            if (distToSegment <= 5.0 && isBetweenEndpoints) {
                 targetLineIndex = i;
                 matchedLine = l;
                 break; 
@@ -62,7 +72,6 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
         const linePhase = matchedLine.phase;
         const lineCond = matchedLine.conductor;
 
-        // If it's an LT pole, automatically detect and inherit DT Code
         if (isLT) {
             let detectedDtCode = newPole.dtCode || null;
             if (!detectedDtCode) {
@@ -88,89 +97,22 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
             }
         }
 
-        // 1. Permanently delete the old single line from the network array
         net.lines.splice(targetLineIndex, 1);
 
         const newPoleNodeId = 'POLE_' + newPole.poleNo;
 
         if (originalFrom !== newPoleNodeId && originalTo !== newPoleNodeId) {
-            // 2. Create Segment 1: Original From -> New Magic Pole
-            const segment1 = {
-                id: 'LINE_' + Date.now() + '_1',
-                type: lineType,
-                phase: linePhase,
-                conductor: lineCond,
-                fromNode: originalFrom,
-                toNode: newPoleNodeId
-            };
-
-            // 3. Create Segment 2: New Magic Pole -> Original To
-            const segment2 = {
-                id: 'LINE_' + Date.now() + '_2',
-                type: lineType,
-                phase: linePhase,
-                conductor: lineCond,
-                fromNode: newPoleNodeId,
-                toNode: originalTo
-            };
+            const segment1 = { id: 'LINE_' + Date.now() + '_1', type: lineType, phase: linePhase, conductor: lineCond, fromNode: originalFrom, toNode: newPoleNodeId };
+            const segment2 = { id: 'LINE_' + Date.now() + '_2', type: lineType, phase: linePhase, conductor: lineCond, fromNode: newPoleNodeId, toNode: originalTo };
 
             net.lines.push(segment1);
             net.lines.push(segment2);
 
-            // Clean up any duplicate or leftover lines
-            if(window.deduplicateNetworkData) {
-                window.deduplicateNetworkData();
-            }
-
-            if(window.showToast) {
-                window.showToast(`✨ Magic ${isLT ? 'LT' : 'HT'} Pole Split Successful via Pole ${newPole.poleNo}`);
-            }
+            if(window.deduplicateNetworkData) window.deduplicateNetworkData();
+            if(window.showToast) window.showToast(`✨ Magic ${isLT ? 'LT' : 'HT'} Pole Split Successful via Pole ${newPole.poleNo}`);
         }
     }
 };
-
-            
-
-window.isPointOnSegment = function(p, a, b) {
-    const dxy = Math.hypot(b.lat - a.lat, b.lng - a.lng);
-    const dap = Math.hypot(p.lat - a.lat, p.lng - a.lng);
-    const dbp = Math.hypot(p.lat - b.lat, p.lng - b.lng);
-    return (dap + dbp) >= (dxy - 0.0001) && (dap + dbp) <= (dxy + 0.0001);
-};
-
-window.calculatePointToSegmentDistance = function(p, a, b) {
-    const R = 6371000; 
-    const rad = Math.PI / 180;
-    
-    const x = p.lng * Math.cos(a.lat * rad) * R * rad;
-    const y = p.lat * R * rad;
-    const x1 = a.lng * Math.cos(a.lat * rad) * R * rad;
-    const y1 = a.lat * R * rad;
-    const x2 = b.lng * Math.cos(a.lat * rad) * R * rad;
-    const y2 = b.lat * R * rad;
-
-    const A = x - x1;
-    const B = y - y1;
-    const C = x2 - x1;
-    const D = y2 - y1;
-
-    let dot = A * C + B * D;
-    let len_sq = C * C + D * D;
-    let param = -1;
-    if (len_sq !== 0) param = dot / len_sq;
-
-    let xx, yy;
-    if (param < 0) { xx = x1; yy = y1; }
-    else if (param > 1) { xx = x2; yy = y2; }
-    else { xx = x1 + param * C; yy = y1 + param * D; }
-
-    const dx = x - xx;
-    const dy = y - yy;
-    return Math.sqrt(dx * dx + dy * dy);
-};
-
-
-
 
 window.isPointOnSegment = function(p, a, b) {
     const dxy = Math.hypot(b.lat - a.lat, b.lng - a.lng);
@@ -237,10 +179,7 @@ window.saveNewPole = function() {
     }
     
     net.poles.push(newObj); 
-
-    // TRIGGER MAGIC POLE SPLIT CHECK
-    window.checkAndSplitLineOnPoleInsert(net, newObj);
-
+    if (window.checkAndSplitLineOnPoleInsert) window.checkAndSplitLineOnPoleInsert(net, newObj);
     appState.placementType = null; 
     return true;
 };
@@ -273,16 +212,10 @@ window.saveNewLTPole = function() {
     }
     
     net.poles.push(newObj); 
-
-    // --- TRIGGER MAGIC POLE SPLIT FOR LT LINE ---
-    if(window.checkAndSplitLineOnPoleInsert) {
-        window.checkAndSplitLineOnPoleInsert(net, newObj);
-    }
-
+    if(window.checkAndSplitLineOnPoleInsert) window.checkAndSplitLineOnPoleInsert(net, newObj);
     appState.placementType = null; 
     return true;
 };
-
 
 window.saveNewLine = function() {
     const net = window.getActiveNetwork(); if(!net) return false;
@@ -293,15 +226,11 @@ window.saveNewLine = function() {
     if(window.saveSnapshot) window.saveSnapshot();
     const newObj = { id: 'LINE_' + Date.now(), type: type, phase: phase, conductor: cond, fromNode: fNode, toNode: tNode };
     
-    // Push new line temporarily to test for loops
     net.lines.push(newObj);
-
-    // --- LOOP VALIDATION CHECK ---
     const isLT = type && type.includes('LT');
     const validationResult = window.validateNetworkLoops(net, isLT ? 'LT' : 'HT');
     
     if (validationResult.hasLoop) {
-        // If a loop is formed, remove the line and alert the user
         net.lines.pop();
         alert(validationResult.message);
         return false;
@@ -311,7 +240,6 @@ window.saveNewLine = function() {
     if(window.showToast) window.showToast("Line saved successfully!");
     return true;
 };
-
 
 window.saveNewDT = function() {
     const net = window.getActiveNetwork(); if(!net) return false;
@@ -341,72 +269,17 @@ window.saveNewConsumer = function() {
     net.consumers.push(newObj); appState.placementType = null; return true;
 };
 
-
-window.confirmMove = function() { 
-    if(!appState.activeMove) return; 
-    
-    const center = map.getCenter(); 
-    const net = window.getActiveNetwork(); 
-    if(window.saveSnapshot) window.saveSnapshot(); 
-    
-    const id = appState.activeMove.id; 
-    let isUpdated = false;
-
-    // 1. Check if it's a GSS Node
-    if(appState.gssNodes && appState.gssNodes[id]) { 
-        appState.gssNodes[id].lat = parseFloat(center.lat.toFixed(6)); 
-        appState.gssNodes[id].lng = parseFloat(center.lng.toFixed(6)); 
-        appState.gssNodes[id].updatedAt = Date.now();
-        appState.gssNodes[id].synced = false; 
-        isUpdated = true;
-    } 
-
-    // 2. Safely search across all Network Objects (Poles, DTs, Consumers) ignoring "type"
-    if (net && !isUpdated) {
-        const arraysToCheck = ['poles', 'dts', 'consumers'];
-        for (let arrName of arraysToCheck) {
-            let objList = net[arrName] || [];
-            let targetObj = objList.find(x => x.id === id);
-            
-            if (targetObj) {
-                targetObj.lat = parseFloat(center.lat.toFixed(6));
-                targetObj.lng = parseFloat(center.lng.toFixed(6));
-                targetObj.updatedAt = Date.now();
-                targetObj.synced = false; // Forces cloud sync in Supabase
-                isUpdated = true;
-                break; // Stop searching once found
-            }
-        }
-    }
-    
-    // 3. Reset UI naturally
-    window.cancelMove(); 
-    
-    // 4. Trigger saves if found
-    if(isUpdated) {
-        if(window.triggerPersistence) window.triggerPersistence(); // Triggers local save and syncToSupabase
-        if(window.showToast) window.showToast("Location Updated & Synced to Cloud!");
-    } else {
-        if(window.showToast) window.showToast("Error: Object not found to move.");
-    }
-};
-
-     
-
-
 // ==========================================
-// EDIT LOGIC (WITH CLOUD SYNC TRIGGER)
+// EDIT LOGIC (WITH CLOUD SYNC FLAGS)
 // ==========================================
 window.saveEditedGss = function(code) { 
     const gss = appState.gssNodes[code]; if(!gss) return false;
     const newName = document.getElementById('editGssName').value.trim();
     if(!newName) { alert("Name is required"); return false; }
     if(window.saveSnapshot) window.saveSnapshot(); 
-    
     gss.name = newName; 
     gss.updatedAt = Date.now(); 
-    gss.synced = false; // Forces cloud sync
-    
+    gss.synced = false; 
     return true; 
 };
 
@@ -414,13 +287,11 @@ window.saveEditedPole = function(id) {
     const net = window.getActiveNetwork(); if(!net) return false; 
     const p = (net.poles||[]).find(x => x.id === id); if(!p) return false; 
     if(window.saveSnapshot) window.saveSnapshot(); 
-    
     p.poleType = document.getElementById('editMainPoleType').value; 
     p.condition = document.getElementById('editPoleCondition').value; 
     p.poleConfig = document.getElementById('editPccConfig') ? document.getElementById('editPccConfig').value : p.poleConfig; 
     p.updatedAt = Date.now(); 
-    p.synced = false; // Forces cloud sync
-    
+    p.synced = false; 
     return true; 
 };
 
@@ -428,14 +299,12 @@ window.saveEditedDT = function(id) {
     const net = window.getActiveNetwork(); if(!net) return false; 
     const d = (net.dts||[]).find(x => x.id === id); if(!d) return false; 
     if(window.saveSnapshot) window.saveSnapshot(); 
-    
     d.mountedOn = document.getElementById('editDTMounted').value; 
     d.phase = document.getElementById('editDTPhase').value; 
     d.rating = document.getElementById('editDTRating').value; 
     d.location = document.getElementById('editDTLocation').value; 
     d.updatedAt = Date.now(); 
-    d.synced = false; // Forces cloud sync
-    
+    d.synced = false; 
     return true; 
 };
 
@@ -443,16 +312,13 @@ window.saveEditedConsumer = function(id) {
     const net = window.getActiveNetwork(); if(!net) return false; 
     const c = (net.consumers||[]).find(x => x.id === id); if(!c) return false; 
     if(window.saveSnapshot) window.saveSnapshot(); 
-    
     c.name = document.getElementById('editConsName').value.trim(); 
     c.load = document.getElementById('editConsLoad').value; 
     c.status = document.getElementById('editConsStatus').value; 
     c.cType = document.getElementById('editConsType').value; 
     if(!c.name) { alert("Name required"); return false; } 
-    
     c.updatedAt = Date.now(); 
-    c.synced = false; // Forces cloud sync
-    
+    c.synced = false; 
     return true; 
 };
 
@@ -460,16 +326,16 @@ window.saveEditedLine = function(id) {
     const net = window.getActiveNetwork(); if(!net) return false; 
     const l = (net.lines||[]).find(x => x.id === id); if(!l) return false; 
     if(window.saveSnapshot) window.saveSnapshot(); 
-    
     l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase; 
     l.conductor = document.getElementById('editLineConductor').value; 
     l.updatedAt = Date.now(); 
-    l.synced = false; // Forces cloud sync
-    
+    l.synced = false; 
     return true; 
 };
 
-
+// ==========================================
+// DELETE LOGIC
+// ==========================================
 window.deleteEntity = function(type, id) {
     const net = window.getActiveNetwork(); if(!net) return;
     if(!confirm("Are you sure you want to delete this?")) return;
@@ -491,12 +357,12 @@ window.deleteEntity = function(type, id) {
     window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted successfully");
 };
 
- /* --- Replace validateNetworkLoops inside js/5_crud_actions.js --- */
-
+// ==========================================
+// LOOP VALIDATION LOGIC
+// ==========================================
 window.validateNetworkLoops = function(net, networkType = 'HT') {
     if (!net || !net.lines || !net.poles) return { hasLoop: false, message: "Valid" };
 
-    // 1. Collect all valid active node IDs currently existing in the network
     const activeNodes = new Set();
     if (net.feeder && net.feeder.parentGss) {
         activeNodes.add('GSS_' + net.feeder.parentGss);
@@ -513,7 +379,6 @@ window.validateNetworkLoops = function(net, networkType = 'HT') {
         activeNodes.add(d.id);
     });
 
-    // 2. Filter lines: Must match network type AND both endpoints must actually exist (ignores deleted/orphaned lines)
     const targetLines = net.lines.filter(l => {
         const isLT = l.type && l.type.includes('LT');
         const matchesType = (networkType === 'LT' ? isLT : !isLT);
@@ -523,7 +388,6 @@ window.validateNetworkLoops = function(net, networkType = 'HT') {
 
     if (targetLines.length === 0) return { hasLoop: false, message: "No lines to check" };
 
-    // Build adjacency list for graph traversal
     const adjList = {};
     targetLines.forEach(l => {
         const u = l.fromNode;
@@ -537,25 +401,16 @@ window.validateNetworkLoops = function(net, networkType = 'HT') {
     let visited = new Set();
     let parentMap = {};
     let loopDetected = false;
-    let loopPath = [];
 
     function dfs(node, parent) {
         visited.add(node);
         parentMap[node] = parent;
-
         const neighbors = adjList[node] || [];
         for (let neighbor of neighbors) {
             if (!visited.has(neighbor)) {
                 if (dfs(neighbor, node)) return true;
             } else if (neighbor !== parent) {
                 loopDetected = true;
-                loopPath.push(neighbor);
-                let curr = node;
-                while (curr !== neighbor && curr) {
-                    loopPath.push(curr);
-                    curr = parentMap[curr];
-                }
-                loopPath.push(neighbor);
                 return true;
             }
         }
@@ -564,23 +419,90 @@ window.validateNetworkLoops = function(net, networkType = 'HT') {
 
     for (let node of Object.keys(adjList)) {
         if (!visited.has(node)) {
-            if (dfs(node, null)) {
-                break;
-            }
+            if (dfs(node, null)) break;
         }
     }
 
     if (loopDetected) {
         return {
             hasLoop: true,
-            message: `⚠️ Invalid connection! This creates a closed loop.')}`
+            message: `⚠️ Invalid connection! This creates a closed loop.`
         };
     }
 
     return { hasLoop: false, message: `${networkType} network is clean.` };
 };
 
+// ==========================================
+// OBJECT MOVE LOGIC (ROBUST CLOUD SYNC)
+// ==========================================
+window.startObjectMove = function(type, id, title) { 
+    appState.activeMove = { type, id }; 
+    document.getElementById('center-placement-pin').style.display = 'block'; 
+    window.closeObjectSheet(); 
+    let moveBar = document.getElementById('move-confirm-bar'); 
+    if(!moveBar) { 
+        moveBar = document.createElement('div'); 
+        moveBar.id = 'move-confirm-bar'; 
+        moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; 
+        moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white; flex:1;" onclick="window.cancelMove()">Cancel</button><button class="btn-action-primary" style="flex:1;" onclick="window.confirmMove()">Set New Location</button>`; 
+        document.body.appendChild(moveBar); 
+        if(typeof L !== 'undefined' && L.DomEvent) { L.DomEvent.disableClickPropagation(moveBar); L.DomEvent.disableScrollPropagation(moveBar); } 
+    } 
+    moveBar.style.display = 'flex'; 
+    document.getElementById('bottom-single-action').style.display = 'none'; 
+    window.showToast("Pan map to new location..."); 
+};
 
-window.startObjectMove = function(type, id, title) { appState.activeMove = { type, id }; document.getElementById('center-placement-pin').style.display = 'block'; window.closeObjectSheet(); let moveBar = document.getElementById('move-confirm-bar'); if(!moveBar) { moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar'; moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white; flex:1;" onclick="window.cancelMove()">Cancel</button><button class="btn-action-primary" style="flex:1;" onclick="window.confirmMove()">Set New Location</button>`; document.body.appendChild(moveBar); if(typeof L !== 'undefined' && L.DomEvent) { L.DomEvent.disableClickPropagation(moveBar); L.DomEvent.disableScrollPropagation(moveBar); } } moveBar.style.display = 'flex'; document.getElementById('bottom-single-action').style.display = 'none'; window.showToast("Pan map to new location..."); };
-window.cancelMove = function() { appState.activeMove = null; document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; window.renderEntireNetwork(); };
-window.confirmMove = function() { if(!appState.activeMove) return; const center = map.getCenter(); const net = window.getActiveNetwork(); if(window.saveSnapshot) window.saveSnapshot(); const { type, id } = appState.activeMove; if(type === 'GSS') { if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } } else if(type === 'POLE' && net) { const p = (net.poles||[]).find(x => x.id === id); if(p) { p.lat = center.lat; p.lng = center.lng; } } else if(type === 'CONSUMER' && net) { const c = (net.consumers||[]).find(x => x.id === id); if(c) { c.lat = center.lat; c.lng = center.lng; } } window.cancelMove(); window.triggerPersistence(); window.showToast("Location Updated!"); };
+window.cancelMove = function() { 
+    appState.activeMove = null; 
+    document.getElementById('center-placement-pin').style.display = 'none'; 
+    document.getElementById('move-confirm-bar').style.display = 'none'; 
+    document.getElementById('bottom-single-action').style.display = 'block'; 
+    window.renderEntireNetwork(); 
+};
+
+window.confirmMove = function() { 
+    if(!appState.activeMove) return; 
+    
+    const center = map.getCenter(); 
+    const net = window.getActiveNetwork(); 
+    if(window.saveSnapshot) window.saveSnapshot(); 
+    
+    const id = appState.activeMove.id; 
+    let isUpdated = false;
+
+    if(appState.gssNodes && appState.gssNodes[id]) { 
+        appState.gssNodes[id].lat = parseFloat(center.lat.toFixed(6)); 
+        appState.gssNodes[id].lng = parseFloat(center.lng.toFixed(6)); 
+        appState.gssNodes[id].updatedAt = Date.now();
+        appState.gssNodes[id].synced = false; 
+        isUpdated = true;
+    } 
+
+    if (net && !isUpdated) {
+        const arraysToCheck = ['poles', 'dts', 'consumers'];
+        for (let arrName of arraysToCheck) {
+            let objList = net[arrName] || [];
+            let targetObj = objList.find(x => x.id === id);
+            
+            if (targetObj) {
+                targetObj.lat = parseFloat(center.lat.toFixed(6));
+                targetObj.lng = parseFloat(center.lng.toFixed(6));
+                targetObj.updatedAt = Date.now();
+                targetObj.synced = false; 
+                isUpdated = true;
+                break;
+            }
+        }
+    }
+    
+    window.cancelMove(); 
+    
+    if(isUpdated) {
+        if(window.triggerPersistence) window.triggerPersistence(); 
+        if(window.showToast) window.showToast("Location Updated & Synced to Cloud!");
+    } else {
+        if(window.showToast) window.showToast("Error: Object not found to move.");
+    }
+};
