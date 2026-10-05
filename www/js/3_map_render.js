@@ -265,12 +265,17 @@ window.renderEntireNetwork = function() {
             });
         }
         
-        if (f.lines && net.lines) {
+        // --- THE MISSING LINE RENDERING LOGIC FIXED HERE ---
+        if (net.lines) {
             net.lines.forEach(line => {
                 if(!line) return;
                 const c1 = window.getNodeCoords(line.fromNode), c2 = window.getNodeCoords(line.toNode); 
                 if (c1 && c2 && !isNaN(c1.lat) && !isNaN(c2.lat)) { line.coords = [[c1.lat, c1.lng], [c2.lat, c2.lng]]; line.distanceMeters = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); } else return; 
-                const spec = window.getLineSpec(line.type, line.phase, line.conductor); if (!f[spec.filterKey]) return;
+                
+                const spec = window.getLineSpec(line.type, line.phase, line.conductor); 
+                
+                // Only skip if the SPECIFIC filter for this line type is OFF
+                if (f[spec.filterKey] === false) return; 
                 
                 const hitPoly = L.polyline(line.coords, { color: 'transparent', weight: 45, className: spec.lineClass }).addTo(featureGroups.lines);
                 
