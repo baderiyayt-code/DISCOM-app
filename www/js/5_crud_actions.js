@@ -4,11 +4,86 @@ window.savePhotoData = function(id, base64) {
     if(!appState.photos) appState.photos = {};
     appState.photos[id] = base64;
     window.triggerPersistence();
+    // Background sync to Supabase
+    if(window.syncPhotosToCloud) window.syncPhotosToCloud(id, base64);
 };
+
 window.getPhotoUrl = function(id) {
     return (appState.photos && appState.photos[id]) ? appState.photos[id] : null;
 };
 
+// ==========================================
+// ⚡ MAGIC POLE FEATURE (AUTO-SNAP & SPLIT LINES)
+// ==========================================
+window.distancePointToSegmentMeters = function(lat, lng, lat1, lng1, lat2, lng2) {
+    const R = 6371000; // Earth radius in meters
+    const dLatToMeters = R * Math.PI / 180;
+    const dLngToMeters = R * Math.PI / 180 * Math.cos(lat * Math.PI / 180);
+
+    const cx = lng * dLngToMeters, cy = lat * dLatToMeters;
+    const ax = lng1 * dLngToMeters, ay = lat1 * dLatToMeters;
+    const bx = lng2 * dLngToMeters, by = lat2 * dLatToMeters;
+
+    const l2 = Math.pow(bx - ax, 2) + Math.pow(by - ay, 2);
+    if (l2 === 0) return Math.sqrt(Math.pow(cx - ax, 2) + Math.pow(cy - ay, 2));
+
+    let t = ((cx - ax) * (bx - ax) + (cy - ay) * (by - ay)) / l2;
+    t = Math.max(0, Math.min(1, t));
+
+    const projX = ax + t * (bx - ax), projY = ay + t * (by - ay);
+    return Math.sqrt(Math.pow(cx - projX, 2) + Math.pow(cy - projY, 2));
+};
+
+window.autoSplitLinesWithPole = function(newPoleNodeId, poleLat, poleLng, isLT) {
+    const net = window.getActiveNetwork();
+    if(!net || !net.lines) return;
+
+    let targetLineIdx = -1;
+    let minDistance = 6.0; // Snap radius: 6 meters (Agar pole line se 6 meter ke andar hai, toh line tod dega)
+
+    for(let i=0; i<net.lines.length; i++) {
+        const line = net.lines[i];
+        
+        // HT pole sirf HT line katega, LT pole sirf LT line katega
+        const isLineLT = line.type.includes('LT');
+        if (isLT && !isLineLT) continue;
+        if (!isLT && isLineLT) continue;
+
+        const n1 = window.getNodeCoords(line.fromNode);
+        const n2 = window.getNodeCoords(line.toNode);
+        
+        if(n1 && n2 && !isNaN(n1.lat) && !isNaN(n2.lat)) {
+            const dist = window.distancePointToSegmentMeters(poleLat, poleLng, n1.lat, n1.lng, n2.lat, n2.lng);
+            if(dist < minDistance) {
+                minDistance = dist;
+                targetLineIdx = i;
+            }
+        }
+    }
+
+    if(targetLineIdx !== -1) {
+        const oldLine = net.lines[targetLineIdx];
+        
+        // 2 nayi lineyan banayein purani property ke sath
+        const line1 = { id: 'LINE_' + Date.now() + '_1', type: oldLine.type, phase: oldLine.phase, conductor: oldLine.conductor, fromNode: oldLine.fromNode, toNode: newPoleNodeId };
+        const line2 = { id: 'LINE_' + Date.now() + '_2', type: oldLine.type, phase: oldLine.phase, conductor: oldLine.conductor, fromNode: newPoleNodeId, toNode: oldLine.toNode };
+        
+        // Purani line hata dein
+        net.lines.splice(targetLineIdx, 1);
+        
+        // Nayi lines add karein
+        net.lines.push(line1, line2);
+
+        // Success Toast
+        setTimeout(() => { 
+            if(window.showToast) window.showToast("⚡ Magic Pole: Line Auto-Connected!"); 
+        }, 600);
+    }
+};
+
+// ==========================================
+// POLE ADDING LOGIC (WITH MAGIC SNAP)
+// ==========================================
 window.saveNewPole = function() {
     const net = window.getActiveNetwork(); if(!net) return false;
     const poleNo = document.getElementById('inpPoleNo').value.trim(), pType = document.getElementById('inpMainPoleType').value, pCond = document.getElementById('inpPoleCondition').value, pConf = document.getElementById('inpPccConfig').value;
@@ -16,9 +91,19 @@ window.saveNewPole = function() {
     if((net.poles||[]).some(p => String(p.poleNo) === poleNo && p.lineType !== 'LT')) { alert("HT Pole Number already exists!"); return false; }
     
     if(window.saveSnapshot) window.saveSnapshot();
-    const newObj = { id: 'POLE_' + Date.now(), poleNo: poleNo, lineType: 'HT', poleType: pType, condition: pCond, poleConfig: pConf, lat: parseFloat(document.getElementById('inpLat').value), lng: parseFloat(document.getElementById('inpLng').value) };
+    
+    const lat = parseFloat(document.getElementById('inpLat').value);
+    const lng = parseFloat(document.getElementById('inpLng').value);
+
+    const newObj = { id: 'POLE_' + Date.now(), poleNo: poleNo, lineType: 'HT', poleType: pType, condition: pCond, poleConfig: pConf, lat: lat, lng: lng };
     if(window.tempPhotoUrl) { window.savePhotoData(newObj.id, window.tempPhotoUrl); window.tempPhotoUrl = null; }
-    net.poles.push(newObj); appState.placementType = null; return true;
+    
+    net.poles.push(newObj); 
+    
+    // TRIGGER MAGIC POLE AUTO-SNAP (For HT)
+    window.autoSplitLinesWithPole('POLE_' + poleNo, lat, lng, false);
+    
+    appState.placementType = null; return true;
 };
 
 window.saveNewLTPole = function() {
@@ -31,11 +116,24 @@ window.saveNewLTPole = function() {
     const poleNo = dt.replace('DT_','') + '-' + (maxL + 1);
     
     if(window.saveSnapshot) window.saveSnapshot();
-    const newObj = { id: 'POLE_' + Date.now(), poleNo: poleNo, lineType: 'LT', dtCode: dt.replace('DT_',''), poleType: pType, condition: pCond, lat: parseFloat(document.getElementById('inpLat').value), lng: parseFloat(document.getElementById('inpLng').value) };
+    
+    const lat = parseFloat(document.getElementById('inpLat').value);
+    const lng = parseFloat(document.getElementById('inpLng').value);
+
+    const newObj = { id: 'POLE_' + Date.now(), poleNo: poleNo, lineType: 'LT', dtCode: dt.replace('DT_',''), poleType: pType, condition: pCond, lat: lat, lng: lng };
     if(window.tempPhotoUrl) { window.savePhotoData(newObj.id, window.tempPhotoUrl); window.tempPhotoUrl = null; }
-    net.poles.push(newObj); appState.placementType = null; return true;
+    
+    net.poles.push(newObj); 
+    
+    // TRIGGER MAGIC POLE AUTO-SNAP (For LT)
+    window.autoSplitLinesWithPole('POLE_' + poleNo, lat, lng, true);
+    
+    appState.placementType = null; return true;
 };
 
+// ==========================================
+// OTHER ADD/EDIT FUNCTIONS
+// ==========================================
 window.saveNewLine = function() {
     const net = window.getActiveNetwork(); if(!net) return false;
     const type = document.getElementById('inpLineType').value, phase = document.getElementById('inpLinePhase') ? document.getElementById('inpLinePhase').value : '', cond = document.getElementById('inpConductor').value, fNode = document.getElementById('inpFromNode').value, tNode = document.getElementById('inpToNode').value;
@@ -76,7 +174,6 @@ window.saveNewConsumer = function() {
     net.consumers.push(newObj); appState.placementType = null; return true;
 };
 
-// --- FIX: SAFE EDIT SAVING LOGIC ---
 window.saveEditedGss = function(code) { 
     const gss = appState.gssNodes[code]; if(!gss) return false;
     const newName = document.getElementById('editGssName').value.trim();
@@ -109,10 +206,40 @@ window.deleteEntity = function(type, id) {
     if(!confirm("Are you sure you want to delete this?")) return;
     if(window.saveSnapshot) window.saveSnapshot();
     if(!appState.deletedObjectIds) appState.deletedObjectIds = []; appState.deletedObjectIds.push(id);
-    if (type === 'pole') net.poles = net.poles.filter(x => x.id !== id); else if (type === 'dt') net.dts = net.dts.filter(x => x.id !== id); else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); else if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
+    
+    if (type === 'pole') net.poles = net.poles.filter(x => x.id !== id); 
+    else if (type === 'dt') net.dts = net.dts.filter(x => x.id !== id); 
+    else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); 
+    else if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
+    
+    if(appState.photos && appState.photos[id]) {
+        delete appState.photos[id];
+        if(window.deletePhotoFromCloud) window.deletePhotoFromCloud(id);
+    }
+    
     window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted successfully");
 };
 
 window.startObjectMove = function(type, id, title) { appState.activeMove = { type, id }; document.getElementById('center-placement-pin').style.display = 'block'; window.closeObjectSheet(); let moveBar = document.getElementById('move-confirm-bar'); if(!moveBar) { moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar'; moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white; flex:1;" onclick="window.cancelMove()">Cancel</button><button class="btn-action-primary" style="flex:1;" onclick="window.confirmMove()">Set New Location</button>`; document.body.appendChild(moveBar); if(typeof L !== 'undefined' && L.DomEvent) { L.DomEvent.disableClickPropagation(moveBar); L.DomEvent.disableScrollPropagation(moveBar); } } moveBar.style.display = 'flex'; document.getElementById('bottom-single-action').style.display = 'none'; window.showToast("Pan map to new location..."); };
 window.cancelMove = function() { appState.activeMove = null; document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; window.renderEntireNetwork(); };
-window.confirmMove = function() { if(!appState.activeMove) return; const center = map.getCenter(); const net = window.getActiveNetwork(); if(window.saveSnapshot) window.saveSnapshot(); const { type, id } = appState.activeMove; if(type === 'GSS') { if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } } else if(type === 'POLE' && net) { const p = (net.poles||[]).find(x => x.id === id); if(p) { p.lat = center.lat; p.lng = center.lng; } } else if(type === 'CONSUMER' && net) { const c = (net.consumers||[]).find(x => x.id === id); if(c) { c.lat = center.lat; c.lng = center.lng; } } window.cancelMove(); window.triggerPersistence(); window.showToast("Location Updated!"); };
+
+window.confirmMove = function() { 
+    if(!appState.activeMove) return; 
+    const center = map.getCenter(); 
+    const net = window.getActiveNetwork(); 
+    if(window.saveSnapshot) window.saveSnapshot(); 
+    
+    const { type, id } = appState.activeMove; 
+    
+    if(type === 'GSS') { 
+        if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } 
+    } else if(type === 'POLE' && net) { 
+        const p = (net.poles||[]).find(x => x.id === id); 
+        if(p) { p.lat = center.lat; p.lng = center.lng; } 
+    } else if(type === 'CONSUMER' && net) { 
+        const c = (net.consumers||[]).find(x => x.id === id); 
+        if(c) { c.lat = center.lat; c.lng = center.lng; } 
+    } 
+    
+    window.cancelMove(); window.triggerPersistence(); window.showToast("Location Updated!"); 
+};
