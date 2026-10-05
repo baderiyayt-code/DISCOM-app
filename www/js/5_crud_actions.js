@@ -4,7 +4,9 @@ window.savePhotoData = function(id, base64) {
     if(!appState.photos) appState.photos = {};
     appState.photos[id] = base64;
     window.triggerPersistence();
+    if(window.uploadPhotoToSupabase) window.uploadPhotoToSupabase(id, base64);
 };
+
 window.getPhotoUrl = function(id) {
     return (appState.photos && appState.photos[id]) ? appState.photos[id] : null;
 };
@@ -76,40 +78,30 @@ window.saveNewConsumer = function() {
     net.consumers.push(newObj); appState.placementType = null; return true;
 };
 
-// --- FIX: SAFE EDIT SAVING LOGIC ---
-window.saveEditedGss = function(code) { 
-    const gss = appState.gssNodes[code]; if(!gss) return false;
-    const newName = document.getElementById('editGssName').value.trim();
-    if(!newName) { alert("Name is required"); return false; }
-    if(window.saveSnapshot) window.saveSnapshot(); gss.name = newName; return true; 
-};
-window.saveEditedPole = function(id) { 
-    const net = window.getActiveNetwork(); if(!net) return false; const p = (net.poles||[]).find(x => x.id === id); if(!p) return false; 
-    if(window.saveSnapshot) window.saveSnapshot(); 
-    p.poleType = document.getElementById('editMainPoleType').value; p.condition = document.getElementById('editPoleCondition').value; p.poleConfig = document.getElementById('editPccConfig') ? document.getElementById('editPccConfig').value : p.poleConfig; return true; 
-};
-window.saveEditedDT = function(id) { 
-    const net = window.getActiveNetwork(); if(!net) return false; const d = (net.dts||[]).find(x => x.id === id); if(!d) return false; 
-    if(window.saveSnapshot) window.saveSnapshot(); 
-    d.mountedOn = document.getElementById('editDTMounted').value; d.phase = document.getElementById('editDTPhase').value; d.rating = document.getElementById('editDTRating').value; d.location = document.getElementById('editDTLocation').value; return true; 
-};
-window.saveEditedConsumer = function(id) { 
-    const net = window.getActiveNetwork(); if(!net) return false; const c = (net.consumers||[]).find(x => x.id === id); if(!c) return false; 
-    if(window.saveSnapshot) window.saveSnapshot(); 
-    c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value; c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; if(!c.name) { alert("Name required"); return false; } return true; 
-};
-window.saveEditedLine = function(id) { 
-    const net = window.getActiveNetwork(); if(!net) return false; const l = (net.lines||[]).find(x => x.id === id); if(!l) return false; 
-    if(window.saveSnapshot) window.saveSnapshot(); 
-    l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase; l.conductor = document.getElementById('editLineConductor').value; return true; 
-};
+window.saveEditedGss = function(code) { const gss = appState.gssNodes[code]; if(!gss) return false; const newName = document.getElementById('editGssName').value.trim(); if(!newName) { alert("Name required"); return false; } if(window.saveSnapshot) window.saveSnapshot(); gss.name = newName; return true; };
+window.saveEditedPole = function(id) { const net = window.getActiveNetwork(); if(!net) return false; const p = (net.poles||[]).find(x => x.id === id); if(!p) return false; if(window.saveSnapshot) window.saveSnapshot(); p.poleType = document.getElementById('editMainPoleType').value; p.condition = document.getElementById('editPoleCondition').value; p.poleConfig = document.getElementById('editPccConfig') ? document.getElementById('editPccConfig').value : p.poleConfig; return true; };
+window.saveEditedDT = function(id) { const net = window.getActiveNetwork(); if(!net) return false; const d = (net.dts||[]).find(x => x.id === id); if(!d) return false; if(window.saveSnapshot) window.saveSnapshot(); d.mountedOn = document.getElementById('editDTMounted').value; d.phase = document.getElementById('editDTPhase').value; d.rating = document.getElementById('editDTRating').value; d.location = document.getElementById('editDTLocation').value; return true; };
+window.saveEditedConsumer = function(id) { const net = window.getActiveNetwork(); if(!net) return false; const c = (net.consumers||[]).find(x => x.id === id); if(!c) return false; if(window.saveSnapshot) window.saveSnapshot(); c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value; c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; if(!c.name) { alert("Name required"); return false; } return true; };
+window.saveEditedLine = function(id) { const net = window.getActiveNetwork(); if(!net) return false; const l = (net.lines||[]).find(x => x.id === id); if(!l) return false; if(window.saveSnapshot) window.saveSnapshot(); l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase; l.conductor = document.getElementById('editLineConductor').value; return true; };
 
+// --- AUTO DELETE PHOTO FROM STORAGE & SUPABASE WHEN OBJECT IS DELETED ---
 window.deleteEntity = function(type, id) {
     const net = window.getActiveNetwork(); if(!net) return;
     if(!confirm("Are you sure you want to delete this?")) return;
     if(window.saveSnapshot) window.saveSnapshot();
     if(!appState.deletedObjectIds) appState.deletedObjectIds = []; appState.deletedObjectIds.push(id);
-    if (type === 'pole') net.poles = net.poles.filter(x => x.id !== id); else if (type === 'dt') net.dts = net.dts.filter(x => x.id !== id); else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); else if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
+    
+    // Remove local photo & database photo
+    if(appState.photos && appState.photos[id]) {
+        delete appState.photos[id];
+        if(window.deletePhotoFromSupabase) window.deletePhotoFromSupabase(id);
+    }
+
+    if (type === 'pole') net.poles = net.poles.filter(x => x.id !== id); 
+    else if (type === 'dt') net.dts = net.dts.filter(x => x.id !== id); 
+    else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); 
+    else if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
+    
     window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted successfully");
 };
 
