@@ -233,7 +233,7 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
 };
 
 // ==========================================
-// DT DETAIL MODAL WITH PHOTO, TABLE & ALL BUTTONS
+// DT DETAIL MODAL WITH CLEAN PHOTO THUMBNAIL & ALL 4 BUTTONS
 // ==========================================
 window.openDTFromSVG = function(e, id) {
     if(e) e.stopPropagation(); 
@@ -287,16 +287,16 @@ window.openDTFromSVG = function(e, id) {
         </div>
         
         <div style="padding: 2px 0;">
-            <!-- PHOTO SECTION -->
-            <div style="display:flex; align-items:center; gap:12px; background:var(--bg-glass); padding:8px 12px; border-radius:10px; border:1px solid var(--border); margin-bottom:10px;">
-                <div style="position:relative; width:50px; height:50px; border-radius:8px; overflow:hidden; background:#e2e8f0; border:1px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center;">
-                    <div id="objPhotoPlaceholder" style="font-size:1.2rem; color:#94a3b8; ${photoUrl ? 'display:none;' : 'display:flex;'}"><i class="fa-solid fa-camera"></i></div>
-                    <img id="objPhotoImg" src="${photoUrl || ''}" onclick="window.openFullScreenPhoto(this.src)" style="width:100%; height:100%; object-fit:cover; cursor:pointer; ${photoUrl ? 'display:block;' : 'display:none;'}">
+            <!-- CLEAN PHOTO THUMBNAIL SECTION -->
+            <div style="display:flex; gap:12px; align-items:center; background:var(--bg-glass); padding:10px; border-radius:10px; border:1px solid var(--border); margin-bottom:12px;">
+                <div id="objPhotoPlaceholder" style="width:70px; height:70px; background:#e2e8f0; border-radius:8px; display:${photoUrl ? 'none' : 'flex'}; align-items:center; justify-content:center; color:#94a3b8; font-size:1.5rem; flex-shrink:0;">
+                    <i class="fa-solid fa-camera"></i>
                 </div>
+                <img id="objPhotoImg" src="${photoUrl || ''}" onclick="window.openFullScreenPhoto(this.src)" style="width:70px; height:70px; object-fit:cover; border-radius:8px; border:1px solid var(--border); cursor:pointer; display:${photoUrl ? 'block' : 'none'}; flex-shrink:0;">
                 <div style="flex:1;">
-                    <div style="font-size:0.75rem; font-weight:700; color:var(--text-main);">DT Site Photo</div>
-                    <div style="font-size:0.7rem; color:var(--text-sub); margin-bottom:4px;">Capture or update inspection photo</div>
-                    <button type="button" class="action-btn-sm bg" style="padding:4px 10px; font-size:0.75rem; background:#0f172a; color:#fff;" onclick="window.captureObjectPhoto()"><i class="fa-solid fa-camera"></i> Capture Photo</button>
+                    <div style="font-size:0.8rem; font-weight:800; color:var(--text-main);">Site Photo</div>
+                    <div style="font-size:0.7rem; color:var(--text-sub); margin-bottom:6px;">Attach or view inspection photo</div>
+                    <button type="button" class="btn-action-primary" style="margin:0; padding:6px 12px; font-size:0.75rem; background:#0f172a; width:auto;" onclick="window.captureObjectPhoto()"><i class="fa-solid fa-camera"></i> Capture Photo</button>
                 </div>
             </div>
 
@@ -326,12 +326,12 @@ window.openDTFromSVG = function(e, id) {
                 </table>
             </div>
 
-            <!-- ACTION BUTTONS: EDIT, REPORT, DELETE -->
+            <!-- ACTION BUTTONS: PDF REPORT, EDIT, DELETE, CAPTURE PHOTO -->
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
                 <button class="btn-action-primary" style="margin:0; background:#0f172a; font-size:0.8rem; padding:10px;" onclick="window.exportDtReportPdf('${d.id}')"><i class="fa-solid fa-file-pdf"></i> PDF Report</button>
                 <button class="btn-action-primary" style="margin:0; background:var(--accent); font-size:0.8rem; padding:10px;" onclick="window.openEditModal('dt', '${d.id}')"><i class="fa-solid fa-pen"></i> Edit DT</button>
                 <button class="btn-action-primary" style="margin:0; background:#ef4444; font-size:0.8rem; padding:10px;" onclick="if(confirm('Delete DT ${d.code}?')) { window.deleteEntity('dt', '${d.id}'); window.closeModal(); }"><i class="fa-solid fa-trash"></i> Delete DT</button>
-                <button class="btn-action-primary" style="margin:0; background:var(--bg-glass); color:var(--text-main); border:1px solid var(--border); font-size:0.8rem; padding:10px;" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i> Close</button>
+                <button class="btn-action-primary" style="margin:0; background:#0f172a; color:#fff; font-size:0.8rem; padding:10px;" onclick="window.captureObjectPhoto()"><i class="fa-solid fa-camera"></i> Capture Photo</button>
             </div>
         </div>
     `);
