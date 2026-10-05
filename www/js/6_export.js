@@ -1,32 +1,38 @@
 /* --- js/6_export.js --- */
 
 // ==========================================
-// UNIVERSAL NATIVE & WEB FILE DOWNLOADER
+// UNIVERSAL NATIVE & WEB FILE DOWNLOADER (WITH UNIQUE TIMESTAMP OVERWRITE FIX)
 // ==========================================
 window.downloadFileNative = function(blob, filename) {
     try {
+        // Append a unique timestamp to filename if it already exists to prevent conflict errors
+        const nameParts = filename.split('.');
+        const ext = nameParts.pop();
+        const baseName = nameParts.join('.');
+        const uniqueFilename = `${baseName}_${Date.now()}.${ext}`;
+
         if (typeof cordova !== 'undefined' && cordova.file && cordova.file.externalRootDirectory) {
             const storageLocation = cordova.file.externalRootDirectory + 'Download/';
             window.resolveLocalFileSystemURL(storageLocation, function(dirEntry) {
-                dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) {
+                dirEntry.getFile(uniqueFilename, { create: true, exclusive: false }, function(fileEntry) {
                     fileEntry.createWriter(function(fileWriter) {
                         fileWriter.onwriteend = function() {
-                            if(window.showToast) window.showToast(`Saved to Downloads: ${filename}`);
+                            if(window.showToast) window.showToast(`Saved to Downloads: ${uniqueFilename}`);
                             window.closeModal();
                         };
                         fileWriter.onerror = function(e) {
                             console.error("Cordova Write Error:", e);
-                            window.fallbackBrowserDownload(blob, filename);
+                            window.fallbackBrowserDownload(blob, uniqueFilename);
                         };
                         fileWriter.write(blob);
-                    }, function(err){ console.error("Writer error:", err); window.fallbackBrowserDownload(blob, filename); });
-                }, function(err){ console.error("File entry error:", err); window.fallbackBrowserDownload(blob, filename); });
+                    }, function(err){ console.error("Writer error:", err); window.fallbackBrowserDownload(blob, uniqueFilename); });
+                }, function(err){ console.error("File entry error:", err); window.fallbackBrowserDownload(blob, uniqueFilename); });
             }, function(err) { 
                 console.error("Storage dir error:", err); 
-                window.fallbackBrowserDownload(blob, filename); 
+                window.fallbackBrowserDownload(blob, uniqueFilename); 
             });
         } else {
-            window.fallbackBrowserDownload(blob, filename);
+            window.fallbackBrowserDownload(blob, uniqueFilename);
         }
     } catch(e) {
         console.error("Download exception:", e);
@@ -80,7 +86,6 @@ window.generateCadSLDPdf = function() {
         
         (net.poles||[]).forEach(p => { if(!isNaN(p.lat) && p.lineType !== 'LT') nodes.push({id: 'POLE_'+p.poleNo, type: 'POLE', lat: p.lat, lng: p.lng, data: p}); });
         
-        // Map DTs grouped by their parent pole to handle multiple DTs cleanly
         let poleDTMap = {};
         (net.dts||[]).forEach(d => {
             if(!isNaN(d.lat)) {
@@ -160,12 +165,10 @@ window.generateCadSLDPdf = function() {
             } else if(n.type === 'POLE') {
                 doc.setFillColor(100, 116, 139); doc.circle(pos.x, pos.y, 0.5, 'F');
                 
-                // Draw associated DTs directly over/near the pole exactly
                 const pNo = String(n.data.poleNo);
                 const dts = poleDTMap[pNo] || [];
                 if(dts.length > 0) {
                     dts.forEach((dt, idx) => {
-                        // Offset slightly if multiple DTs on same pole so they don't overlap
                         let offsetX = 0, offsetY = 0;
                         if(dts.length > 1) {
                             if(idx === 0) offsetX = -0.8;
@@ -196,77 +199,8 @@ window.generateCadSLDPdf = function() {
 }
 
 // ==========================================
-// 2. EXPORT TO GOOGLE EARTH (KML)
+// 2. EXPORT DT REPORT PDF
 // ==========================================
-window.exportToGoogleEarth_KML = function() {
-    const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
-    let kml = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${net.feeder.name || 'Feeder'} KML</name>`;
-    kml += `<Style id="htLine"><LineStyle><color>ffeb6325</color><width>4</width></LineStyle></Style><Style id="dtIcon"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_square.png</href></Icon></IconStyle></Style><Style id="poleIcon"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/open-diamond.png</href></Icon></IconStyle></Style>`;
-    (net.poles||[]).forEach(p => { if(!isNaN(p.lat)) kml += `<Placemark><name>Pole ${p.poleNo}</name><styleUrl>#poleIcon</styleUrl><Point><coordinates>${p.lng},${p.lat},0</coordinates></Point></Placemark>`; });
-    (net.dts||[]).forEach(d => { if(!isNaN(d.lat)) kml += `<Placemark><name>DT ${d.code} (${d.rating}kVA)</name><styleUrl>#dtIcon</styleUrl><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>`; });
-    (net.lines||[]).forEach(l => { const n1 = window.getNodeCoords(l.fromNode); const n2 = window.getNodeCoords(l.toNode); if(n1 && n2 && !isNaN(n1.lat) && !isNaN(n2.lat)) { kml += `<Placemark><name>${l.type}</name><styleUrl>#htLine</styleUrl><LineString><coordinates>${n1.lng},${n1.lat},0 ${n2.lng},${n2.lat},0</coordinates></LineString></Placemark>`; } });
-    kml += `</Document></kml>`;
-    
-    const blob = new Blob([kml], {type: "application/vnd.google-earth.kml+xml"});
-    window.downloadFileNative(blob, `${(net.feeder.name || 'network').replace(/\s+/g, '_')}.kml`);
-}
-
-// ==========================================
-// 3. EXPORT TO AUTOCAD (DXF)
-// ==========================================
-window.exportToAutoCAD_DXF = function() {
-    const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
-    let dxf = "0\nSECTION\n2\nENTITIES\n";
-    (net.lines||[]).forEach(l => { const n1 = window.getNodeCoords(l.fromNode); const n2 = window.getNodeCoords(l.toNode); if(n1 && n2 && !isNaN(n1.lat)) { dxf += `0\nLINE\n8\nLines\n10\n${n1.lng}\n20\n${n1.lat}\n11\n${n2.lng}\n21\n${n2.lat}\n`; } });
-    (net.dts||[]).forEach(d => { if(!isNaN(d.lat)) dxf += `0\nPOINT\n8\nDTs\n10\n${d.lng}\n20\n${d.lat}\n`; });
-    dxf += "0\nENDSEC\n0\nEOF\n";
-    
-    const blob = new Blob([dxf], {type: "application/dxf"});
-    window.downloadFileNative(blob, `${(net.feeder.name || 'network').replace(/\s+/g, '_')}.dxf`);
-}
-
-// ==========================================
-// 4. EXPORT TO CSV (DATA DUMP)
-// ==========================================
-window.exportDataToCSV = function() {
-    const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
-    let csv = "Type,ID/Code,Lat,Lng,Details\n";
-    (net.poles||[]).forEach(p => csv += `POLE,${p.poleNo},${p.lat},${p.lng},${p.lineType} - ${p.poleType}\n`);
-    (net.dts||[]).forEach(d => csv += `DT,${d.code},${d.lat},${d.lng},${d.rating}kVA - ${d.phase}\n`);
-    (net.lines||[]).forEach(l => csv += `LINE,${l.fromNode} to ${l.toNode},,,${l.type} - ${(l.distanceMeters||0).toFixed(1)}m\n`);
-    (net.consumers||[]).forEach(c => csv += `CONSUMER,${c.kno},${c.lat},${c.lng},${c.name} - ${c.cType}\n`);
-
-    const blob = new Blob([csv], {type: "text/csv"});
-    window.downloadFileNative(blob, `${(net.feeder.name || 'network').replace(/\s+/g, '_')}_Data.csv`);
-}
-
-// ==========================================
-// 5. JSON BACKUP & RESTORE
-// ==========================================
-window.exportFullJSONBackup = function() {
-    if(!appState) return;
-    const dataStr = JSON.stringify(appState, null, 2);
-    const blob = new Blob([dataStr], {type: "application/json"});
-    window.downloadFileNative(blob, `DISCOM_Survey_Backup_${new Date().getTime()}.json`);
-}
-
-window.handleImportChoice = function(e) {
-    const file = e.target.files[0]; 
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-        try {
-            const importedData = JSON.parse(ev.target.result);
-            if(!importedData.feeders || !importedData.gssNodes) return alert("Invalid Backup File!");
-            appState = importedData;
-            window.triggerPersistence(); window.renderEntireNetwork();
-            alert("Backup Restored Successfully!"); window.closeModal();
-        } catch(err) { alert("Error parsing JSON file!"); }
-    };
-    reader.readAsText(file);
-}
-/* --- Add inside js/6_export.js --- */
-
 window.exportDtReportPdf = function(dtId) {
     const net = window.getActiveNetwork(); if(!net) return;
     const d = (net.dts||[]).find(x => x.id === dtId); if(!d) return;
@@ -315,7 +249,6 @@ window.exportDtReportPdf = function(dtId) {
             if(isConnected) connectedConsumers.push(c);
         });
 
-        // Table Headers
         doc.setFillColor(30, 41, 59);
         doc.rect(15, y, 180, 8, 'F');
         doc.setFontSize(8); doc.setTextColor(255, 255, 255);
@@ -353,3 +286,74 @@ window.exportDtReportPdf = function(dtId) {
         alert("Error generating DT PDF report.");
     }
 };
+
+// ==========================================
+// 3. EXPORT TO GOOGLE EARTH (KML)
+// ==========================================
+window.exportToGoogleEarth_KML = function() {
+    const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
+    let kml = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${net.feeder.name || 'Feeder'} KML</name>`;
+    kml += `<Style id="htLine"><LineStyle><color>ffeb6325</color><width>4</width></LineStyle></Style><Style id="dtIcon"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_square.png</href></Icon></IconStyle></Style><Style id="poleIcon"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/shapes/open-diamond.png</href></Icon></IconStyle></Style>`;
+    (net.poles||[]).forEach(p => { if(!isNaN(p.lat)) kml += `<Placemark><name>Pole ${p.poleNo}</name><styleUrl>#poleIcon</styleUrl><Point><coordinates>${p.lng},${p.lat},0</coordinates></Point></Placemark>`; });
+    (net.dts||[]).forEach(d => { if(!isNaN(d.lat)) kml += `<Placemark><name>DT ${d.code} (${d.rating}kVA)</name><styleUrl>#dtIcon</styleUrl><Point><coordinates>${d.lng},${d.lat},0</coordinates></Point></Placemark>`; });
+    (net.lines||[]).forEach(l => { const n1 = window.getNodeCoords(l.fromNode); const n2 = window.getNodeCoords(l.toNode); if(n1 && n2 && !isNaN(n1.lat) && !isNaN(n2.lat)) { kml += `<Placemark><name>${l.type}</name><styleUrl>#htLine</styleUrl><LineString><coordinates>${n1.lng},${n1.lat},0 ${n2.lng},${n2.lat},0</coordinates></LineString></Placemark>`; } });
+    kml += `</Document></kml>`;
+    
+    const blob = new Blob([kml], {type: "application/vnd.google-earth.kml+xml"});
+    window.downloadFileNative(blob, `${(net.feeder.name || 'network').replace(/\s+/g, '_')}.kml`);
+}
+
+// ==========================================
+// 4. EXPORT TO AUTOCAD (DXF)
+// ==========================================
+window.exportToAutoCAD_DXF = function() {
+    const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
+    let dxf = "0\nSECTION\n2\nENTITIES\n";
+    (net.lines||[]).forEach(l => { const n1 = window.getNodeCoords(l.fromNode); const n2 = window.getNodeCoords(l.toNode); if(n1 && n2 && !isNaN(n1.lat)) { dxf += `0\nLINE\n8\nLines\n10\n${n1.lng}\n20\n${n1.lat}\n11\n${n2.lng}\n21\n${n2.lat}\n`; } });
+    (net.dts||[]).forEach(d => { if(!isNaN(d.lat)) dxf += `0\nPOINT\n8\nDTs\n10\n${d.lng}\n20\n${d.lat}\n`; });
+    dxf += "0\nENDSEC\n0\nEOF\n";
+    
+    const blob = new Blob([dxf], {type: "application/dxf"});
+    window.downloadFileNative(blob, `${(net.feeder.name || 'network').replace(/\s+/g, '_')}.dxf`);
+}
+
+// ==========================================
+// 5. EXPORT TO CSV (DATA DUMP)
+// ==========================================
+window.exportDataToCSV = function() {
+    const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
+    let csv = "Type,ID/Code,Lat,Lng,Details\n";
+    (net.poles||[]).forEach(p => csv += `POLE,${p.poleNo},${p.lat},${p.lng},${p.lineType} - ${p.poleType}\n`);
+    (net.dts||[]).forEach(d => csv += `DT,${d.code},${d.lat},${d.lng},${d.rating}kVA - ${d.phase}\n`);
+    (net.lines||[]).forEach(l => csv += `LINE,${l.fromNode} to ${l.toNode},,,${l.type} - ${(l.distanceMeters||0).toFixed(1)}m\n`);
+    (net.consumers||[]).forEach(c => csv += `CONSUMER,${c.kno},${c.lat},${c.lng},${c.name} - ${c.cType}\n`);
+
+    const blob = new Blob([csv], {type: "text/csv"});
+    window.downloadFileNative(blob, `${(net.feeder.name || 'network').replace(/\s+/g, '_')}_Data.csv`);
+}
+
+// ==========================================
+// 6. JSON BACKUP & RESTORE
+// ==========================================
+window.exportFullJSONBackup = function() {
+    if(!appState) return;
+    const dataStr = JSON.stringify(appState, null, 2);
+    const blob = new Blob([dataStr], {type: "application/json"});
+    window.downloadFileNative(blob, `DISCOM_Survey_Backup_${new Date().getTime()}.json`);
+}
+
+window.handleImportChoice = function(e) {
+    const file = e.target.files[0]; 
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        try {
+            const importedData = JSON.parse(ev.target.result);
+            if(!importedData.feeders || !importedData.gssNodes) return alert("Invalid Backup File!");
+            appState = importedData;
+            window.triggerPersistence(); window.renderEntireNetwork();
+            alert("Backup Restored Successfully!"); window.closeModal();
+        } catch(err) { alert("Error parsing JSON file!"); }
+    };
+    reader.readAsText(file);
+}
