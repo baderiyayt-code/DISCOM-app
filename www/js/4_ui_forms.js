@@ -32,7 +32,12 @@ window.closeModal = function() {
     } 
 }
 
+// --- PREVENT DOUBLE CLICK BUG ---
+window.isSavingData = false; 
 window.executeSafeSave = function(actionFn) {
+    if(window.isSavingData) return; // Agar pehle se save ho raha h to dubara click ignore kare
+    window.isSavingData = true;
+    
     let hasError = false;
     const origAlert = window.alert;
     window.alert = function(msg) { hasError = true; origAlert(msg); };
@@ -49,7 +54,12 @@ window.executeSafeSave = function(actionFn) {
         if(window.renderEntireNetwork) window.renderEntireNetwork(); 
         if(window.triggerPersistence) window.triggerPersistence(); 
     }
+    
+    // 800 milliseconds ke baad lock khulega
+    setTimeout(() => { window.isSavingData = false; }, 800); 
 };
+
+
 
 window.toggleSpeedDial = function(e) { 
     if(e) { e.preventDefault(); e.stopPropagation(); } 
