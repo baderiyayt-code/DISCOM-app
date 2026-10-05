@@ -231,7 +231,6 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
     document.getElementById('btnObjMove').onclick = () => { if(window.startObjectMove) window.startObjectMove(type, id, title); }; 
     document.getElementById('btnObjDelete').onclick = () => { if(window.deleteEntity) window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
 };
-/* --- Update openDTFromSVG inside js/4_ui_forms.js --- */
 
 window.openDTFromSVG = function(e, id) {
     if(e) e.stopPropagation(); 
@@ -285,7 +284,7 @@ window.openDTFromSVG = function(e, id) {
         </div>
         
         <div style="padding: 2px 0;">
-            <!-- SIDE THUMBNAIL LAYOUT (Like other objects) -->
+            <!-- SIDE THUMBNAIL LAYOUT -->
             <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
                 <div style="position:relative; width:64px; height:64px; border-radius:10px; overflow:hidden; background:var(--bg-glass); border:1px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center;">
                     <div id="objPhotoPlaceholder" style="font-size:1.4rem; color:var(--text-sub); ${photoUrl ? 'display:none;' : 'display:flex;'}"><i class="fa-solid fa-camera"></i></div>
@@ -318,7 +317,7 @@ window.openDTFromSVG = function(e, id) {
                 </table>
             </div>
 
-            <!-- ACTION BUTTONS: PDF REPORT, EDIT, DELETE, CAPTURE PHOTO -->
+            <!-- ACTION BUTTONS -->
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
                 <button class="btn-action-primary" style="margin:0; background:#0f172a; font-size:0.8rem; padding:10px;" onclick="window.exportDtReportPdf('${d.id}')"><i class="fa-solid fa-file-pdf"></i> PDF Report</button>
                 <button class="btn-action-primary" style="margin:0; background:var(--accent); font-size:0.8rem; padding:10px;" onclick="window.openEditModal('dt', '${d.id}')"><i class="fa-solid fa-pen"></i> Edit DT</button>
@@ -329,8 +328,6 @@ window.openDTFromSVG = function(e, id) {
     `);
 };
 
-
-            
 const dtRatingOptionsHtml = `<option value="10">10 kVA</option><option value="16">16 kVA</option><option value="25" selected>25 kVA</option><option value="40">40 kVA</option><option value="63">63 kVA</option><option value="100">100 kVA</option><option value="160">160 kVA</option><option value="250">250 kVA</option><option value="315">315 kVA</option><option value="500">500 kVA</option>`;
 window.togglePccConfig = function(id = 'inpMainPoleType', targetId = 'pccConfigDiv') { const pType = document.getElementById(id)?.value; const configDiv = document.getElementById(targetId); if(configDiv) configDiv.style.display = pType === 'PCC' ? 'block' : 'none'; };
 window.toggleLineConductor = function(id = 'inpLineType', targetId = 'inpConductor') { const lType = document.getElementById(id)?.value; const sel = document.getElementById(targetId); if(!sel) return; if(lType === '11 KV LINE') { sel.innerHTML = `<option value="Weasel">Weasel</option><option value="Rabbit">Rabbit</option><option value="Dog">Dog</option><option value="Underground Cable">Underground Cable</option>`; if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'block'; } else { sel.innerHTML = `<option value="Single Phase">Single Phase</option><option value="Three Phase">Three Phase</option>`; if(document.getElementById('linePhaseRow')) document.getElementById('linePhaseRow').style.display = 'none'; } };
