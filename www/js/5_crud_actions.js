@@ -292,9 +292,26 @@ window.saveNewLine = function() {
 
     if(window.saveSnapshot) window.saveSnapshot();
     const newObj = { id: 'LINE_' + Date.now(), type: type, phase: phase, conductor: cond, fromNode: fNode, toNode: tNode };
+    
+    // Push new line temporarily to test for loops
+    net.lines.push(newObj);
+
+    // --- LOOP VALIDATION CHECK ---
+    const isLT = type && type.includes('LT');
+    const validationResult = window.validateNetworkLoops(net, isLT ? 'LT' : 'HT');
+    
+    if (validationResult.hasLoop) {
+        // If a loop is formed, remove the line and alert the user
+        net.lines.pop();
+        alert(validationResult.message);
+        return false;
+    }
+
     if(window.tempPhotoUrl) { window.savePhotoData(newObj.id, window.tempPhotoUrl); window.tempPhotoUrl = null; }
-    net.lines.push(newObj); return true;
+    if(window.showToast) window.showToast("Line saved successfully!");
+    return true;
 };
+
 
 window.saveNewDT = function() {
     const net = window.getActiveNetwork(); if(!net) return false;
@@ -370,6 +387,73 @@ window.deleteEntity = function(type, id) {
     }
     
     window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted successfully");
+};
+
+/* --- Loop Validation Function --- */
+window.validateNetworkLoops = function(net, networkType = 'HT') {
+    if (!net || !net.lines || !net.poles) return { hasLoop: false, message: "Valid" };
+
+    const targetLines = net.lines.filter(l => {
+        const isLT = l.type && l.type.includes('LT');
+        return networkType === 'LT' ? isLT : !isLT;
+    });
+
+    if (targetLines.length === 0) return { hasLoop: false, message: "No lines to check" };
+
+    const adjList = {};
+    targetLines.forEach(l => {
+        const u = l.fromNode;
+        const v = l.toNode;
+        if (!adjList[u]) adjList[u] = [];
+        if (!adjList[v]) adjList[v] = [];
+        adjList[u].push(v);
+        adjList[v].push(u);
+    });
+
+    let visited = new Set();
+    let parentMap = {};
+    let loopDetected = false;
+    let loopPath = [];
+
+    function dfs(node, parent) {
+        visited.add(node);
+        parentMap[node] = parent;
+
+        const neighbors = adjList[node] || [];
+        for (let neighbor of neighbors) {
+            if (!visited.has(neighbor)) {
+                if (dfs(neighbor, node)) return true;
+            } else if (neighbor !== parent) {
+                loopDetected = true;
+                loopPath.push(neighbor);
+                let curr = node;
+                while (curr !== neighbor && curr) {
+                    loopPath.push(curr);
+                    curr = parentMap[curr];
+                }
+                loopPath.push(neighbor);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    for (let node of Object.keys(adjList)) {
+        if (!visited.has(node)) {
+            if (dfs(node, null)) {
+                break;
+            }
+        }
+    }
+
+    if (loopDetected) {
+        return {
+            hasLoop: true,
+            message: `⚠️ Loop Detected in ${networkType} Network! Nodes involved: ${loopPath.join(' -> ')}`
+        };
+    }
+
+    return { hasLoop: false, message: `${networkType} network is clean.` };
 };
 
 window.startObjectMove = function(type, id, title) { appState.activeMove = { type, id }; document.getElementById('center-placement-pin').style.display = 'block'; window.closeObjectSheet(); let moveBar = document.getElementById('move-confirm-bar'); if(!moveBar) { moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar'; moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white; flex:1;" onclick="window.cancelMove()">Cancel</button><button class="btn-action-primary" style="flex:1;" onclick="window.confirmMove()">Set New Location</button>`; document.body.appendChild(moveBar); if(typeof L !== 'undefined' && L.DomEvent) { L.DomEvent.disableClickPropagation(moveBar); L.DomEvent.disableScrollPropagation(moveBar); } } moveBar.style.display = 'flex'; document.getElementById('bottom-single-action').style.display = 'none'; window.showToast("Pan map to new location..."); };
