@@ -3,9 +3,8 @@
 window.savePhotoData = function(id, base64) {
     if(!appState.photos) appState.photos = {};
     appState.photos[id] = base64;
-    window.triggerPersistence(); // Triggers background sync to Supabase object_photos table
+    window.triggerPersistence();
 };
-
 window.getPhotoUrl = function(id) {
     return (appState.photos && appState.photos[id]) ? appState.photos[id] : null;
 };
@@ -77,33 +76,41 @@ window.saveNewConsumer = function() {
     net.consumers.push(newObj); appState.placementType = null; return true;
 };
 
-window.saveEditedGss = function(code) { const gss = appState.gssNodes[code]; if(!gss) return false; const newName = document.getElementById('editGssName').value.trim(); if(!newName) { alert("Name required"); return false; } if(window.saveSnapshot) window.saveSnapshot(); gss.name = newName; return true; };
-window.saveEditedPole = function(id) { const net = window.getActiveNetwork(); if(!net) return false; const p = (net.poles||[]).find(x => x.id === id); if(!p) return false; if(window.saveSnapshot) window.saveSnapshot(); p.poleType = document.getElementById('editMainPoleType').value; p.condition = document.getElementById('editPoleCondition').value; p.poleConfig = document.getElementById('editPccConfig') ? document.getElementById('editPccConfig').value : p.poleConfig; return true; };
-window.saveEditedDT = function(id) { const net = window.getActiveNetwork(); if(!net) return false; const d = (net.dts||[]).find(x => x.id === id); if(!d) return false; if(window.saveSnapshot) window.saveSnapshot(); d.mountedOn = document.getElementById('editDTMounted').value; d.phase = document.getElementById('editDTPhase').value; d.rating = document.getElementById('editDTRating').value; d.location = document.getElementById('editDTLocation').value; return true; };
-window.saveEditedConsumer = function(id) { const net = window.getActiveNetwork(); if(!net) return false; const c = (net.consumers||[]).find(x => x.id === id); if(!c) return false; if(window.saveSnapshot) window.saveSnapshot(); c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value; c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; if(!c.name) { alert("Name required"); return false; } return true; };
-window.saveEditedLine = function(id) { const net = window.getActiveNetwork(); if(!net) return false; const l = (net.lines||[]).find(x => x.id === id); if(!l) return false; if(window.saveSnapshot) window.saveSnapshot(); l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase; l.conductor = document.getElementById('editLineConductor').value; return true; };
+// --- FIX: SAFE EDIT SAVING LOGIC ---
+window.saveEditedGss = function(code) { 
+    const gss = appState.gssNodes[code]; if(!gss) return false;
+    const newName = document.getElementById('editGssName').value.trim();
+    if(!newName) { alert("Name is required"); return false; }
+    if(window.saveSnapshot) window.saveSnapshot(); gss.name = newName; return true; 
+};
+window.saveEditedPole = function(id) { 
+    const net = window.getActiveNetwork(); if(!net) return false; const p = (net.poles||[]).find(x => x.id === id); if(!p) return false; 
+    if(window.saveSnapshot) window.saveSnapshot(); 
+    p.poleType = document.getElementById('editMainPoleType').value; p.condition = document.getElementById('editPoleCondition').value; p.poleConfig = document.getElementById('editPccConfig') ? document.getElementById('editPccConfig').value : p.poleConfig; return true; 
+};
+window.saveEditedDT = function(id) { 
+    const net = window.getActiveNetwork(); if(!net) return false; const d = (net.dts||[]).find(x => x.id === id); if(!d) return false; 
+    if(window.saveSnapshot) window.saveSnapshot(); 
+    d.mountedOn = document.getElementById('editDTMounted').value; d.phase = document.getElementById('editDTPhase').value; d.rating = document.getElementById('editDTRating').value; d.location = document.getElementById('editDTLocation').value; return true; 
+};
+window.saveEditedConsumer = function(id) { 
+    const net = window.getActiveNetwork(); if(!net) return false; const c = (net.consumers||[]).find(x => x.id === id); if(!c) return false; 
+    if(window.saveSnapshot) window.saveSnapshot(); 
+    c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value; c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; if(!c.name) { alert("Name required"); return false; } return true; 
+};
+window.saveEditedLine = function(id) { 
+    const net = window.getActiveNetwork(); if(!net) return false; const l = (net.lines||[]).find(x => x.id === id); if(!l) return false; 
+    if(window.saveSnapshot) window.saveSnapshot(); 
+    l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase; l.conductor = document.getElementById('editLineConductor').value; return true; 
+};
 
 window.deleteEntity = function(type, id) {
     const net = window.getActiveNetwork(); if(!net) return;
     if(!confirm("Are you sure you want to delete this?")) return;
     if(window.saveSnapshot) window.saveSnapshot();
-    
-    if(!appState.deletedObjectIds) appState.deletedObjectIds = []; 
-    appState.deletedObjectIds.push(id);
-    
-    // Remove Photo locally and queue online deletion
-    if(appState.photos && appState.photos[id]) {
-        delete appState.photos[id];
-    }
-    
-    if (type === 'pole') net.poles = net.poles.filter(x => x.id !== id); 
-    else if (type === 'dt') net.dts = net.dts.filter(x => x.id !== id); 
-    else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); 
-    else if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
-    
-    window.renderEntireNetwork(); 
-    window.triggerPersistence(); 
-    window.showToast("Deleted successfully");
+    if(!appState.deletedObjectIds) appState.deletedObjectIds = []; appState.deletedObjectIds.push(id);
+    if (type === 'pole') net.poles = net.poles.filter(x => x.id !== id); else if (type === 'dt') net.dts = net.dts.filter(x => x.id !== id); else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); else if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
+    window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted successfully");
 };
 
 window.startObjectMove = function(type, id, title) { appState.activeMove = { type, id }; document.getElementById('center-placement-pin').style.display = 'block'; window.closeObjectSheet(); let moveBar = document.getElementById('move-confirm-bar'); if(!moveBar) { moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar'; moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white; flex:1;" onclick="window.cancelMove()">Cancel</button><button class="btn-action-primary" style="flex:1;" onclick="window.confirmMove()">Set New Location</button>`; document.body.appendChild(moveBar); if(typeof L !== 'undefined' && L.DomEvent) { L.DomEvent.disableClickPropagation(moveBar); L.DomEvent.disableScrollPropagation(moveBar); } } moveBar.style.display = 'flex'; document.getElementById('bottom-single-action').style.display = 'none'; window.showToast("Pan map to new location..."); };
