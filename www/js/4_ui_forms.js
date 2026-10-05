@@ -290,3 +290,30 @@ window.openEditModal = function(type, id) {
         window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" class="form-input" placeholder=" " value="${l.type}" disabled><label>Voltage Type (Locked)</label></div><div class="form-row" id="editLinePhaseRow" style="display:${l.type.includes('11')?'block':'none'}"><select id="editLinePhase" class="form-select"><option value="Three Phase" ${l.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${l.phase==='Single Phase'?'selected':''}>Single Phase</option></select><label>Phase Type (HT)*</label></div><div class="form-row"><select id="editLineConductor" class="form-select">${l.type.includes('11') ? `<option value="Weasel" ${l.conductor==='Weasel'?'selected':''}>Weasel</option><option value="Rabbit" ${l.conductor==='Rabbit'?'selected':''}>Rabbit</option><option value="Dog" ${l.conductor==='Dog'?'selected':''}>Dog</option><option value="Underground Cable" ${l.conductor==='Underground Cable'?'selected':''}>Underground Cable</option>` : `<option value="Single Phase" ${l.conductor==='Single Phase'?'selected':''}>Single Phase</option><option value="Three Phase" ${l.conductor==='Three Phase'?'selected':''}>Three Phase</option>`}</select><label>Conductor</label></div><button class="btn-action-primary" onclick="window.executeSafeSave(() => window.saveEditedLine('${l.id}'))">Save Changes</button>`); 
     }
 }
+/* ==========================================
+   ABOUT APP MODAL
+========================================== */
+window.openAboutModal = function() {
+    window.toggleSidebar(false);
+    window.openModal(`
+        <div class="sheet-head">
+            <div class="sheet-title"><i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i> About DISCOM Survey Pro</div>
+            <button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div style="text-align: center; padding: 10px 0 20px 0;">
+            <div style="width: 64px; height: 64px; background: var(--accent); color: white; font-size: 32px; border-radius: 16px; display: flex; align-items:center; justify-content:center; margin: 0 auto 15px auto; box-shadow: 0 8px 20px rgba(37,99,235,0.3);">
+                <i class="fa-solid fa-bolt"></i>
+            </div>
+            <h3 style="font-size: 1.2rem; font-weight: 900; color: var(--text-main); margin-bottom: 5px;">DISCOM Survey Pro</h3>
+            <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 20px;">Professional GIS-based field survey mobile application designed for electricity infrastructure mapping, asset tracking, and enterprise-grade data management.</p>
+            
+            <div style="background: var(--bg-glass); border: 1px solid var(--border); padding: 12px; border-radius: 10px; text-align: left; margin-bottom: 20px;">
+                <div style="font-size: 0.8rem; color: var(--text-sub);">Developed By</div>
+                <div style="font-size: 0.95rem; font-weight: 800; color: var(--text-main); margin-top: 2px;">Suraj Singh Mehta</div>
+                <div style="font-size: 0.75rem; color: var(--accent); margin-top: 4px;">Electrical Asset Management Specialist</div>
+            </div>
+
+            <div style="font-size: 0.75rem; color: var(--text-sub);">Version 2.5.0 (Enterprise Edition)</div>
+        </div>
+    `);
+};
