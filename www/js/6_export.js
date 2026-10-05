@@ -37,7 +37,7 @@ window.downloadFileNative = function(blob, filename) {
 };
 
 // ==========================================
-// 1. GENERATE PROFESSIONAL SLD PDF (DT ICON RESIZED SMALLER)
+// 1. GENERATE PROFESSIONAL SLD PDF (AUTO-ROTATE FIT)
 // ==========================================
 window.generateCadSLDPdf = function() {
     const net = window.getActiveNetwork();
@@ -118,19 +118,20 @@ window.generateCadSLDPdf = function() {
             if(n.type === 'GSS') {
                 doc.setFillColor(220, 38, 38); doc.setDrawColor(0,0,0); doc.setLineWidth(0.2); doc.rect(pos.x - 3, pos.y - 2, 6, 4, 'FD'); doc.setFontSize(4.5); doc.setTextColor(255,255,255); doc.text("GSS", pos.x, pos.y + 1, { align: 'center' }); doc.setTextColor(0,0,0); doc.setFontSize(4); doc.text(n.data.name || "Substation", pos.x, pos.y - 3, { align: 'center' });
             } else if(n.type === 'DT') {
-                // --- DT ICON MADE SMALLER (2.5mm x 2.5mm) ---
+                // --- DT ICON RESIZED SMALLER (2.5mm x 2.5mm) ---
                 doc.setFillColor(249, 115, 22); doc.setDrawColor(0,0,0); doc.setLineWidth(0.15); 
                 doc.rect(pos.x - 1.25, pos.y - 1.25, 2.5, 2.5, 'FD'); 
                 doc.setFontSize(3.5); doc.setTextColor(0,0,0); 
                 const rating = String(n.data.rating).replace(/[^0-9]/g, ''); 
                 doc.text(rating, pos.x, pos.y + 0.9, { align: 'center' });
             } else if(n.type === 'POLE') {
-                doc.setFillColor(100, 116, 139); doc.circle(pos.x, pos.y, 0.5, 'F');
+                doc.setFillColor(100, 116, 139); doc.circle(pos.x, pos.y, 0.6, 'F');
             }
         });
 
         doc.setFillColor(255, 255, 255); doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3); doc.rect(pageWidth - margin - 45, pageHeight - margin - 12, 43, 10, 'FD'); doc.setFontSize(6); doc.setTextColor(0, 0, 0); doc.text(`Feeder Name: ${fName}`, pageWidth - margin - 43, pageHeight - margin - 8.5); doc.text(`Total HT Length: ${(totalHT/1000).toFixed(3)} km`, pageWidth - margin - 43, pageHeight - margin - 5.5); doc.text(`Total DTs: ${(net.dts||[]).length}`, pageWidth - margin - 43, pageHeight - margin - 2.5);
 
+        // --- FIXED: NATIVE PDF DOWNLOAD ---
         const pdfBlob = doc.output('blob');
         window.downloadFileNative(pdfBlob, `${fName.replace(/\s+/g, '_')}_SLD.pdf`);
         
