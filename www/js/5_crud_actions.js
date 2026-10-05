@@ -4,7 +4,9 @@ window.savePhotoData = function(id, base64) {
     if(!appState.photos) appState.photos = {};
     appState.photos[id] = base64;
     window.triggerPersistence();
-    if(window.syncPhotosToCloud) window.syncPhotosToCloud(id, base64);
+    if(window.syncPhotosToCloud) {
+        window.syncPhotosToCloud(id, base64);
+    }
 };
 
 window.getPhotoUrl = function(id) {
@@ -12,95 +14,119 @@ window.getPhotoUrl = function(id) {
 };
 
 // ==========================================
-// ⚡ STRICT MAGIC POLE LOGIC (Step-by-Step as requested)
+// MAGIC POLE AUTO-SPLIT LOGIC
 // ==========================================
-window.distancePointToSegmentMeters = function(lat, lng, lat1, lng1, lat2, lng2) {
-    const R = 6371000; 
-    const dLatToMeters = R * Math.PI / 180;
-    const dLngToMeters = R * Math.PI / 180 * Math.cos(lat1 * Math.PI / 180);
+window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
+    if(!net || !net.lines || !net.poles) return;
+    
+    let targetLineIndex = -1;
+    let matchedLine = null;
 
-    const cx = lng * dLngToMeters, cy = lat * dLatToMeters;
-    const ax = lng1 * dLngToMeters, ay = lat1 * dLatToMeters;
-    const bx = lng2 * dLngToMeters, by = lat2 * dLatToMeters;
-
-    const l2 = Math.pow(bx - ax, 2) + Math.pow(by - ay, 2);
-    if (l2 === 0) return Math.sqrt(Math.pow(cx - ax, 2) + Math.pow(cy - ay, 2));
-
-    let t = ((cx - ax) * (bx - ax) + (cy - ay) * (by - ay)) / l2;
-    t = Math.max(0, Math.min(1, t));
-
-    const projX = ax + t * (bx - ax), projY = ay + t * (by - ay);
-    return Math.sqrt(Math.pow(cx - projX, 2) + Math.pow(cy - projY, 2));
-};
-
-window.autoSplitLinesWithPole = function(newPoleNodeId, poleLat, poleLng, isLT) {
-    const net = window.getActiveNetwork();
-    if(!net || !net.lines) return;
-
-    let targetLineIdx = -1;
-    // सटीक 2.5 मीटर का दायरा (सिर्फ लाइन के ऊपर पोल रखने पर ही काम करेगा)
-    let minDistance = 2.5; 
-
-    // STEP 1: पुरानी लाइन की जानकारी लेना (किस नोड से किस नोड तक जुड़ी है)
-    for(let i = 0; i < net.lines.length; i++) {
-        const line = net.lines[i];
+    for (let i = 0; i < net.lines.length; i++) {
+        const l = net.lines[i];
+        const n1 = window.getNodeCoords(l.fromNode);
+        const n2 = window.getNodeCoords(l.toNode);
         
-        const isLineLT = line.type.includes('LT');
-        if (isLT && !isLineLT) continue;
-        if (!isLT && isLineLT) continue;
+        if (n1 && n2) {
+            const distToSegment = window.calculatePointToSegmentDistance(
+                { lat: newPole.lat, lng: newPole.lng },
+                { lat: n1.lat, lng: n1.lng },
+                { lat: n2.lat, lng: n2.lng }
+            );
 
-        const n1 = window.getNodeCoords(line.fromNode);
-        const n2 = window.getNodeCoords(line.toNode);
-        
-        if(n1 && n2 && !isNaN(n1.lat) && !isNaN(n2.lat)) {
-            const dist = window.distancePointToSegmentMeters(poleLat, poleLng, n1.lat, n1.lng, n2.lat, n2.lng);
-            if(dist < minDistance) {
-                minDistance = dist;
-                targetLineIdx = i; // वह लाइन मिल गई जिसे काटना है
+            const isBetweenEndpoints = window.isPointOnSegment(
+                { lat: newPole.lat, lng: newPole.lng },
+                { lat: n1.lat, lng: n1.lng },
+                { lat: n2.lat, lng: n2.lng }
+            );
+
+            if (distToSegment <= 5.0 && isBetweenEndpoints) {
+                targetLineIndex = i;
+                matchedLine = l;
+                break; 
             }
         }
     }
 
-    // अगर कोई लाइन पोल के नीचे मिली है...
-    if(targetLineIdx !== -1) {
-        // पुरानी लाइन का डेटा सेव रखें (ताकि Type, Phase, Conductor न बदले)
-        const oldLine = net.lines[targetLineIdx];
-        
-        // STEP 2: नई लाइनें ड्रॉ करना (पुरानी नोड से नए पोल तक, और नए पोल से दूसरी पुरानी नोड तक)
-        const line1 = { 
-            id: 'LINE_' + Date.now() + '_A', 
-            type: oldLine.type, 
-            phase: oldLine.phase, 
-            conductor: oldLine.conductor, 
-            fromNode: oldLine.fromNode, 
-            toNode: newPoleNodeId 
-        };
-        const line2 = { 
-            id: 'LINE_' + Date.now() + '_B', 
-            type: oldLine.type, 
-            phase: oldLine.phase, 
-            conductor: oldLine.conductor, 
-            fromNode: newPoleNodeId, 
-            toNode: oldLine.toNode 
-        };
-        
-        // STEP 3: पुरानी लंबी लाइन को पूरी तरह डिलीट कर देना
-        net.lines.splice(targetLineIdx, 1);
-        
-        // STEP 4: नई बनी दोनों लाइनों को नेटवर्क में जोड़ देना
-        net.lines.push(line1, line2);
+    if (matchedLine && targetLineIndex !== -1) {
+        const originalFrom = matchedLine.fromNode;
+        const originalTo = matchedLine.toNode;
+        const lineType = matchedLine.type;
+        const linePhase = matchedLine.phase;
+        const lineCond = matchedLine.conductor;
 
-        // STEP 5: मैजिक पोल का लॉजिक बंद कर देना (ताकि कोई दूसरी एक्स्ट्रा लाइन न खिंचे)
-        setTimeout(() => { 
-            if(window.showToast) window.showToast("⚡ Magic Pole: Line Exactly Split!"); 
-        }, 500);
-        
-        return; // लॉजिक यहीं स्टॉप हो जाएगा।
+        // 1. Remove the old single line
+        net.lines.splice(targetLineIndex, 1);
+
+        // 2. Create Segment 1: From -> Magic Pole
+        const segment1 = {
+            id: 'LINE_' + Date.now() + '_1',
+            type: lineType,
+            phase: linePhase,
+            conductor: lineCond,
+            fromNode: originalFrom,
+            toNode: 'POLE_' + newPole.poleNo
+        };
+
+        // 3. Create Segment 2: Magic Pole -> To
+        const segment2 = {
+            id: 'LINE_' + Date.now() + '_2',
+            type: lineType,
+            phase: linePhase,
+            conductor: lineCond,
+            fromNode: 'POLE_' + newPole.poleNo,
+            toNode: originalTo
+        };
+
+        net.lines.push(segment1);
+        net.lines.push(segment2);
+
+        if(window.showToast) {
+            window.showToast(`✨ Magic Pole Activated! Line split via Pole ${newPole.poleNo}`);
+        }
     }
 };
 
+window.isPointOnSegment = function(p, a, b) {
+    const dxy = Math.hypot(b.lat - a.lat, b.lng - a.lng);
+    const dap = Math.hypot(p.lat - a.lat, p.lng - a.lng);
+    const dbp = Math.hypot(p.lat - b.lat, p.lng - b.lng);
+    return (dap + dbp) >= (dxy - 0.0001) && (dap + dbp) <= (dxy + 0.0001);
+};
+
+window.calculatePointToSegmentDistance = function(p, a, b) {
+    const R = 6371000; 
+    const rad = Math.PI / 180;
+    
+    const x = p.lng * Math.cos(a.lat * rad) * R * rad;
+    const y = p.lat * R * rad;
+    const x1 = a.lng * Math.cos(a.lat * rad) * R * rad;
+    const y1 = a.lat * R * rad;
+    const x2 = b.lng * Math.cos(a.lat * rad) * R * rad;
+    const y2 = b.lat * R * rad;
+
+    const A = x - x1;
+    const B = y - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+
+    let dot = A * C + B * D;
+    let len_sq = C * C + D * D;
+    let param = -1;
+    if (len_sq !== 0) param = dot / len_sq;
+
+    let xx, yy;
+    if (param < 0) { xx = x1; yy = y1; }
+    else if (param > 1) { xx = x2; yy = y2; }
+    else { xx = x1 + param * C; yy = y1 + param * D; }
+
+    const dx = x - xx;
+    const dy = y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+};
+
 // ==========================================
-// POLE ADDING LOGIC (WITH MAGIC SNAP)
+// POLE, DT, LINE & CONSUMER SAVE ACTIONS
 // ==========================================
 window.saveNewPole = function() {
     const net = window.getActiveNetwork(); if(!net) return false;
@@ -109,19 +135,29 @@ window.saveNewPole = function() {
     if((net.poles||[]).some(p => String(p.poleNo) === poleNo && p.lineType !== 'LT')) { alert("HT Pole Number already exists!"); return false; }
     
     if(window.saveSnapshot) window.saveSnapshot();
+    const newObj = { 
+        id: 'POLE_' + Date.now(), 
+        poleNo: poleNo, 
+        lineType: 'HT', 
+        poleType: pType, 
+        condition: pCond, 
+        poleConfig: pConf, 
+        lat: parseFloat(document.getElementById('inpLat').value), 
+        lng: parseFloat(document.getElementById('inpLng').value) 
+    };
     
-    const lat = parseFloat(document.getElementById('inpLat').value);
-    const lng = parseFloat(document.getElementById('inpLng').value);
-
-    const newObj = { id: 'POLE_' + Date.now(), poleNo: poleNo, lineType: 'HT', poleType: pType, condition: pCond, poleConfig: pConf, lat: lat, lng: lng };
-    if(window.tempPhotoUrl) { window.savePhotoData(newObj.id, window.tempPhotoUrl); window.tempPhotoUrl = null; }
+    if(window.tempPhotoUrl) { 
+        window.savePhotoData(newObj.id, window.tempPhotoUrl); 
+        window.tempPhotoUrl = null; 
+    }
     
     net.poles.push(newObj); 
-    
-    // नए पोल को सेव करते ही मैजिक पोल लॉजिक को कॉल करना
-    window.autoSplitLinesWithPole('POLE_' + poleNo, lat, lng, false);
-    
-    appState.placementType = null; return true;
+
+    // TRIGGER MAGIC POLE SPLIT CHECK
+    window.checkAndSplitLineOnPoleInsert(net, newObj);
+
+    appState.placementType = null; 
+    return true;
 };
 
 window.saveNewLTPole = function() {
@@ -134,24 +170,11 @@ window.saveNewLTPole = function() {
     const poleNo = dt.replace('DT_','') + '-' + (maxL + 1);
     
     if(window.saveSnapshot) window.saveSnapshot();
-    
-    const lat = parseFloat(document.getElementById('inpLat').value);
-    const lng = parseFloat(document.getElementById('inpLng').value);
-
-    const newObj = { id: 'POLE_' + Date.now(), poleNo: poleNo, lineType: 'LT', dtCode: dt.replace('DT_',''), poleType: pType, condition: pCond, lat: lat, lng: lng };
+    const newObj = { id: 'POLE_' + Date.now(), poleNo: poleNo, lineType: 'LT', dtCode: dt.replace('DT_',''), poleType: pType, condition: pCond, lat: parseFloat(document.getElementById('inpLat').value), lng: parseFloat(document.getElementById('inpLng').value) };
     if(window.tempPhotoUrl) { window.savePhotoData(newObj.id, window.tempPhotoUrl); window.tempPhotoUrl = null; }
-    
-    net.poles.push(newObj); 
-    
-    // नए पोल को सेव करते ही मैजिक पोल लॉजिक को कॉल करना (LT के लिए)
-    window.autoSplitLinesWithPole('POLE_' + poleNo, lat, lng, true);
-    
-    appState.placementType = null; return true;
+    net.poles.push(newObj); appState.placementType = null; return true;
 };
 
-// ==========================================
-// OTHER ADD/EDIT FUNCTIONS
-// ==========================================
 window.saveNewLine = function() {
     const net = window.getActiveNetwork(); if(!net) return false;
     const type = document.getElementById('inpLineType').value, phase = document.getElementById('inpLinePhase') ? document.getElementById('inpLinePhase').value : '', cond = document.getElementById('inpConductor').value, fNode = document.getElementById('inpFromNode').value, tNode = document.getElementById('inpToNode').value;
@@ -232,7 +255,9 @@ window.deleteEntity = function(type, id) {
     
     if(appState.photos && appState.photos[id]) {
         delete appState.photos[id];
-        if(window.deletePhotoFromCloud) window.deletePhotoFromCloud(id);
+        if(window.deletePhotoFromCloud) {
+            window.deletePhotoFromCloud(id);
+        }
     }
     
     window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted successfully");
@@ -240,24 +265,4 @@ window.deleteEntity = function(type, id) {
 
 window.startObjectMove = function(type, id, title) { appState.activeMove = { type, id }; document.getElementById('center-placement-pin').style.display = 'block'; window.closeObjectSheet(); let moveBar = document.getElementById('move-confirm-bar'); if(!moveBar) { moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar'; moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white; flex:1;" onclick="window.cancelMove()">Cancel</button><button class="btn-action-primary" style="flex:1;" onclick="window.confirmMove()">Set New Location</button>`; document.body.appendChild(moveBar); if(typeof L !== 'undefined' && L.DomEvent) { L.DomEvent.disableClickPropagation(moveBar); L.DomEvent.disableScrollPropagation(moveBar); } } moveBar.style.display = 'flex'; document.getElementById('bottom-single-action').style.display = 'none'; window.showToast("Pan map to new location..."); };
 window.cancelMove = function() { appState.activeMove = null; document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; window.renderEntireNetwork(); };
-
-window.confirmMove = function() { 
-    if(!appState.activeMove) return; 
-    const center = map.getCenter(); 
-    const net = window.getActiveNetwork(); 
-    if(window.saveSnapshot) window.saveSnapshot(); 
-    
-    const { type, id } = appState.activeMove; 
-    
-    if(type === 'GSS') { 
-        if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } 
-    } else if(type === 'POLE' && net) { 
-        const p = (net.poles||[]).find(x => x.id === id); 
-        if(p) { p.lat = center.lat; p.lng = center.lng; } 
-    } else if(type === 'CONSUMER' && net) { 
-        const c = (net.consumers||[]).find(x => x.id === id); 
-        if(c) { c.lat = center.lat; c.lng = center.lng; } 
-    } 
-    
-    window.cancelMove(); window.triggerPersistence(); window.showToast("Location Updated!"); 
-};
+window.confirmMove = function() { if(!appState.activeMove) return; const center = map.getCenter(); const net = window.getActiveNetwork(); if(window.saveSnapshot) window.saveSnapshot(); const { type, id } = appState.activeMove; if(type === 'GSS') { if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } } else if(type === 'POLE' && net) { const p = (net.poles||[]).find(x => x.id === id); if(p) { p.lat = center.lat; p.lng = center.lng; } } else if(type === 'CONSUMER' && net) { const c = (net.consumers||[]).find(x => x.id === id); if(c) { c.lat = center.lat; c.lng = center.lng; } } window.cancelMove(); window.triggerPersistence(); window.showToast("Location Updated!"); };
