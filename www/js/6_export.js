@@ -6,6 +6,7 @@
 window.downloadFileNative = function(blob, filename) {
     try {
         if (typeof cordova !== 'undefined' && cordova.file && cordova.file.externalRootDirectory) {
+            // APK MODE: Save directly to Android Download Folder
             const storageLocation = cordova.file.externalRootDirectory + 'Download/';
             window.resolveLocalFileSystemURL(storageLocation, function(dirEntry) {
                 dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) {
@@ -26,6 +27,7 @@ window.downloadFileNative = function(blob, filename) {
                 window.fallbackBrowserDownload(blob, filename); 
             });
         } else {
+            // WEB MODE (Vercel or Browser fallback)
             window.fallbackBrowserDownload(blob, filename);
         }
     } catch(e) {
@@ -46,7 +48,7 @@ window.fallbackBrowserDownload = function(blob, filename) {
 };
 
 // ==========================================
-// 1. GENERATE PROFESSIONAL SLD PDF (DT BOX 1mm x 1mm)
+// 1. GENERATE PROFESSIONAL SLD PDF
 // ==========================================
 window.generateCadSLDPdf = function() {
     const net = window.getActiveNetwork();
@@ -134,12 +136,11 @@ window.generateCadSLDPdf = function() {
             if(n.type === 'GSS') {
                 doc.setFillColor(220, 38, 38); doc.setDrawColor(0,0,0); doc.setLineWidth(0.2); doc.rect(pos.x - 3, pos.y - 2, 6, 4, 'FD'); doc.setFontSize(4.5); doc.setTextColor(255,255,255); doc.text("GSS", pos.x, pos.y + 1, { align: 'center' }); doc.setTextColor(0,0,0); doc.setFontSize(4); doc.text(n.data.name || "Substation", pos.x, pos.y - 3, { align: 'center' });
             } else if(n.type === 'DT') {
-                // --- DT BOX RESIZED TO 1mm x 1mm ---
-                doc.setFillColor(249, 115, 22); doc.setDrawColor(0,0,0); doc.setLineWidth(0.1); 
-                doc.rect(pos.x - 0.5, pos.y - 0.5, 1, 1, 'FD'); 
+                doc.setFillColor(249, 115, 22); doc.setDrawColor(0,0,0); doc.setLineWidth(0.15); 
+                doc.rect(pos.x - 1.1, pos.y - 1.1, 1.1, 1.1, 'FD'); 
                 doc.setFontSize(2); doc.setTextColor(0,0,0); 
                 const rating = String(n.data.rating).replace(/[^0-9]/g, ''); 
-                doc.text(rating, pos.x, pos.y + 0.35, { align: 'center' });
+                doc.text(rating, pos.x, pos.y + 0.7, { align: 'center' });
             } else if(n.type === 'POLE') {
                 doc.setFillColor(100, 116, 139); doc.circle(pos.x, pos.y, 0.5, 'F');
             }
@@ -212,7 +213,7 @@ window.exportFullJSONBackup = function() {
 }
 
 window.handleImportChoice = function(e) {
-    The file = e.target.files[0]; if(!file) return;
+    const file = e.target.files[0]; if(!file) return;
     const reader = new FileReader();
     reader.onload = function(ev) {
         try {
