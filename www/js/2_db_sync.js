@@ -6,34 +6,25 @@ window.initPersistence = async function() {
         const savedState = await localforage.getItem('discom_app_state');
         if (savedState) {
             appState = savedState;
-            // White Screen से बचने के लिए Safety Checks
             if(!appState.feeders) appState.feeders = {};
             if(!appState.gssNodes) appState.gssNodes = {};
             if(!appState.settings) appState.settings = { unit: 'm', language: 'en', theme: 'light', liveSync: true };
             if(!appState.filters) appState.filters = { lines11: true, linesLT: true, poles: true, dts: true, consumers: true };
             if(!appState.lastModified) appState.lastModified = 0;
+            if(!appState.photos) appState.photos = {};
         } else {
-            appState = { user: { isLoggedIn: false, email: '', name: '' }, currentFeederCode: null, gssNodes: {}, feeders: {}, filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true }, settings: { unit: 'm', language: 'en', theme: 'light', liveSync: true }, lastModified: 0 };
+            appState = { user: { isLoggedIn: false, email: '', name: '' }, currentFeederCode: null, gssNodes: {}, feeders: {}, filters: { lines11: true, linesLT: true, poles: true, dts: true, consumers: true }, settings: { unit: 'm', language: 'en', theme: 'light', liveSync: true }, lastModified: 0, photos: {} };
         }
-        
         window.deduplicateNetworkData();
     } catch (err) { console.error("LocalForage Init Error:", err); }
 };
 
-// --- Array Initialization & Deduplication (White Screen Fix) ---
 window.deduplicateNetworkData = function() {
     if(!appState || !appState.feeders) return;
-    
     Object.keys(appState.feeders).forEach(fCode => {
         const net = appState.feeders[fCode];
-        
-        // Ensure Arrays exist so the app never crashes
-        if(!net.dts) net.dts = [];
-        if(!net.poles) net.poles = [];
-        if(!net.lines) net.lines = [];
-        if(!net.consumers) net.consumers = [];
+        if(!net.dts) net.dts = []; if(!net.poles) net.poles = []; if(!net.lines) net.lines = []; if(!net.consumers) net.consumers = [];
 
-        // Safe Unique Filtering
         const uniqueDTs = new Map(); net.dts.forEach(d => { if(d && d.code) uniqueDTs.set(String(d.code).trim(), d); }); net.dts = Array.from(uniqueDTs.values());
         const uniquePoles = new Map(); net.poles.forEach(p => { if(p && p.poleNo) uniquePoles.set(String(p.poleNo).trim(), p); }); net.poles = Array.from(uniquePoles.values());
         const uniqueCons = new Map(); net.consumers.forEach(c => { if(c && c.kno) uniqueCons.set(String(c.kno).trim(), c); }); net.consumers = Array.from(uniqueCons.values());
@@ -43,12 +34,9 @@ window.deduplicateNetworkData = function() {
 
 window.triggerPersistence = async function() {
     try {
-        // UPDATE TIMESTAMP FOR "LATEST WINS" FORMULA
         appState.lastModified = Date.now(); 
-        
         window.deduplicateNetworkData(); 
         await localforage.setItem('discom_app_state', appState);
-        
         if (appState.user && appState.user.isLoggedIn && appState.settings && appState.settings.liveSync !== false) {
             window.syncToSupabase(true);
         }
@@ -69,9 +57,13 @@ window.syncToSupabase = async function(isSilent = false) {
     const indicator = document.getElementById('sync-indicator'); if (indicator) indicator.classList.add('fa-spin');
     try {
         if (typeof supabaseClient !== 'undefined' && supabaseClient) {
-            // Refresh timestamp before saving to cloud
             appState.lastModified = Date.now();
-            const { error } = await supabaseClient.from('discom_surveys').upsert({ user_email: appState.user.email, state_data: appState, updated_at: new Date() }, { onConflict: 'user_email' });
+            
+            // NOTE: Photos base64 size limit fix (Don't push heavy photos to JSON cloud)
+            const stateToSync = JSON.parse(JSON.stringify(appState));
+            delete stateToSync.photos; 
+
+            const { error } = await supabaseClient.from('discom_surveys').upsert({ user_email: appState.user.email, state_data: stateToSync, updated_at: new Date() }, { onConflict: 'user_email' });
             if (error) throw error;
         }
         if (!isSilent && window.showToast) window.showToast("Cloud Sync Successful! ☁️");
@@ -98,22 +90,19 @@ window.handleSupabaseAuth = async function(mode) {
                 
                 const { data: cloudData } = await supabaseClient.from('discom_surveys').select('state_data, updated_at').eq('user_email', email).single();
                 
-                // --- THE "LATEST WINS" FORMULA (Replaces complex merging) ---
+                // --- THE "LATEST WINS" FORMULA ---
                 if (cloudData && cloudData.state_data) {
                     const cState = cloudData.state_data;
                     const localTime = appState.lastModified || 0;
                     const cloudTime = cState.lastModified || new Date(cloudData.updated_at).getTime() || 0;
 
-                    console.log(`Sync Logic -> Local: ${localTime}, Cloud: ${cloudTime}`);
-
                     if (cloudTime >= localTime) {
-                        // Cloud data is newer (or fresh login on new device) -> Overwrite Local
+                        const localPhotos = appState.photos || {}; // Preserve local photos
                         appState = cState;
+                        appState.photos = localPhotos; 
                     } 
-                    // Else: Local data is newer -> Keep Local (It will auto-sync to cloud later)
                 }
 
-                // Ultimate Security Check to prevent undefined crashes
                 if(!appState.feeders) appState.feeders = {};
                 if(!appState.gssNodes) appState.gssNodes = {};
 
@@ -130,18 +119,12 @@ window.handleSupabaseAuth = async function(mode) {
             if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.showToast) window.showToast("Offline Logged In!");
             if(window.checkOnboardingFlow) window.checkOnboardingFlow();
         }
-    } catch(err) { 
-        console.error("Auth Exception:", err);
-        alert("Error: " + err.message); 
-        if(loader) loader.style.display = 'none'; 
-    } finally { 
-        if(spinner) spinner.style.display = 'none'; 
-    }
+    } catch(err) { alert("Error: " + err.message); if(loader) loader.style.display = 'none'; } finally { if(spinner) spinner.style.display = 'none'; }
 };
 
 window.handleSupabaseLogout = async function() {
     if(confirm("Logout and clear local data?")) {
-        try { if (typeof supabaseClient !== 'undefined' && supabaseClient) await supabaseClient.auth.signOut(); } catch(e) { console.error(e); }
+        try { if (typeof supabaseClient !== 'undefined' && supabaseClient) await supabaseClient.auth.signOut(); } catch(e) {}
         appState.user = { isLoggedIn: false, email: '', name: '' }; await localforage.removeItem('discom_app_state'); window.location.reload();
     }
 };
