@@ -208,3 +208,89 @@ window.openEditModal = function(type, id) {
         window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" class="form-input" placeholder=" " value="${l.type}" disabled><label>Voltage Type (Locked)</label></div><div class="form-row" id="editLinePhaseRow" style="display:${l.type.includes('11')?'block':'none'}"><select id="editLinePhase" class="form-select"><option value="Three Phase" ${l.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${l.phase==='Single Phase'?'selected':''}>Single Phase</option></select><label>Phase Type (HT)*</label></div><div class="form-row"><select id="editLineConductor" class="form-select">${l.type.includes('11') ? `<option value="Weasel" ${l.conductor==='Weasel'?'selected':''}>Weasel</option><option value="Rabbit" ${l.conductor==='Rabbit'?'selected':''}>Rabbit</option><option value="Dog" ${l.conductor==='Dog'?'selected':''}>Dog</option><option value="Underground Cable" ${l.conductor==='Underground Cable'?'selected':''}>Underground Cable</option>` : `<option value="Single Phase" ${l.conductor==='Single Phase'?'selected':''}>Single Phase</option><option value="Three Phase" ${l.conductor==='Three Phase'?'selected':''}>Three Phase</option>`}</select><label>Conductor</label></div><button class="btn-action-primary" onclick="window.executeSafeSave(() => window.saveEditedLine('${l.id}'))">Save Changes</button>`); 
     }
 }
+/* --- Add/Update inside js/4_ui_forms.js --- */
+
+window.openDTFromSVG = function(e, id) {
+    if(e) e.stopPropagation(); 
+    const net = window.getActiveNetwork(); if(!net) return;
+    const d = (net.dts||[]).find(x => x.id === id);
+    if(!d) return;
+
+    // Find all connected consumers to this DT
+    const connectedConsumers = [];
+    (net.consumers||[]).forEach(c => {
+        let isConnected = false;
+        if(String(c.parentRef) === String(d.code) || String(c.parentRef) === String('DT_' + d.code)) {
+            isConnected = true;
+        } else {
+            const pole = (net.poles||[]).find(p => String(p.poleNo) === String(c.parentRef) || String(p.id) === String('POLE_' + c.parentRef));
+            if(pole && String(pole.dtCode) === String(d.code)) { isConnected = true; }
+        }
+        if(isConnected) { connectedConsumers.push(c); }
+    });
+
+    let totalLoadKW = 0;
+    connectedConsumers.forEach(c => {
+        const loadStr = String(c.load || '0'); 
+        const numMatch = loadStr.match(/[\d.]+/); 
+        if(numMatch) totalLoadKW += parseFloat(numMatch[0]) || 0;
+    });
+
+    // Build Consumer Table HTML rows
+    let tableRowsHtml = '';
+    if(connectedConsumers.length === 0) {
+        tableRowsHtml = `<tr><td colspan="4" style="text-align:center; padding:15px; color:var(--text-sub);">No consumers connected to this DT yet.</td></tr>`;
+    } else {
+        connectedConsumers.forEach((c, index) => {
+            tableRowsHtml += `
+                <tr style="border-bottom: 1px solid var(--border);">
+                    <td style="padding:8px; font-size:0.8rem; text-align:center;">${index + 1}</td>
+                    <td style="padding:8px; font-size:0.8rem; font-weight:700;">${c.kno || 'N/A'}</td>
+                    <td style="padding:8px; font-size:0.8rem;">${c.name || 'Unknown'}</td>
+                    <td style="padding:8px; font-size:0.8rem;">${c.cType || 'Domestic'}</td>
+                    <td style="padding:8px; font-size:0.8rem; text-align:right;">${c.load || '1 kW'}</td>
+                </tr>`;
+        });
+    }
+
+    // Open Modal Sheet with Details and Table
+    window.openModal(`
+        <div class="sheet-head">
+            <div class="sheet-title"><i class="fa-solid fa-bolt" style="color:var(--accent);"></i> DT Details & Consumers</div>
+            <button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div style="padding: 5px 0;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:15px; background:var(--bg-glass); padding:12px; border-radius:10px; border:1px solid var(--border);">
+                <div><span style="font-size:0.75rem; color:var(--text-sub);">DT Code</span><div style="font-weight:900; font-size:0.95rem;">${d.code}</div></div>
+                <div><span style="font-size:0.75rem; color:var(--text-sub);">Rating</span><div style="font-weight:900; font-size:0.95rem; color:var(--accent);">${d.rating} kVA</div></div>
+                <div><span style="font-size:0.75rem; color:var(--text-sub);">Phase & Mounting</span><div style="font-weight:700; font-size:0.85rem;">${d.phase || '3-Phase'} (${d.mountedOn || 'DP'})</div></div>
+                <div><span style="font-size:0.75rem; color:var(--text-sub);">Total Load</span><div style="font-weight:700; font-size:0.85rem; color:#10b981;">${totalLoadKW.toFixed(2)} kW (${connectedConsumers.length} Consumers)</div></div>
+            </div>
+
+            <div style="font-weight:800; font-size:0.85rem; margin-bottom:8px; color:var(--text-main);">Connected Consumers List</div>
+            
+            <div style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background:var(--bg-base); margin-bottom: 15px;">
+                <table style="width:100%; border-collapse: collapse; text-align:left;">
+                    <thead>
+                        <tr style="background:var(--bg-glass); border-bottom:2px solid var(--border); font-size:0.75rem; color:var(--text-sub);">
+                            <th style="padding:8px; text-align:center;">#</th>
+                            <th style="padding:8px;">K-No</th>
+                            <th style="padding:8px;">Name</th>
+                            <th style="padding:8px;">Category</th>
+                            <th style="padding:8px; text-align:right;">Load</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRowsHtml}
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button class="btn-action-primary" style="flex:1; background:#0f172a;" onclick="window.exportDtReportPdf('${d.id}')"><i class="fa-solid fa-file-pdf"></i> Export DT Report PDF</button>
+                <button class="btn-action-primary" style="flex:1; background:var(--bg-glass); color:var(--text-main); border:1px solid var(--border);" onclick="window.openEditModal('dt', '${d.id}')"><i class="fa-solid fa-pen"></i> Edit DT</button>
+            </div>
+        </div>
+    `);
+};
