@@ -471,7 +471,7 @@ window.validateNetworkLoops = function(net, networkType = 'HT') {
     if (loopDetected) {
         return {
             hasLoop: true,
-            message: `⚠️ Loop Detected in ${networkType} Network! Nodes involved: ${loopPath.join(' -> ')}`
+            message: `⚠️ Invalid connection! This creates a closed loop.')}`
         };
     }
 
