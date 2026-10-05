@@ -3,6 +3,9 @@
 window.tempPhotoUrl = null;
 window.currentSelectedObj = null;
 
+// ==========================================
+// CAMERA & PHOTO CAPTURE LOGIC
+// ==========================================
 window.captureTempPhoto = function() {
     if (typeof navigator !== 'undefined' && navigator.camera) {
         navigator.camera.getPicture((imgData) => {
@@ -83,7 +86,6 @@ window.handleSearch = function(e) { const query = e.target.value.toLowerCase().t
 window.clearSearch = function() { const bar = document.getElementById('appSearchBar'); if(bar) bar.value = ''; const sugg = document.getElementById('searchSuggestions'); if(sugg) sugg.classList.remove('active'); }
 window.selectSearchResult = function(type, id) { const net = window.getActiveNetwork(); if(!net) return; window.clearSearch(); window.toggleSearchBox(); let target = null, popupHtml = ''; if(type === 'CONSUMER') { target = net.consumers.find(c => c.id === id); if(target) popupHtml = `K-No: <b>${target.kno}</b><br>Connected to: <b>${target.parentRef}</b>`; } else if(type === 'DT') { target = net.dts.find(d => d.id === id); if(target) popupHtml = `Rating: <b>${target.rating} kVA</b><br>Loc: <b>${target.location || 'N/A'}</b>`; } else if(type === 'POLE') { target = net.poles.find(p => p.id === id); if(target) popupHtml = `Type: <b>${target.lineType}</b><br>Condition: <b>${target.condition || 'Good'}</b>`; } if(target && target.lat) { if(map) map.flyTo([target.lat, target.lng], 19, { duration: 1 }); setTimeout(() => { if(window.openObjectSheet) window.openObjectSheet(type, id, type === 'CONSUMER' ? target.name : (type === 'DT' ? `DT: ${target.code}` : `Pole: ${target.poleNo}`), popupHtml); }, 1000); } }
 
-// --- FIXED OBJECT SHEET & EDIT MODAL (WITH GSS SUPPORT) ---
 window.closeObjectSheet = function() { document.getElementById('object-bottom-sheet').classList.remove('open'); window.currentSelectedObj = null; };
 
 window.openObjectSheet = function(type, id, title, detailsHtml) {
@@ -97,10 +99,15 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
     
     document.getElementById('object-bottom-sheet').classList.add('open'); 
     document.getElementById('btnObjEdit').onclick = () => window.openEditModal(type.toLowerCase(), id);
-    document.getElementById('btnObjDelete').style.display = (type === 'GSS') ? 'none' : 'block'; 
-    document.getElementById('btnObjMove').style.display = (type === 'DT') ? 'none' : 'block';
-    document.getElementById('btnObjMove').onclick = () => { if(window.startObjectMove) window.startObjectMove(type, id, title); }; 
-    document.getElementById('btnObjDelete').onclick = () => { if(window.deleteEntity) window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
+    const btnDelete = document.getElementById('btnObjDelete'); const btnMove = document.getElementById('btnObjMove');
+    if(btnDelete) {
+        btnDelete.style.display = (type === 'GSS') ? 'none' : 'block'; 
+        btnDelete.onclick = () => { if(window.deleteEntity) window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
+    }
+    if(btnMove) {
+        btnMove.style.display = (type === 'DT') ? 'none' : 'block';
+        btnMove.onclick = () => { if(window.startObjectMove) window.startObjectMove(type, id, title); };
+    }
 };
 
 const dtRatingOptionsHtml = `<option value="10">10 kVA</option><option value="16">16 kVA</option><option value="25" selected>25 kVA</option><option value="40">40 kVA</option><option value="63">63 kVA</option><option value="100">100 kVA</option><option value="160">160 kVA</option><option value="250">250 kVA</option><option value="315">315 kVA</option><option value="500">500 kVA</option>`;
@@ -181,7 +188,90 @@ window.showFormModal = function(type, snapLat, snapLng) {
     }
 }
 
-// --- FIX: SECURE EDIT MODAL LOADER (CRASH-FREE) ---
+// --- UPDATED DT DETAIL MODAL WITH PDF, EDIT & DELETE BUTTONS ---
+window.openDTFromSVG = function(e, id) {
+    if(e) e.stopPropagation(); 
+    const net = window.getActiveNetwork(); if(!net) return;
+    const d = (net.dts||[]).find(x => x.id === id);
+    if(!d) return;
+
+    const connectedConsumers = [];
+    (net.consumers||[]).forEach(c => {
+        let isConnected = false;
+        if(String(c.parentRef) === String(d.code) || String(c.parentRef) === String('DT_' + d.code)) {
+            isConnected = true;
+        } else {
+            const pole = (net.poles||[]).find(p => String(p.poleNo) === String(c.parentRef) || String(p.id) === String('POLE_' + c.parentRef));
+            if(pole && String(pole.dtCode) === String(d.code)) { isConnected = true; }
+        }
+        if(isConnected) { connectedConsumers.push(c); }
+    });
+
+    let totalLoadKW = 0;
+    connectedConsumers.forEach(c => {
+        const loadStr = String(c.load || '0'); 
+        const numMatch = loadStr.match(/[\d.]+/); 
+        if(numMatch) totalLoadKW += parseFloat(numMatch[0]) || 0;
+    });
+
+    let tableRowsHtml = '';
+    if(connectedConsumers.length === 0) {
+        tableRowsHtml = `<tr><td colspan="5" style="text-align:center; padding:15px; color:var(--text-sub);">No consumers connected to this DT yet.</td></tr>`;
+    } else {
+        connectedConsumers.forEach((c, index) => {
+            tableRowsHtml += `
+                <tr style="border-bottom: 1px solid var(--border);">
+                    <td style="padding:8px; font-size:0.8rem; text-align:center;">${index + 1}</td>
+                    <td style="padding:8px; font-size:0.8rem; font-weight:700;">${c.kno || 'N/A'}</td>
+                    <td style="padding:8px; font-size:0.8rem;">${c.name || 'Unknown'}</td>
+                    <td style="padding:8px; font-size:0.8rem;">${c.cType || 'Domestic'}</td>
+                    <td style="padding:8px; font-size:0.8rem; text-align:right;">${c.load || '1 kW'}</td>
+                </tr>`;
+        });
+    }
+
+    window.openModal(`
+        <div class="sheet-head">
+            <div class="sheet-title"><i class="fa-solid fa-bolt" style="color:var(--accent);"></i> DT Details & Consumers</div>
+            <button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div style="padding: 5px 0;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:15px; background:var(--bg-glass); padding:12px; border-radius:10px; border:1px solid var(--border);">
+                <div><span style="font-size:0.75rem; color:var(--text-sub);">DT Code</span><div style="font-weight:900; font-size:0.95rem;">${d.code}</div></div>
+                <div><span style="font-size:0.75rem; color:var(--text-sub);">Rating</span><div style="font-weight:900; font-size:0.95rem; color:var(--accent);">${d.rating} kVA</div></div>
+                <div><span style="font-size:0.75rem; color:var(--text-sub);">Phase & Mounting</span><div style="font-weight:700; font-size:0.85rem;">${d.phase || '3-Phase'} (${d.mountedOn || 'DP'})</div></div>
+                <div><span style="font-size:0.75rem; color:var(--text-sub);">Total Load</span><div style="font-weight:700; font-size:0.85rem; color:#10b981;">${totalLoadKW.toFixed(2)} kW (${connectedConsumers.length} Consumers)</div></div>
+            </div>
+
+            <div style="font-weight:800; font-size:0.85rem; margin-bottom:8px; color:var(--text-main);">Connected Consumers List</div>
+            
+            <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background:var(--bg-base); margin-bottom: 15px;">
+                <table style="width:100%; border-collapse: collapse; text-align:left;">
+                    <thead>
+                        <tr style="background:var(--bg-glass); border-bottom:2px solid var(--border); font-size:0.75rem; color:var(--text-sub);">
+                            <th style="padding:8px; text-align:center;">#</th>
+                            <th style="padding:8px;">K-No</th>
+                            <th style="padding:8px;">Name</th>
+                            <th style="padding:8px;">Category</th>
+                            <th style="padding:8px; text-align:right;">Load</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRowsHtml}
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display:flex; gap:8px;">
+                <button class="btn-action-primary" style="flex:1.2; background:#0f172a; font-size:0.8rem; padding:10px 4px;" onclick="window.exportDtReportPdf('${d.id}')"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                <button class="btn-action-primary" style="flex:1; background:var(--bg-glass); color:var(--text-main); border:1px solid var(--border); font-size:0.8rem; padding:10px 4px;" onclick="window.openEditModal('dt', '${d.id}')"><i class="fa-solid fa-pen"></i> Edit</button>
+                <button class="btn-action-primary" style="flex:1; background:#ef4444; color:white; font-size:0.8rem; padding:10px 4px;" onclick="if(confirm('Are you sure you want to delete this DT?')) { window.deleteEntity('dt', '${d.id}'); window.closeModal(); }"><i class="fa-solid fa-trash"></i> Delete</button>
+            </div>
+        </div>
+    `);
+};
+
 window.openEditModal = function(type, id) {
     window.closeObjectSheet(); 
     const net = window.getActiveNetwork();
@@ -208,89 +298,3 @@ window.openEditModal = function(type, id) {
         window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" class="form-input" placeholder=" " value="${l.type}" disabled><label>Voltage Type (Locked)</label></div><div class="form-row" id="editLinePhaseRow" style="display:${l.type.includes('11')?'block':'none'}"><select id="editLinePhase" class="form-select"><option value="Three Phase" ${l.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${l.phase==='Single Phase'?'selected':''}>Single Phase</option></select><label>Phase Type (HT)*</label></div><div class="form-row"><select id="editLineConductor" class="form-select">${l.type.includes('11') ? `<option value="Weasel" ${l.conductor==='Weasel'?'selected':''}>Weasel</option><option value="Rabbit" ${l.conductor==='Rabbit'?'selected':''}>Rabbit</option><option value="Dog" ${l.conductor==='Dog'?'selected':''}>Dog</option><option value="Underground Cable" ${l.conductor==='Underground Cable'?'selected':''}>Underground Cable</option>` : `<option value="Single Phase" ${l.conductor==='Single Phase'?'selected':''}>Single Phase</option><option value="Three Phase" ${l.conductor==='Three Phase'?'selected':''}>Three Phase</option>`}</select><label>Conductor</label></div><button class="btn-action-primary" onclick="window.executeSafeSave(() => window.saveEditedLine('${l.id}'))">Save Changes</button>`); 
     }
 }
-/* --- Add/Update inside js/4_ui_forms.js --- */
-
-window.openDTFromSVG = function(e, id) {
-    if(e) e.stopPropagation(); 
-    const net = window.getActiveNetwork(); if(!net) return;
-    const d = (net.dts||[]).find(x => x.id === id);
-    if(!d) return;
-
-    // Find all connected consumers to this DT
-    const connectedConsumers = [];
-    (net.consumers||[]).forEach(c => {
-        let isConnected = false;
-        if(String(c.parentRef) === String(d.code) || String(c.parentRef) === String('DT_' + d.code)) {
-            isConnected = true;
-        } else {
-            const pole = (net.poles||[]).find(p => String(p.poleNo) === String(c.parentRef) || String(p.id) === String('POLE_' + c.parentRef));
-            if(pole && String(pole.dtCode) === String(d.code)) { isConnected = true; }
-        }
-        if(isConnected) { connectedConsumers.push(c); }
-    });
-
-    let totalLoadKW = 0;
-    connectedConsumers.forEach(c => {
-        const loadStr = String(c.load || '0'); 
-        const numMatch = loadStr.match(/[\d.]+/); 
-        if(numMatch) totalLoadKW += parseFloat(numMatch[0]) || 0;
-    });
-
-    // Build Consumer Table HTML rows
-    let tableRowsHtml = '';
-    if(connectedConsumers.length === 0) {
-        tableRowsHtml = `<tr><td colspan="4" style="text-align:center; padding:15px; color:var(--text-sub);">No consumers connected to this DT yet.</td></tr>`;
-    } else {
-        connectedConsumers.forEach((c, index) => {
-            tableRowsHtml += `
-                <tr style="border-bottom: 1px solid var(--border);">
-                    <td style="padding:8px; font-size:0.8rem; text-align:center;">${index + 1}</td>
-                    <td style="padding:8px; font-size:0.8rem; font-weight:700;">${c.kno || 'N/A'}</td>
-                    <td style="padding:8px; font-size:0.8rem;">${c.name || 'Unknown'}</td>
-                    <td style="padding:8px; font-size:0.8rem;">${c.cType || 'Domestic'}</td>
-                    <td style="padding:8px; font-size:0.8rem; text-align:right;">${c.load || '1 kW'}</td>
-                </tr>`;
-        });
-    }
-
-    // Open Modal Sheet with Details and Table
-    window.openModal(`
-        <div class="sheet-head">
-            <div class="sheet-title"><i class="fa-solid fa-bolt" style="color:var(--accent);"></i> DT Details & Consumers</div>
-            <button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        
-        <div style="padding: 5px 0;">
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:15px; background:var(--bg-glass); padding:12px; border-radius:10px; border:1px solid var(--border);">
-                <div><span style="font-size:0.75rem; color:var(--text-sub);">DT Code</span><div style="font-weight:900; font-size:0.95rem;">${d.code}</div></div>
-                <div><span style="font-size:0.75rem; color:var(--text-sub);">Rating</span><div style="font-weight:900; font-size:0.95rem; color:var(--accent);">${d.rating} kVA</div></div>
-                <div><span style="font-size:0.75rem; color:var(--text-sub);">Phase & Mounting</span><div style="font-weight:700; font-size:0.85rem;">${d.phase || '3-Phase'} (${d.mountedOn || 'DP'})</div></div>
-                <div><span style="font-size:0.75rem; color:var(--text-sub);">Total Load</span><div style="font-weight:700; font-size:0.85rem; color:#10b981;">${totalLoadKW.toFixed(2)} kW (${connectedConsumers.length} Consumers)</div></div>
-            </div>
-
-            <div style="font-weight:800; font-size:0.85rem; margin-bottom:8px; color:var(--text-main);">Connected Consumers List</div>
-            
-            <div style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background:var(--bg-base); margin-bottom: 15px;">
-                <table style="width:100%; border-collapse: collapse; text-align:left;">
-                    <thead>
-                        <tr style="background:var(--bg-glass); border-bottom:2px solid var(--border); font-size:0.75rem; color:var(--text-sub);">
-                            <th style="padding:8px; text-align:center;">#</th>
-                            <th style="padding:8px;">K-No</th>
-                            <th style="padding:8px;">Name</th>
-                            <th style="padding:8px;">Category</th>
-                            <th style="padding:8px; text-align:right;">Load</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tableRowsHtml}
-                    </tbody>
-                </table>
-            </div>
-
-            <div style="display:flex; gap:10px;">
-                <button class="btn-action-primary" style="flex:1; background:#0f172a;" onclick="window.exportDtReportPdf('${d.id}')"><i class="fa-solid fa-file-pdf"></i> Export DT Report PDF</button>
-                <button class="btn-action-primary" style="flex:1; background:var(--bg-glass); color:var(--text-main); border:1px solid var(--border);" onclick="window.openEditModal('dt', '${d.id}')"><i class="fa-solid fa-pen"></i> Edit DT</button>
-            </div>
-        </div>
-    `);
-};
