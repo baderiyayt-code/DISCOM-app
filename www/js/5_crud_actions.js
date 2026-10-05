@@ -341,8 +341,9 @@ window.saveNewConsumer = function() {
     net.consumers.push(newObj); appState.placementType = null; return true;
 };
 
+
 // ==========================================
-// OBJECT MOVE LOGIC (WITH DATABASE SYNC)
+// OBJECT MOVE LOGIC (WITH CLOUD SYNC TRIGGER)
 // ==========================================
 window.confirmMove = function() { 
     if(!appState.activeMove) return; 
@@ -357,7 +358,7 @@ window.confirmMove = function() {
             appState.gssNodes[id].lat = center.lat; 
             appState.gssNodes[id].lng = center.lng; 
             appState.gssNodes[id].updatedAt = Date.now();
-            appState.gssNodes[id].isDirty = true;
+            appState.gssNodes[id].synced = false; // Forces cloud sync
         } 
     } else if(type === 'POLE' && net) { 
         const p = (net.poles||[]).find(x => x.id === id); 
@@ -365,7 +366,7 @@ window.confirmMove = function() {
             p.lat = center.lat; 
             p.lng = center.lng; 
             p.updatedAt = Date.now(); 
-            p.isDirty = true; 
+            p.synced = false; // Forces cloud sync
         } 
     } else if(type === 'DT' && net) { 
         const d = (net.dts||[]).find(x => x.id === id); 
@@ -373,7 +374,7 @@ window.confirmMove = function() {
             d.lat = center.lat; 
             d.lng = center.lng; 
             d.updatedAt = Date.now(); 
-            d.isDirty = true; 
+            d.synced = false; // Forces cloud sync
         } 
     } else if(type === 'CONSUMER' && net) { 
         const c = (net.consumers||[]).find(x => x.id === id); 
@@ -381,21 +382,17 @@ window.confirmMove = function() {
             c.lat = center.lat; 
             c.lng = center.lng; 
             c.updatedAt = Date.now(); 
-            c.isDirty = true; 
+            c.synced = false; // Forces cloud sync
         } 
     } 
     
     window.cancelMove(); 
-    window.triggerPersistence(); 
-    
-    // Optional: If there is a direct cloud sync function in your app, trigger it
-    if(window.syncDataToCloud) window.syncDataToCloud(); 
-    
+    window.triggerPersistence(); // This will auto-trigger syncToSupabase()
     window.showToast("Location Updated in Database!"); 
 };
 
 // ==========================================
-// EDIT LOGIC (WITH DATABASE SYNC FLAGS)
+// EDIT LOGIC (WITH CLOUD SYNC TRIGGER)
 // ==========================================
 window.saveEditedGss = function(code) { 
     const gss = appState.gssNodes[code]; if(!gss) return false;
@@ -405,7 +402,7 @@ window.saveEditedGss = function(code) {
     
     gss.name = newName; 
     gss.updatedAt = Date.now(); 
-    gss.isDirty = true;
+    gss.synced = false; // Forces cloud sync
     
     return true; 
 };
@@ -419,7 +416,7 @@ window.saveEditedPole = function(id) {
     p.condition = document.getElementById('editPoleCondition').value; 
     p.poleConfig = document.getElementById('editPccConfig') ? document.getElementById('editPccConfig').value : p.poleConfig; 
     p.updatedAt = Date.now(); 
-    p.isDirty = true;
+    p.synced = false; // Forces cloud sync
     
     return true; 
 };
@@ -434,7 +431,7 @@ window.saveEditedDT = function(id) {
     d.rating = document.getElementById('editDTRating').value; 
     d.location = document.getElementById('editDTLocation').value; 
     d.updatedAt = Date.now(); 
-    d.isDirty = true;
+    d.synced = false; // Forces cloud sync
     
     return true; 
 };
@@ -451,7 +448,7 @@ window.saveEditedConsumer = function(id) {
     if(!c.name) { alert("Name required"); return false; } 
     
     c.updatedAt = Date.now(); 
-    c.isDirty = true;
+    c.synced = false; // Forces cloud sync
     
     return true; 
 };
@@ -464,7 +461,7 @@ window.saveEditedLine = function(id) {
     l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase; 
     l.conductor = document.getElementById('editLineConductor').value; 
     l.updatedAt = Date.now(); 
-    l.isDirty = true;
+    l.synced = false; // Forces cloud sync
     
     return true; 
 };
