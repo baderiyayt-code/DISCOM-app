@@ -127,8 +127,6 @@
         <!-- Speed Dial Menu -->
         <div id="speed-dial-menu">
             <div class="dial-grid">
-                
-                <!-- HT Pole -->
                 <div class="dial-card" onclick="openAddForm('POLE')">
                     <svg viewBox="0 0 60 100" style="width:24px;height:38px; margin-bottom:5px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
                         <path d="M 10 20 L 30 35 L 50 20" fill="none" stroke="#475569" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -139,8 +137,6 @@
                     </svg>
                     <span>HT Pole</span>
                 </div>
-
-                <!-- LT Pole -->
                 <div class="dial-card" onclick="openAddForm('LTPOLE')">
                     <svg viewBox="0 0 60 100" style="width:24px;height:38px; margin-bottom:5px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
                         <polygon points="26,30 34,30 36,95 24,95" fill="#fb923c" stroke="#475569" stroke-width="1.5"/>
@@ -149,8 +145,6 @@
                     </svg>
                     <span>LT Pole</span>
                 </div>
-
-                <!-- Line -->
                 <div class="dial-card" onclick="openAddForm('LINE')">
                     <svg viewBox="0 0 60 60" style="width:32px;height:32px; margin-bottom:8px; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3));">
                         <rect x="8" y="32" width="5" height="22" fill="#475569" rx="1"/>
@@ -163,8 +157,6 @@
                     </svg>
                     <span>Line</span>
                 </div>
-
-                <!-- 3-Phase DT -->
                 <div class="dial-card" onclick="openAddForm('DT')">
                     <svg viewBox="0 0 60 70" style="width:28px;height:32px; margin-bottom:8px; filter:drop-shadow(0 3px 5px rgba(0,0,0,0.4));">
                         <rect x="15" y="20" width="30" height="40" rx="3" fill="#fb923c" stroke="#0f172a" stroke-width="2"/>
@@ -178,13 +170,10 @@
                     </svg>
                     <span>DT</span>
                 </div>
-
-                <!-- Consumer -->
                 <div class="dial-card" onclick="openAddForm('CONSUMER')">
                     <i class="fa-solid fa-house" style="color:#8b5cf6; font-size:30px; margin-bottom:8px;"></i>
                     <span>Consumer</span>
                 </div>
-
             </div>
         </div>
 
@@ -222,18 +211,17 @@
             <div class="menu-link-btn" onclick="exportFullJSONBackup()"><i class="fa-solid fa-download" style="color:#3b82f6;"></i> Export Backup (JSON)</div>
             <div class="menu-link-btn" onclick="document.getElementById('importBackupFile').click()"><i class="fa-solid fa-upload" style="color:#8b5cf6;"></i> Import Backup (JSON)</div>
             <input type="file" id="importBackupFile" style="display:none;" accept=".json" onchange="handleImportChoice(event)">
-           
+            
+            <div class="menu-category-title">Information</div>
+            <div class="menu-link-btn" onclick="openAboutModal()"><i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i> About App</div>
             
             <div class="menu-category-title">System</div>
             <div class="menu-link-btn" onclick="openSettingsPage()"><i class="fa-solid fa-gear" style="color:#64748b;"></i> Settings</div>
             <div class="menu-link-btn" style="color:#ef4444; margin-top:auto;" onclick="handleSupabaseLogout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout Securely</div>
-
-            <div class="menu-category-title">Information</div>
-            <div class="menu-link-btn" onclick="openAboutModal()"><i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i> About App</div>
-
         </div>
     </div>
-            
+
+    <!-- OBJECT DETAIL SHEET -->
     <div class="object-bottom-sheet" id="object-bottom-sheet">
         <div class="sheet-drag-handle" onclick="closeObjectSheet()"></div>
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px;">
@@ -241,7 +229,8 @@
                 <h3 id="objSheetTitle" style="font-weight:900; margin-bottom:5px;">Object Title</h3>
                 <div id="objSheetDetails" style="font-size:0.85rem; color:var(--text-sub); line-height:1.5;">Details...</div>
             </div>
-            <div style="width:100px; height:100px; border-radius:12px; overflow:hidden; background:var(--bg-glass); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-left:15px;">
+            <!-- CLICKABLE PHOTO PREVIEW IN DETAIL SHEET -->
+            <div style="width:100px; height:100px; border-radius:12px; overflow:hidden; background:var(--bg-glass); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-left:15px; cursor:pointer;" onclick="if(document.getElementById('objPhotoImg').src) window.openFullScreenPhoto(document.getElementById('objPhotoImg').src)">
                 <i id="objPhotoPlaceholder" class="fa-solid fa-image" style="color:var(--text-sub); font-size:24px;"></i>
                 <img id="objPhotoImg" src="" style="width:100%; height:100%; object-fit:cover; display:none;">
             </div>
@@ -251,7 +240,14 @@
             <button class="btn-action-primary" id="btnObjMove" style="flex:1;"><i class="fa-solid fa-arrows-up-down-left-right"></i> Move</button>
             <button class="btn-action-primary" id="btnObjDelete" style="flex:1; background:#ef4444;"><i class="fa-solid fa-trash"></i></button>
         </div>
+        <!-- CAPTURE BUTTON IN DETAIL SHEET -->
         <button class="btn-action-primary" style="margin-top:10px; width:100%; background:#0f172a;" onclick="captureObjectPhoto()"><i class="fa-solid fa-camera"></i> Capture New Photo</button>
+    </div>
+
+    <!-- FULL SCREEN PHOTO VIEWER (NEW) -->
+    <div id="full-photo-viewer" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:99999999; flex-direction:column; align-items:center; justify-content:center; backdrop-filter:blur(10px);">
+        <button onclick="window.closeFullScreenPhoto()" style="position:absolute; top:30px; right:30px; background:rgba(255,255,255,0.2); border:none; color:white; width:45px; height:45px; border-radius:50%; font-size:24px; z-index:2; display:flex; align-items:center; justify-content:center; cursor:pointer;"><i class="fa-solid fa-times"></i></button>
+        <img id="full-photo-img" src="" style="max-width:95%; max-height:90%; object-fit:contain; border-radius:12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
     </div>
 
     <div class="modal-overlay" id="formModalOverlay">
