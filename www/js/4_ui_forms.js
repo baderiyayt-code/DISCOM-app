@@ -12,12 +12,18 @@ window.captureTempPhoto = function() {
             window.tempPhotoUrl = "data:image/jpeg;base64," + imgData;
             const imgEl = document.getElementById('formTempPhoto');
             if(imgEl) { imgEl.src = window.tempPhotoUrl; imgEl.style.display = 'block'; }
-        }, (err) => { alert("Camera error: " + err); }, { quality: 40, destinationType: 0, targetWidth: 800, targetHeight: 800, correctOrientation: true });
+        }, (err) => { alert("Camera error: " + err); }, {
+            quality: 40, destinationType: 0, targetWidth: 800, targetHeight: 800, correctOrientation: true
+        });
     } else {
         let input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
         input.onchange = e => {
             let file = e.target.files[0]; if(!file) return; let reader = new FileReader();
-            reader.onload = ev => { window.tempPhotoUrl = ev.target.result; const imgEl = document.getElementById('formTempPhoto'); if(imgEl) { imgEl.src = window.tempPhotoUrl; imgEl.style.display = 'block'; } }; reader.readAsDataURL(file);
+            reader.onload = ev => {
+                window.tempPhotoUrl = ev.target.result;
+                const imgEl = document.getElementById('formTempPhoto');
+                if(imgEl) { imgEl.src = window.tempPhotoUrl; imgEl.style.display = 'block'; }
+            }; reader.readAsDataURL(file);
         }; input.click();
     }
 };
@@ -25,59 +31,180 @@ window.captureTempPhoto = function() {
 window.captureObjectPhoto = function() {
     if(!window.currentSelectedObj) return alert("Error: Object not selected!");
     const id = window.currentSelectedObj.id;
+    
     const processPhoto = (base64Data) => {
         if(window.savePhotoData) window.savePhotoData(id, base64Data);
-        const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder');
+        const imgEl = document.getElementById('objPhotoImg');
+        const placeholderEl = document.getElementById('objPhotoPlaceholder');
         if(imgEl && placeholderEl) { imgEl.src = base64Data; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; }
         if(window.showToast) window.showToast("Photo Saved Successfully!");
     };
+
     if (typeof navigator !== 'undefined' && navigator.camera) {
-        navigator.camera.getPicture((imgData) => { processPhoto("data:image/jpeg;base64," + imgData); }, (err) => { alert("Camera error: " + err); }, { quality: 40, destinationType: 0, targetWidth: 800, targetHeight: 800, correctOrientation: true });
+        navigator.camera.getPicture((imgData) => { processPhoto("data:image/jpeg;base64," + imgData); }, 
+        (err) => { alert("Camera error: " + err); }, { quality: 40, destinationType: 0, targetWidth: 800, targetHeight: 800, correctOrientation: true });
     } else {
         let input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
-        input.onchange = e => { let file = e.target.files[0]; if(!file) return; let reader = new FileReader(); reader.onload = ev => processPhoto(ev.target.result); reader.readAsDataURL(file); }; input.click();
+        input.onchange = e => {
+            let file = e.target.files[0]; if(!file) return; let reader = new FileReader();
+            reader.onload = ev => processPhoto(ev.target.result); reader.readAsDataURL(file);
+        }; input.click();
     }
 };
 
-window.openFullScreenPhoto = function(src) { if(!src || src === '' || src === window.location.href) return; const viewer = document.getElementById('full-photo-viewer'); const img = document.getElementById('full-photo-img'); if(viewer && img) { img.src = src; viewer.style.display = 'flex'; } };
-window.closeFullScreenPhoto = function() { const viewer = document.getElementById('full-photo-viewer'); if(viewer) viewer.style.display = 'none'; };
+// ==========================================
+// FULL SCREEN PHOTO LOGIC
+// ==========================================
+window.openFullScreenPhoto = function(src) {
+    if(!src || src === '' || src === window.location.href) return;
+    const viewer = document.getElementById('full-photo-viewer');
+    const img = document.getElementById('full-photo-img');
+    if(viewer && img) { img.src = src; viewer.style.display = 'flex'; }
+};
+window.closeFullScreenPhoto = function() {
+    const viewer = document.getElementById('full-photo-viewer');
+    if(viewer) viewer.style.display = 'none';
+};
 
-window.openModal = function(html) { document.getElementById('modalSheetContent').innerHTML = html; document.getElementById('formModalOverlay').classList.add('open'); window.tempPhotoUrl = null; }
-window.closeModal = function() { document.getElementById('formModalOverlay').classList.remove('open'); const distInd = document.getElementById('live-distance-indicator'); if(distInd) distInd.style.display='none'; if(appState.user && appState.user.isLoggedIn) { setTimeout(() => { if(typeof window.checkOnboardingFlow === 'function') window.checkOnboardingFlow(); }, 400); } }
+window.openModal = function(html) { 
+    document.getElementById('modalSheetContent').innerHTML = html; 
+    document.getElementById('formModalOverlay').classList.add('open'); 
+    window.tempPhotoUrl = null; 
+}
+window.closeModal = function() { 
+    document.getElementById('formModalOverlay').classList.remove('open'); 
+    const distInd = document.getElementById('live-distance-indicator'); if(distInd) distInd.style.display='none'; 
+    if(appState.user && appState.user.isLoggedIn) { setTimeout(() => { if(typeof window.checkOnboardingFlow === 'function') window.checkOnboardingFlow(); }, 400); } 
+}
 
 window.isSavingData = false; 
 window.executeSafeSave = function(actionFn) {
     if(window.isSavingData) return; window.isSavingData = true;
-    let hasError = false; const origAlert = window.alert; window.alert = function(msg) { hasError = true; origAlert(msg); };
-    try { const result = actionFn(); if(result === false) hasError = true; } catch(e) { hasError = true; console.error("Save Error:", e); } window.alert = origAlert;
-    if(!hasError) { window.closeModal(); try { if(window.renderEntireNetwork) window.renderEntireNetwork(); } catch(e){} try { if(window.triggerPersistence) window.triggerPersistence(); } catch(e){} }
+    let hasError = false; const origAlert = window.alert;
+    window.alert = function(msg) { hasError = true; origAlert(msg); };
+    try { const result = actionFn(); if(result === false) hasError = true; } catch(e) { hasError = true; console.error("Save Error:", e); }
+    window.alert = origAlert;
+    if(!hasError) { 
+        window.closeModal(); 
+        try { if(window.renderEntireNetwork) window.renderEntireNetwork(); } catch(e){ console.error(e); }
+        try { if(window.triggerPersistence) window.triggerPersistence(); } catch(e){ console.error(e); }
+    }
     setTimeout(() => { window.isSavingData = false; }, 800); 
 };
 
-window.toggleSpeedDial = function(e) { if(e) { e.preventDefault(); e.stopPropagation(); } const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); if (!dial || !fab) return; const isOpen = !dial.classList.contains('active'); dial.classList.toggle('active', isOpen); fab.classList.toggle('open', isOpen); }
-document.addEventListener('click', function(e) { const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) { dial.classList.remove('active'); fab.classList.remove('open'); } } });
-window.toggleSidebar = function(open) { document.getElementById('sidebar-drawer').classList.toggle('open', open); document.getElementById('sidebarBackdrop').classList.toggle('open', open); if(open) { window.renderGssSidebarList(); window.renderFeederSidebarList(); } }
+window.toggleSpeedDial = function(e) { 
+    if(e) { e.preventDefault(); e.stopPropagation(); } 
+    const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); 
+    if (!dial || !fab) return; 
+    const isOpen = !dial.classList.contains('active'); 
+    dial.classList.toggle('active', isOpen); fab.classList.toggle('open', isOpen); 
+}
+document.addEventListener('click', function(e) { 
+    const dial = document.getElementById('speed-dial-menu'); const fab = document.getElementById('mainFabBtn'); 
+    if (dial && dial.classList.contains('active')) { if (!dial.contains(e.target) && !fab.contains(e.target)) { dial.classList.remove('active'); fab.classList.remove('open'); } } 
+});
+
+window.toggleSidebar = function(open) { 
+    document.getElementById('sidebar-drawer').classList.toggle('open', open); document.getElementById('sidebarBackdrop').classList.toggle('open', open); 
+    if(open) { window.renderGssSidebarList(); window.renderFeederSidebarList(); } 
+}
 
 window.toggleGssFolder = function() { const content = document.getElementById('gssFolderContent'), icon = document.getElementById('gssFolderIcon'); if (!content || !icon) return; const isHidden = content.style.display === 'none'; content.style.display = isHidden ? 'block' : 'none'; icon.className = isHidden ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'; if (isHidden) window.renderGssSidebarList(); };
 window.toggleFeederFolder = function() { const content = document.getElementById('feederFolderContent'), icon = document.getElementById('feederFolderIcon'); if (!content || !icon) return; const isHidden = content.style.display === 'none'; content.style.display = isHidden ? 'block' : 'none'; icon.className = isHidden ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'; if (isHidden) window.renderFeederSidebarList(); };
 
-window.renderGssSidebarList = function() { const container = document.getElementById('gssListContainer'); if (!container) return; let html = ''; Object.values(appState.gssNodes || {}).forEach(gss => { html += `<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-glass); padding:8px; border-radius:6px; margin-top:6px; border:1px solid var(--border);"><div><b style="font-size:0.85rem;">${gss.name}</b><br><small style="color:var(--text-sub);">Code: ${gss.code}</small></div><div style="display:flex; gap:4px;"><button class="action-btn-sm bg" onclick="window.relocateGss('${gss.code}')" title="Relocate GSS"><i class="fa-solid fa-location-crosshairs"></i></button><button class="action-btn-sm bg" style="color:#ef4444;" onclick="window.deleteGssAndFeederStrict('${gss.code}')" title="Strict Delete"><i class="fa-solid fa-trash"></i></button></div></div>`; }); container.innerHTML = html; };
-window.renderFeederSidebarList = function() { const container = document.getElementById('feederListContainer'); if (!container) return; let html = ''; Object.keys(appState.feeders || {}).forEach(fCode => { const f = appState.feeders[fCode].feeder; const isActive = appState.currentFeederCode === fCode; const bgClass = isActive ? 'background:rgba(37,99,235,0.1); border-left:4px solid var(--accent);' : 'background:var(--bg-glass); border:1px solid var(--border);'; html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-radius:6px; margin-top:6px; ${bgClass}" onclick="window.switchFeeder('${fCode}')"><div style="cursor:pointer; width: 100%;"><b style="font-size:0.85rem; color:var(--text-main);">${f.name}</b><br><small style="color:var(--text-sub);">GSS: ${f.parentGss}</small></div><div style="display:flex; gap:4px;"><button class="action-btn-sm bg" onclick="event.stopPropagation(); window.openEditFeederModal('${fCode}')"><i class="fa-solid fa-pen"></i></button><button class="action-btn-sm bg" style="color:#ef4444;" onclick="event.stopPropagation(); window.deleteFeederStrict('${fCode}')"><i class="fa-solid fa-trash"></i></button></div></div>`; }); container.innerHTML = html; };
+window.renderGssSidebarList = function() {
+    const container = document.getElementById('gssListContainer'); if (!container) return; let html = '';
+    Object.values(appState.gssNodes || {}).forEach(gss => { html += `<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-glass); padding:8px; border-radius:6px; margin-top:6px; border:1px solid var(--border);"><div><b style="font-size:0.85rem;">${gss.name}</b><br><small style="color:var(--text-sub);">Code: ${gss.code}</small></div><div style="display:flex; gap:4px;"><button class="action-btn-sm bg" onclick="window.relocateGss('${gss.code}')" title="Relocate GSS"><i class="fa-solid fa-location-crosshairs"></i></button><button class="action-btn-sm bg" style="color:#ef4444;" onclick="window.deleteGssAndFeederStrict('${gss.code}')" title="Strict Delete"><i class="fa-solid fa-trash"></i></button></div></div>`; }); container.innerHTML = html;
+};
 
-window.openFeederConfigModal = function() { window.toggleSidebar(false); const gssOpts = Object.values(appState.gssNodes || {}).map(g => `<option value="${g.code}">${g.name}</option>`).join(''); window.openModal(`<div class="sheet-head"><div class="sheet-title">Add Feeder</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><select id="inpFeederGss" class="form-select">${gssOpts}</select><label>Select GSS*</label></div><div class="form-row"><input type="text" id="inpFeederCode" class="form-input" placeholder=" "><label>Feeder Code*</label></div><div class="form-row"><input type="text" id="inpFeederName" class="form-input" placeholder=" "><label>Feeder Name*</label></div><button class="btn-action-primary" onclick="window.saveNewFeeder()">Save Feeder</button>`); };
-window.saveNewFeeder = function() { try { const gss = document.getElementById('inpFeederGss').value; const code = document.getElementById('inpFeederCode').value.trim(); const name = document.getElementById('inpFeederName').value.trim(); if(!gss || !code || !name) return alert("All fields are required"); if(!appState.feeders) appState.feeders = {}; if(appState.feeders[code]) return alert("Feeder code already exists"); appState.feeders[code] = { feeder: { name: name, code: code, subdivCode: "SD-01", parentGss: gss }, poles: [], dts: [], lines: [], consumers: [] }; appState.currentFeederCode = code; window.closeModal(); setTimeout(() => { try { if(window.renderEntireNetwork) window.renderEntireNetwork(); } catch(e){} try { if(window.triggerPersistence) window.triggerPersistence(); } catch(e){} if(window.showToast) window.showToast("Feeder Added!"); }, 100); } catch (e) { alert("Error saving feeder!"); } };
-window.openEditFeederModal = function(code) { window.toggleSidebar(false); window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit Feeder Name</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" class="form-input" value="${code}" disabled placeholder=" "><label>Feeder Code (Locked)</label></div><div class="form-row"><input type="text" id="editFeederName" class="form-input" placeholder=" " value="${appState.feeders[code].feeder.name}"><label>New Name*</label></div><button class="btn-action-primary" onclick="window.saveEditedFeeder('${code}')">Save Changes</button>`); }
-window.saveEditedFeeder = function(code) { try { const newName = document.getElementById('editFeederName').value.trim(); if(!newName) return alert("Enter new name"); if(appState.feeders[code]) { appState.feeders[code].feeder.name = newName; if(window.triggerPersistence) window.triggerPersistence(); window.closeModal(); if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.showToast) window.showToast("Feeder Updated!"); } } catch (e) { console.error(e); } }
-window.deleteFeederStrict = function(code) { try { if (!confirm(`WARNING: Deleting Feeder ${code} will destroy all data inside it. Continue?`)) return; if (prompt(`Type Feeder code "${code}" to confirm:`) !== code) return alert("Cancelled"); if (appState.feeders[code]) { const f = appState.feeders[code]; const ids = [...(f.poles||[]), ...(f.lines||[]), ...(f.dts||[]), ...(f.consumers||[])].map(x=>x.id); if(!appState.deletedObjectIds) appState.deletedObjectIds = []; appState.deletedObjectIds.push(...ids); if(!appState.deletedFeederCodes) appState.deletedFeederCodes = []; appState.deletedFeederCodes.push(code); } delete appState.feeders[code]; if(appState.currentFeederCode === code) { const remaining = Object.keys(appState.feeders); appState.currentFeederCode = remaining.length > 0 ? remaining[0] : null; } window.closeModal(); if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.triggerPersistence) window.triggerPersistence(); if(window.showToast) window.showToast("Feeder Deleted!"); if(window.checkOnboardingFlow) window.checkOnboardingFlow(); } catch (e) { console.error(e); } }
-window.deleteGssAndFeederStrict = function(code) { try { if (!confirm(`WARNING: You are about to delete GSS ${code} and ALL its associated feeders! Continue?`)) return; if (prompt(`Type GSS code "${code}" to confirm:`) !== code) return alert("Cancelled"); if(window.saveSnapshot) window.saveSnapshot(); if (appState.gssNodes[code]) delete appState.gssNodes[code]; const feedersToDelete = []; Object.keys(appState.feeders || {}).forEach(fCode => { if (appState.feeders[fCode].feeder.parentGss === code) feedersToDelete.push(fCode); }); feedersToDelete.forEach(fCode => window.deleteFeederStrict(fCode)); if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.triggerPersistence) window.triggerPersistence(); window.renderGssSidebarList(); window.showToast("Deleted completely!"); if(window.checkOnboardingFlow) window.checkOnboardingFlow(); } catch (e) { console.error(e); } }
+window.renderFeederSidebarList = function() {
+    const container = document.getElementById('feederListContainer'); if (!container) return; let html = '';
+    Object.keys(appState.feeders || {}).forEach(fCode => {
+        const f = appState.feeders[fCode].feeder; const isActive = appState.currentFeederCode === fCode;
+        const bgClass = isActive ? 'background:rgba(37,99,235,0.1); border-left:4px solid var(--accent);' : 'background:var(--bg-glass); border:1px solid var(--border);';
+        html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-radius:6px; margin-top:6px; ${bgClass}" onclick="window.switchFeeder('${fCode}')"><div style="cursor:pointer; width: 100%;"><b style="font-size:0.85rem; color:var(--text-main);">${f.name}</b><br><small style="color:var(--text-sub);">GSS: ${f.parentGss}</small></div><div style="display:flex; gap:4px;"><button class="action-btn-sm bg" onclick="event.stopPropagation(); window.openEditFeederModal('${fCode}')"><i class="fa-solid fa-pen"></i></button><button class="action-btn-sm bg" style="color:#ef4444;" onclick="event.stopPropagation(); window.deleteFeederStrict('${fCode}')"><i class="fa-solid fa-trash"></i></button></div></div>`;
+    }); container.innerHTML = html;
+};
+
+window.openFeederConfigModal = function() {
+    window.toggleSidebar(false); const gssOpts = Object.values(appState.gssNodes || {}).map(g => `<option value="${g.code}">${g.name}</option>`).join('');
+    window.openModal(`<div class="sheet-head"><div class="sheet-title">Add Feeder</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><select id="inpFeederGss" class="form-select">${gssOpts}</select><label>Select GSS*</label></div><div class="form-row"><input type="text" id="inpFeederCode" class="form-input" placeholder=" "><label>Feeder Code*</label></div><div class="form-row"><input type="text" id="inpFeederName" class="form-input" placeholder=" "><label>Feeder Name*</label></div><button class="btn-action-primary" onclick="window.saveNewFeeder()">Save Feeder</button>`);
+};
+
+window.saveNewFeeder = function() { 
+    try {
+        const gss = document.getElementById('inpFeederGss').value; const code = document.getElementById('inpFeederCode').value.trim(); const name = document.getElementById('inpFeederName').value.trim(); 
+        if(!gss || !code || !name) return alert("All fields are required"); 
+        if(!appState.feeders) appState.feeders = {}; 
+        if(appState.feeders[code]) return alert("Feeder code already exists"); 
+        
+        appState.feeders[code] = { feeder: { name: name, code: code, subdivCode: "SD-01", parentGss: gss }, poles: [], dts: [], lines: [], consumers: [] }; 
+        appState.currentFeederCode = code; 
+        window.closeModal(); 
+        
+        setTimeout(() => {
+            try { if(window.renderEntireNetwork) window.renderEntireNetwork(); } catch(e){}
+            try { if(window.triggerPersistence) window.triggerPersistence(); } catch(e){}
+            if(window.showToast) window.showToast("Feeder Added!"); 
+        }, 100);
+    } catch (e) { alert("Error saving feeder!"); }
+};
+
+window.openEditFeederModal = function(code) {
+    window.toggleSidebar(false); window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit Feeder Name</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" class="form-input" value="${code}" disabled placeholder=" "><label>Feeder Code (Locked)</label></div><div class="form-row"><input type="text" id="editFeederName" class="form-input" placeholder=" " value="${appState.feeders[code].feeder.name}"><label>New Name*</label></div><button class="btn-action-primary" onclick="window.saveEditedFeeder('${code}')">Save Changes</button>`);
+}
+window.saveEditedFeeder = function(code) { 
+    try { const newName = document.getElementById('editFeederName').value.trim(); if(!newName) return alert("Enter new name"); if(appState.feeders[code]) { appState.feeders[code].feeder.name = newName; if(window.triggerPersistence) window.triggerPersistence(); window.closeModal(); if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.showToast) window.showToast("Feeder Updated!"); } } catch (e) { console.error(e); }
+}
+
+window.deleteFeederStrict = function(code) { 
+    try {
+        if (!confirm(`WARNING: Deleting Feeder ${code} will destroy all data inside it. Continue?`)) return; if (prompt(`Type Feeder code "${code}" to confirm:`) !== code) return alert("Cancelled"); 
+        if (appState.feeders[code]) { const f = appState.feeders[code]; const ids = [...(f.poles||[]), ...(f.lines||[]), ...(f.dts||[]), ...(f.consumers||[])].map(x=>x.id); if(!appState.deletedObjectIds) appState.deletedObjectIds = []; appState.deletedObjectIds.push(...ids); if(!appState.deletedFeederCodes) appState.deletedFeederCodes = []; appState.deletedFeederCodes.push(code); }
+        delete appState.feeders[code]; if(appState.currentFeederCode === code) { const remaining = Object.keys(appState.feeders); appState.currentFeederCode = remaining.length > 0 ? remaining[0] : null; } 
+        window.closeModal(); if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.triggerPersistence) window.triggerPersistence(); if(window.showToast) window.showToast("Feeder Deleted!"); if(window.checkOnboardingFlow) window.checkOnboardingFlow(); 
+    } catch (e) { console.error(e); }
+}
+
+window.deleteGssAndFeederStrict = function(code) { 
+    try {
+        if (!confirm(`WARNING: You are about to delete GSS ${code} and ALL its associated feeders! Continue?`)) return; if (prompt(`Type GSS code "${code}" to confirm:`) !== code) return alert("Cancelled"); 
+        if(window.saveSnapshot) window.saveSnapshot(); if (appState.gssNodes[code]) delete appState.gssNodes[code]; const feedersToDelete = []; Object.keys(appState.feeders || {}).forEach(fCode => { if (appState.feeders[fCode].feeder.parentGss === code) feedersToDelete.push(fCode); }); feedersToDelete.forEach(fCode => window.deleteFeederStrict(fCode)); 
+        if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.triggerPersistence) window.triggerPersistence(); window.renderGssSidebarList(); window.showToast("Deleted completely!"); if(window.checkOnboardingFlow) window.checkOnboardingFlow(); 
+    } catch (e) { console.error(e); }
+}
+
 window.openAddGssModal = function() { window.toggleSidebar(false); window.openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> Add New GSS</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" id="inpGssCode" class="form-input" placeholder=" "><label>GSS Code*</label></div><div class="form-row"><input type="text" id="inpGssName" class="form-input" placeholder=" "><label>GSS Name*</label></div><button class="btn-action-primary" onclick="window.saveNewGss()">Save GSS</button>`); };
-window.saveNewGss = function() { try { const code = document.getElementById('inpGssCode').value.trim(); const name = document.getElementById('inpGssName').value.trim(); if (!code || !name) return alert("Enter GSS Code and Name"); if (!appState.gssNodes) appState.gssNodes = {}; if (appState.gssNodes[code]) return alert("GSS Code already exists!"); let centerLat = 26.9150; let centerLng = 75.7830; if(typeof map !== 'undefined' && map) { const center = map.getCenter(); centerLat = parseFloat(center.lat.toFixed(6)); centerLng = parseFloat(center.lng.toFixed(6)); } appState.gssNodes[code] = { code: code, name: name, lat: centerLat, lng: centerLng }; window.closeModal(); setTimeout(() => { try { if(window.renderEntireNetwork) window.renderEntireNetwork(); } catch(e){} try { if(window.triggerPersistence) window.triggerPersistence(); } catch(e){} if(window.showToast) window.showToast("New GSS added!"); if(window.checkOnboardingFlow) window.checkOnboardingFlow(); }, 100); } catch(e) { alert("Error saving GSS!"); } };
+
+window.saveNewGss = function() { 
+    try {
+        const code = document.getElementById('inpGssCode').value.trim(); const name = document.getElementById('inpGssName').value.trim(); 
+        if (!code || !name) return alert("Enter GSS Code and Name"); 
+        if (!appState.gssNodes) appState.gssNodes = {}; 
+        if (appState.gssNodes[code]) return alert("GSS Code already exists!"); 
+        
+        let centerLat = 26.9150; let centerLng = 75.7830; 
+        if(typeof map !== 'undefined' && map) { const center = map.getCenter(); centerLat = parseFloat(center.lat.toFixed(6)); centerLng = parseFloat(center.lng.toFixed(6)); }
+        
+        appState.gssNodes[code] = { code: code, name: name, lat: centerLat, lng: centerLng }; 
+        window.closeModal(); 
+        
+        setTimeout(() => {
+            try { if(window.renderEntireNetwork) window.renderEntireNetwork(); } catch(e){}
+            try { if(window.triggerPersistence) window.triggerPersistence(); } catch(e){}
+            if(window.showToast) window.showToast("New GSS added!"); 
+            if(window.checkOnboardingFlow) window.checkOnboardingFlow();
+        }, 100);
+    } catch(e) { alert("Error saving GSS!"); }
+};
+
 window.relocateGss = function(gssCode) { if(window.closeObjectSheet) window.closeObjectSheet(); window.toggleSidebar(false); if(window.startObjectMove) window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
 window.autoSaveSettings = function() { appState.settings.unit = document.getElementById('setUnit').value; appState.settings.language = document.getElementById('setLanguage').value; appState.settings.theme = document.getElementById('setTheme').value; appState.settings.liveSync = document.getElementById('setLiveSync').checked; window.applyTranslations(); window.applyTheme(); window.triggerPersistence(); window.renderEntireNetwork(); window.showToast("Settings Saved!"); }
 window.openSettingsPage = function() { window.toggleSidebar(false); document.getElementById('setUnit').value = appState.settings.unit || 'm'; document.getElementById('setLanguage').value = appState.settings.language || 'en'; document.getElementById('setTheme').value = appState.settings.theme || 'light'; document.getElementById('setLiveSync').checked = appState.settings.liveSync !== false; document.getElementById('settings-page').classList.add('open'); }
 window.closeSettingsPage = function() { document.getElementById('settings-page').classList.remove('open'); }
 
 window.openAboutModal = function() { window.toggleSidebar(false); window.openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i> About App</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div style="text-align: center; padding: 10px 0 20px 0;"><div style="width: 64px; height: 64px; background: var(--accent); color: white; font-size: 32px; border-radius: 16px; display: flex; align-items:center; justify-content:center; margin: 0 auto 15px auto; box-shadow: 0 8px 20px rgba(37,99,235,0.3);"><i class="fa-solid fa-bolt"></i></div><h3 style="font-size: 1.2rem; font-weight: 900; color: var(--text-main); margin-bottom: 5px;">DISCOM Survey Pro</h3><p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 20px;">Professional GIS-based field survey mobile application designed for electricity infrastructure mapping, asset tracking, and enterprise-grade data management.</p><div style="background: var(--bg-glass); border: 1px solid var(--border); padding: 12px; border-radius: 10px; text-align: left; margin-bottom: 20px;"><div style="font-size: 0.8rem; color: var(--text-sub);">Developed By</div><div style="font-size: 0.95rem; font-weight: 800; color: var(--text-main); margin-top: 2px;">Suraj Singh Mehta</div><div style="font-size: 0.75rem; color: var(--accent); margin-top: 4px;">Electrical Asset Management Specialist</div></div><div style="font-size: 0.75rem; color: var(--text-sub);">Version 2.5.0 (Enterprise Edition)</div></div>`); };
+
 window.openFilterModal = function() { const f = appState.filters; window.openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-filter" style="color:#d97706;"></i> Object Filter</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="capsule-filter-group"><label class="capsule"><input type="checkbox" id="flt11" ${f.lines11?'checked':''}><span>11 KV Line</span></label><label class="capsule"><input type="checkbox" id="fltLT" ${f.linesLT?'checked':''}><span>LT Line</span></label><label class="capsule"><input type="checkbox" id="fltPoles" ${f.poles?'checked':''}><span>Poles</span></label><label class="capsule"><input type="checkbox" id="fltDTs" ${f.dts?'checked':''}><span>DT</span></label><label class="capsule"><input type="checkbox" id="fltCons" ${f.consumers?'checked':''}><span>Consumers</span></label></div><button class="btn-action-primary" onclick="window.saveFilters()" style="margin-top:20px;">Apply Filters</button>`); }
 window.saveFilters = function() { appState.filters.lines11 = document.getElementById('flt11').checked; appState.filters.linesLT = document.getElementById('fltLT').checked; appState.filters.poles = document.getElementById('fltPoles').checked; appState.filters.dts = document.getElementById('fltDTs').checked; appState.filters.consumers = document.getElementById('fltCons').checked; window.closeModal(); window.renderEntireNetwork(); window.showToast("Filters Updated"); }
 
@@ -99,15 +226,115 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
     
     document.getElementById('object-bottom-sheet').classList.add('open'); 
     document.getElementById('btnObjEdit').onclick = () => window.openEditModal(type.toLowerCase(), id);
-    const btnDelete = document.getElementById('btnObjDelete'); const btnMove = document.getElementById('btnObjMove');
-    if(btnDelete) {
-        btnDelete.style.display = (type === 'GSS') ? 'none' : 'block'; 
-        btnDelete.onclick = () => { if(window.deleteEntity) window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
+    document.getElementById('btnObjDelete').style.display = (type === 'GSS') ? 'none' : 'block'; 
+    document.getElementById('btnObjMove').style.display = (type === 'DT') ? 'none' : 'block';
+    document.getElementById('btnObjMove').onclick = () => { if(window.startObjectMove) window.startObjectMove(type, id, title); }; 
+    document.getElementById('btnObjDelete').onclick = () => { if(window.deleteEntity) window.deleteEntity(type.toLowerCase(), id); window.closeObjectSheet(); };
+};
+
+// ==========================================
+// DT DETAIL MODAL WITH PHOTO, TABLE & ALL BUTTONS
+// ==========================================
+window.openDTFromSVG = function(e, id) {
+    if(e) e.stopPropagation(); 
+    const net = window.getActiveNetwork(); if(!net) return;
+    const d = (net.dts||[]).find(x => x.id === id);
+    if(!d) return;
+
+    window.currentSelectedObj = { type: 'DT', id: d.id };
+
+    const connectedConsumers = [];
+    (net.consumers||[]).forEach(c => {
+        let isConnected = false;
+        if(String(c.parentRef) === String(d.code) || String(c.parentRef) === String('DT_' + d.code)) {
+            isConnected = true;
+        } else {
+            const pole = (net.poles||[]).find(p => String(p.poleNo) === String(c.parentRef) || String(p.id) === String('POLE_' + c.parentRef));
+            if(pole && String(pole.dtCode) === String(d.code)) { isConnected = true; }
+        }
+        if(isConnected) { connectedConsumers.push(c); }
+    });
+
+    let totalLoadKW = 0;
+    connectedConsumers.forEach(c => {
+        const loadStr = String(c.load || '0'); 
+        const numMatch = loadStr.match(/[\d.]+/); 
+        if(numMatch) totalLoadKW += parseFloat(numMatch[0]) || 0;
+    });
+
+    let tableRowsHtml = '';
+    if(connectedConsumers.length === 0) {
+        tableRowsHtml = `<tr><td colspan="5" style="text-align:center; padding:12px; color:var(--text-sub); font-size:0.8rem;">No consumers connected to this DT yet.</td></tr>`;
+    } else {
+        connectedConsumers.forEach((c, index) => {
+            tableRowsHtml += `
+                <tr style="border-bottom: 1px solid var(--border);">
+                    <td style="padding:6px 8px; font-size:0.75rem; text-align:center;">${index + 1}</td>
+                    <td style="padding:6px 8px; font-size:0.75rem; font-weight:700;">${c.kno || 'N/A'}</td>
+                    <td style="padding:6px 8px; font-size:0.75rem;">${c.name || 'Unknown'}</td>
+                    <td style="padding:6px 8px; font-size:0.75rem;">${c.cType || 'Domestic'}</td>
+                    <td style="padding:6px 8px; font-size:0.75rem; text-align:right;">${c.load || '1 kW'}</td>
+                </tr>`;
+        });
     }
-    if(btnMove) {
-        btnMove.style.display = (type === 'DT') ? 'none' : 'block';
-        btnMove.onclick = () => { if(window.startObjectMove) window.startObjectMove(type, id, title); };
-    }
+
+    const photoUrl = window.getPhotoUrl ? window.getPhotoUrl(d.id) : null;
+
+    window.openModal(`
+        <div class="sheet-head">
+            <div class="sheet-title"><i class="fa-solid fa-bolt" style="color:var(--accent);"></i> DT Details & Consumers</div>
+            <button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div style="padding: 2px 0;">
+            <!-- PHOTO SECTION -->
+            <div style="display:flex; align-items:center; gap:12px; background:var(--bg-glass); padding:8px 12px; border-radius:10px; border:1px solid var(--border); margin-bottom:10px;">
+                <div style="position:relative; width:50px; height:50px; border-radius:8px; overflow:hidden; background:#e2e8f0; border:1px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+                    <div id="objPhotoPlaceholder" style="font-size:1.2rem; color:#94a3b8; ${photoUrl ? 'display:none;' : 'display:flex;'}"><i class="fa-solid fa-camera"></i></div>
+                    <img id="objPhotoImg" src="${photoUrl || ''}" onclick="window.openFullScreenPhoto(this.src)" style="width:100%; height:100%; object-fit:cover; cursor:pointer; ${photoUrl ? 'display:block;' : 'display:none;'}">
+                </div>
+                <div style="flex:1;">
+                    <div style="font-size:0.75rem; font-weight:700; color:var(--text-main);">DT Site Photo</div>
+                    <div style="font-size:0.7rem; color:var(--text-sub); margin-bottom:4px;">Capture or update inspection photo</div>
+                    <button type="button" class="action-btn-sm bg" style="padding:4px 10px; font-size:0.75rem; background:#0f172a; color:#fff;" onclick="window.captureObjectPhoto()"><i class="fa-solid fa-camera"></i> Capture Photo</button>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:10px; background:var(--bg-glass); padding:10px; border-radius:10px; border:1px solid var(--border);">
+                <div><span style="font-size:0.7rem; color:var(--text-sub);">DT Code</span><div style="font-weight:900; font-size:0.9rem;">${d.code}</div></div>
+                <div><span style="font-size:0.7rem; color:var(--text-sub);">Rating</span><div style="font-weight:900; font-size:0.9rem; color:var(--accent);">${d.rating} kVA</div></div>
+                <div><span style="font-size:0.7rem; color:var(--text-sub);">Phase & Mounting</span><div style="font-weight:700; font-size:0.8rem;">${d.phase || '3-Phase'} (${d.mountedOn || 'DP'})</div></div>
+                <div><span style="font-size:0.7rem; color:var(--text-sub);">Total Load</span><div style="font-weight:700; font-size:0.8rem; color:#10b981;">${totalLoadKW.toFixed(2)} kW (${connectedConsumers.length} Cons)</div></div>
+            </div>
+
+            <div style="font-weight:800; font-size:0.8rem; margin-bottom:6px; color:var(--text-main);">Connected Consumers List</div>
+            
+            <div style="max-height: 140px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background:var(--bg-base); margin-bottom: 12px;">
+                <table style="width:100%; border-collapse: collapse; text-align:left;">
+                    <thead>
+                        <tr style="background:var(--bg-glass); border-bottom:2px solid var(--border); font-size:0.7rem; color:var(--text-sub);">
+                            <th style="padding:6px 8px; text-align:center;">#</th>
+                            <th style="padding:6px 8px;">K-No</th>
+                            <th style="padding:6px 8px;">Name</th>
+                            <th style="padding:6px 8px;">Category</th>
+                            <th style="padding:6px 8px; text-align:right;">Load</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRowsHtml}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ACTION BUTTONS: EDIT, REPORT, DELETE -->
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                <button class="btn-action-primary" style="margin:0; background:#0f172a; font-size:0.8rem; padding:10px;" onclick="window.exportDtReportPdf('${d.id}')"><i class="fa-solid fa-file-pdf"></i> PDF Report</button>
+                <button class="btn-action-primary" style="margin:0; background:var(--accent); font-size:0.8rem; padding:10px;" onclick="window.openEditModal('dt', '${d.id}')"><i class="fa-solid fa-pen"></i> Edit DT</button>
+                <button class="btn-action-primary" style="margin:0; background:#ef4444; font-size:0.8rem; padding:10px;" onclick="if(confirm('Delete DT ${d.code}?')) { window.deleteEntity('dt', '${d.id}'); window.closeModal(); }"><i class="fa-solid fa-trash"></i> Delete DT</button>
+                <button class="btn-action-primary" style="margin:0; background:var(--bg-glass); color:var(--text-main); border:1px solid var(--border); font-size:0.8rem; padding:10px;" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i> Close</button>
+            </div>
+        </div>
+    `);
 };
 
 const dtRatingOptionsHtml = `<option value="10">10 kVA</option><option value="16">16 kVA</option><option value="25" selected>25 kVA</option><option value="40">40 kVA</option><option value="63">63 kVA</option><option value="100">100 kVA</option><option value="160">160 kVA</option><option value="250">250 kVA</option><option value="315">315 kVA</option><option value="500">500 kVA</option>`;
@@ -187,90 +414,6 @@ window.showFormModal = function(type, snapLat, snapLng) {
         setTimeout(() => window.filterConsumerPoles(), 100);
     }
 }
-
-// --- UPDATED DT DETAIL MODAL WITH PDF, EDIT & DELETE BUTTONS ---
-window.openDTFromSVG = function(e, id) {
-    if(e) e.stopPropagation(); 
-    const net = window.getActiveNetwork(); if(!net) return;
-    const d = (net.dts||[]).find(x => x.id === id);
-    if(!d) return;
-
-    const connectedConsumers = [];
-    (net.consumers||[]).forEach(c => {
-        let isConnected = false;
-        if(String(c.parentRef) === String(d.code) || String(c.parentRef) === String('DT_' + d.code)) {
-            isConnected = true;
-        } else {
-            const pole = (net.poles||[]).find(p => String(p.poleNo) === String(c.parentRef) || String(p.id) === String('POLE_' + c.parentRef));
-            if(pole && String(pole.dtCode) === String(d.code)) { isConnected = true; }
-        }
-        if(isConnected) { connectedConsumers.push(c); }
-    });
-
-    let totalLoadKW = 0;
-    connectedConsumers.forEach(c => {
-        const loadStr = String(c.load || '0'); 
-        const numMatch = loadStr.match(/[\d.]+/); 
-        if(numMatch) totalLoadKW += parseFloat(numMatch[0]) || 0;
-    });
-
-    let tableRowsHtml = '';
-    if(connectedConsumers.length === 0) {
-        tableRowsHtml = `<tr><td colspan="5" style="text-align:center; padding:15px; color:var(--text-sub);">No consumers connected to this DT yet.</td></tr>`;
-    } else {
-        connectedConsumers.forEach((c, index) => {
-            tableRowsHtml += `
-                <tr style="border-bottom: 1px solid var(--border);">
-                    <td style="padding:8px; font-size:0.8rem; text-align:center;">${index + 1}</td>
-                    <td style="padding:8px; font-size:0.8rem; font-weight:700;">${c.kno || 'N/A'}</td>
-                    <td style="padding:8px; font-size:0.8rem;">${c.name || 'Unknown'}</td>
-                    <td style="padding:8px; font-size:0.8rem;">${c.cType || 'Domestic'}</td>
-                    <td style="padding:8px; font-size:0.8rem; text-align:right;">${c.load || '1 kW'}</td>
-                </tr>`;
-        });
-    }
-
-    window.openModal(`
-        <div class="sheet-head">
-            <div class="sheet-title"><i class="fa-solid fa-bolt" style="color:var(--accent);"></i> DT Details & Consumers</div>
-            <button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        
-        <div style="padding: 5px 0;">
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:15px; background:var(--bg-glass); padding:12px; border-radius:10px; border:1px solid var(--border);">
-                <div><span style="font-size:0.75rem; color:var(--text-sub);">DT Code</span><div style="font-weight:900; font-size:0.95rem;">${d.code}</div></div>
-                <div><span style="font-size:0.75rem; color:var(--text-sub);">Rating</span><div style="font-weight:900; font-size:0.95rem; color:var(--accent);">${d.rating} kVA</div></div>
-                <div><span style="font-size:0.75rem; color:var(--text-sub);">Phase & Mounting</span><div style="font-weight:700; font-size:0.85rem;">${d.phase || '3-Phase'} (${d.mountedOn || 'DP'})</div></div>
-                <div><span style="font-size:0.75rem; color:var(--text-sub);">Total Load</span><div style="font-weight:700; font-size:0.85rem; color:#10b981;">${totalLoadKW.toFixed(2)} kW (${connectedConsumers.length} Consumers)</div></div>
-            </div>
-
-            <div style="font-weight:800; font-size:0.85rem; margin-bottom:8px; color:var(--text-main);">Connected Consumers List</div>
-            
-            <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background:var(--bg-base); margin-bottom: 15px;">
-                <table style="width:100%; border-collapse: collapse; text-align:left;">
-                    <thead>
-                        <tr style="background:var(--bg-glass); border-bottom:2px solid var(--border); font-size:0.75rem; color:var(--text-sub);">
-                            <th style="padding:8px; text-align:center;">#</th>
-                            <th style="padding:8px;">K-No</th>
-                            <th style="padding:8px;">Name</th>
-                            <th style="padding:8px;">Category</th>
-                            <th style="padding:8px; text-align:right;">Load</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tableRowsHtml}
-                    </tbody>
-                </table>
-            </div>
-
-            <div style="display:flex; gap:8px;">
-                <button class="btn-action-primary" style="flex:1.2; background:#0f172a; font-size:0.8rem; padding:10px 4px;" onclick="window.exportDtReportPdf('${d.id}')"><i class="fa-solid fa-file-pdf"></i> PDF</button>
-                <button class="btn-action-primary" style="flex:1; background:var(--bg-glass); color:var(--text-main); border:1px solid var(--border); font-size:0.8rem; padding:10px 4px;" onclick="window.openEditModal('dt', '${d.id}')"><i class="fa-solid fa-pen"></i> Edit</button>
-                <button class="btn-action-primary" style="flex:1; background:#ef4444; color:white; font-size:0.8rem; padding:10px 4px;" onclick="if(confirm('Are you sure you want to delete this DT?')) { window.deleteEntity('dt', '${d.id}'); window.closeModal(); }"><i class="fa-solid fa-trash"></i> Delete</button>
-            </div>
-        </div>
-    `);
-};
 
 window.openEditModal = function(type, id) {
     window.closeObjectSheet(); 
