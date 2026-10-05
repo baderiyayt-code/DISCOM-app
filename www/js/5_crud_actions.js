@@ -13,29 +13,34 @@ window.getPhotoUrl = function(id) {
     return (appState.photos && appState.photos[id]) ? appState.photos[id] : null;
 };
 
-/* --- Replace checkAndSplitLineOnPoleInsert inside js/5_crud_actions.js --- */
+/* --- Updated Magic Pole Logic for HT and LT Networks --- */
 
 window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
     if(!net || !net.lines || !net.poles) return;
     
     let targetLineIndex = -1;
     let matchedLine = null;
+    let isLT = (newPole.lineType === 'LT');
 
     // Search for the exact line segment that the new pole is intersecting
     for (let i = 0; i < net.lines.length; i++) {
         const l = net.lines[i];
+        const isLineLT = l.type && l.type.includes('LT');
+        
+        // HT pole can only split HT lines, LT pole can only split LT lines
+        if (isLT && !isLineLT) continue;
+        if (!isLT && isLineLT) continue;
+
         const n1 = window.getNodeCoords(l.fromNode);
         const n2 = window.getNodeCoords(l.toNode);
         
         if (n1 && n2) {
-            // Check perpendicular distance to the line segment (Strictly within 4 meters)
             const distToSegment = window.calculatePointToSegmentDistance(
                 { lat: newPole.lat, lng: newPole.lng },
                 { lat: n1.lat, lng: n1.lng },
                 { lat: n2.lat, lng: n2.lng }
             );
 
-            // Verify the pole lies strictly between the segment endpoints
             const isBetweenEndpoints = window.isPointOnSegment(
                 { lat: newPole.lat, lng: newPole.lng },
                 { lat: n1.lat, lng: n1.lng },
@@ -45,7 +50,7 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
             if (distToSegment <= 4.0 && isBetweenEndpoints) {
                 targetLineIndex = i;
                 matchedLine = l;
-                break; // Stop at the first exact intersected line
+                break; 
             }
         }
     }
@@ -57,12 +62,34 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
         const linePhase = matchedLine.phase;
         const lineCond = matchedLine.conductor;
 
+        // If it's an LT pole, automatically detect and inherit DT Code from the connected line nodes
+        if (isLT) {
+            let detectedDtCode = null;
+            const checkNodeForDT = (nodeId) => {
+                if (nodeId.startsWith('DT_')) return nodeId.replace('DT_', '');
+                const foundPole = (net.poles||[]).find(x => 'POLE_' + x.poleNo === nodeId || x.id === nodeId);
+                if (foundPole && foundPole.dtCode) return foundPole.dtCode;
+                return null;
+            };
+            detectedDtCode = checkNodeForDT(originalFrom) || checkNodeForDT(originalTo);
+            
+            if (detectedDtCode) {
+                newPole.dtCode = detectedDtCode;
+                // Auto generate sequential LT pole number for this DT (e.g., 8380-1, 8380-2)
+                let maxL = 0;
+                (net.poles||[]).filter(p => p.lineType === 'LT' && String(p.dtCode) === String(detectedDtCode)).forEach(p => {
+                    const pts = String(p.poleNo).split('-');
+                    if(pts.length > 1) { const num = parseInt(pts[1]); if(!isNaN(num) && num > maxL) maxL = num; }
+                });
+                newPole.poleNo = detectedDtCode + '-' + (maxL + 1);
+            }
+        }
+
         // 1. Remove the old single line securely
         net.lines.splice(targetLineIndex, 1);
 
         const newPoleNodeId = 'POLE_' + newPole.poleNo;
 
-        // Prevent self-loops or duplicate segments
         if (originalFrom !== newPoleNodeId && originalTo !== newPoleNodeId) {
             // 2. Create Segment 1: Original From -> New Pole
             const segment1 = {
@@ -87,17 +114,56 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
             net.lines.push(segment1);
             net.lines.push(segment2);
 
-            // Run network deduplication to ensure no overlapping lines exist
             if(window.deduplicateNetworkData) {
                 window.deduplicateNetworkData();
             }
 
             if(window.showToast) {
-                window.showToast(`✨ Magic Pole Split Successful via Pole ${newPole.poleNo}`);
+                window.showToast(`✨ Magic ${isLT ? 'LT' : 'HT'} Pole Split Successful via Pole ${newPole.poleNo}`);
             }
         }
     }
 };
+
+window.isPointOnSegment = function(p, a, b) {
+    const dxy = Math.hypot(b.lat - a.lat, b.lng - a.lng);
+    const dap = Math.hypot(p.lat - a.lat, p.lng - a.lng);
+    const dbp = Math.hypot(p.lat - b.lat, p.lng - b.lng);
+    return (dap + dbp) >= (dxy - 0.0001) && (dap + dbp) <= (dxy + 0.0001);
+};
+
+window.calculatePointToSegmentDistance = function(p, a, b) {
+    const R = 6371000; 
+    const rad = Math.PI / 180;
+    
+    const x = p.lng * Math.cos(a.lat * rad) * R * rad;
+    const y = p.lat * R * rad;
+    const x1 = a.lng * Math.cos(a.lat * rad) * R * rad;
+    const y1 = a.lat * R * rad;
+    const x2 = b.lng * Math.cos(a.lat * rad) * R * rad;
+    const y2 = b.lat * R * rad;
+
+    const A = x - x1;
+    const B = y - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+
+    let dot = A * C + B * D;
+    let len_sq = C * C + D * D;
+    let param = -1;
+    if (len_sq !== 0) param = dot / len_sq;
+
+    let xx, yy;
+    if (param < 0) { xx = x1; yy = y1; }
+    else if (param > 1) { xx = x2; yy = y2; }
+    else { xx = x1 + param * C; yy = y1 + param * D; }
+
+    const dx = x - xx;
+    const dy = y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+};
+
+
 
 
 window.isPointOnSegment = function(p, a, b) {
