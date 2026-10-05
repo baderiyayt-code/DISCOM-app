@@ -16,12 +16,6 @@
     <icon src="res/icon.png" />
     
     <!-- NEW ANDROID 12+ SPLASH SCREEN PREFERENCES -->
-    <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/splash.png" />
-    <preference name="AndroidWindowSplashScreenBackground" value="#1e3a8a" />
-    <preference name="SplashScreenDelay" value="2500" />
-    <preference name="SplashMaintainAspectRatio" value="true" />
-    <preference name="AutoHideSplashScreen" value="true" />
-    <preference name="FadeSplashScreen" value="true" />
     
     <preference name="AndroidXEnabled" value="true" />
     
