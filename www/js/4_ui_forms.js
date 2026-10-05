@@ -1,5 +1,21 @@
 /* --- js/4_ui_forms.js --- */
 
+// --- NEW FULL SCREEN PHOTO LOGIC ---
+window.openFullScreenPhoto = function(src) {
+    if(!src || src === '' || src === window.location.href) return;
+    const viewer = document.getElementById('full-photo-viewer');
+    const img = document.getElementById('full-photo-img');
+    if(viewer && img) {
+        img.src = src;
+        viewer.style.display = 'flex';
+    }
+};
+
+window.closeFullScreenPhoto = function() {
+    const viewer = document.getElementById('full-photo-viewer');
+    if(viewer) viewer.style.display = 'none';
+};
+
 window.openModal = function(html) { 
     document.getElementById('modalSheetContent').innerHTML = html; 
     document.getElementById('formModalOverlay').classList.add('open'); 
@@ -128,6 +144,32 @@ window.relocateGss = function(gssCode) { if(window.closeObjectSheet) window.clos
 window.autoSaveSettings = function() { appState.settings.unit = document.getElementById('setUnit').value; appState.settings.language = document.getElementById('setLanguage').value; appState.settings.theme = document.getElementById('setTheme').value; appState.settings.liveSync = document.getElementById('setLiveSync').checked; window.applyTranslations(); window.applyTheme(); window.triggerPersistence(); window.renderEntireNetwork(); window.showToast("Settings Saved!"); }
 window.openSettingsPage = function() { window.toggleSidebar(false); document.getElementById('setUnit').value = appState.settings.unit || 'm'; document.getElementById('setLanguage').value = appState.settings.language || 'en'; document.getElementById('setTheme').value = appState.settings.theme || 'light'; document.getElementById('setLiveSync').checked = appState.settings.liveSync !== false; document.getElementById('settings-page').classList.add('open'); }
 window.closeSettingsPage = function() { document.getElementById('settings-page').classList.remove('open'); }
+
+window.openAboutModal = function() {
+    window.toggleSidebar(false);
+    window.openModal(`
+        <div class="sheet-head">
+            <div class="sheet-title"><i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i> About DISCOM Survey Pro</div>
+            <button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div style="text-align: center; padding: 10px 0 20px 0;">
+            <div style="width: 64px; height: 64px; background: var(--accent); color: white; font-size: 32px; border-radius: 16px; display: flex; align-items:center; justify-content:center; margin: 0 auto 15px auto; box-shadow: 0 8px 20px rgba(37,99,235,0.3);">
+                <i class="fa-solid fa-bolt"></i>
+            </div>
+            <h3 style="font-size: 1.2rem; font-weight: 900; color: var(--text-main); margin-bottom: 5px;">DISCOM Survey Pro</h3>
+            <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 20px;">Professional GIS-based field survey mobile application designed for electricity infrastructure mapping, asset tracking, and enterprise-grade data management.</p>
+            
+            <div style="background: var(--bg-glass); border: 1px solid var(--border); padding: 12px; border-radius: 10px; text-align: left; margin-bottom: 20px;">
+                <div style="font-size: 0.8rem; color: var(--text-sub);">Developed By</div>
+                <div style="font-size: 0.95rem; font-weight: 800; color: var(--text-main); margin-top: 2px;">Suraj Singh Mehta</div>
+                <div style="font-size: 0.75rem; color: var(--accent); margin-top: 4px;">Electrical Asset Management Specialist</div>
+            </div>
+
+            <div style="font-size: 0.75rem; color: var(--text-sub);">Version 2.5.0 (Enterprise Edition)</div>
+        </div>
+    `);
+};
+
 window.openFilterModal = function() { const f = appState.filters; window.openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-filter" style="color:#d97706;"></i> Object Filter</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="capsule-filter-group"><label class="capsule"><input type="checkbox" id="flt11" ${f.lines11?'checked':''}><span>11 KV Line</span></label><label class="capsule"><input type="checkbox" id="fltLT" ${f.linesLT?'checked':''}><span>LT Line</span></label><label class="capsule"><input type="checkbox" id="fltPoles" ${f.poles?'checked':''}><span>Poles</span></label><label class="capsule"><input type="checkbox" id="fltDTs" ${f.dts?'checked':''}><span>DT</span></label><label class="capsule"><input type="checkbox" id="fltCons" ${f.consumers?'checked':''}><span>Consumers</span></label></div><button class="btn-action-primary" onclick="window.saveFilters()" style="margin-top:20px;">Apply Filters</button>`); }
 window.saveFilters = function() { appState.filters.lines11 = document.getElementById('flt11').checked; appState.filters.linesLT = document.getElementById('fltLT').checked; appState.filters.poles = document.getElementById('fltPoles').checked; appState.filters.dts = document.getElementById('fltDTs').checked; appState.filters.consumers = document.getElementById('fltCons').checked; window.closeModal(); window.renderEntireNetwork(); window.showToast("Filters Updated"); }
 
@@ -147,7 +189,6 @@ window.selectSearchResult = function(type, id) { const net = window.getActiveNet
 
 window.closeObjectSheet = function() { document.getElementById('object-bottom-sheet').classList.remove('open'); currentSelectedObj = null; };
 
-// --- NEW FIX: INSTANT POPUP WITH ASYNC PHOTO HANDLING ---
 window.openObjectSheet = function(type, id, title, detailsHtml) {
     currentSelectedObj = { type, id }; 
     document.getElementById('objSheetTitle').innerText = title; 
@@ -156,7 +197,6 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
     const imgEl = document.getElementById('objPhotoImg'); 
     const placeholderEl = document.getElementById('objPhotoPlaceholder');
     
-    // Function to apply photo immediately
     const applyPhoto = (url) => {
         if(url) { 
             imgEl.src = url; 
@@ -169,18 +209,15 @@ window.openObjectSheet = function(type, id, title, detailsHtml) {
         }
     };
 
-    // Smart logic to handle both instant memory photo and async loading
     const photoUrl = window.getPhotoUrl ? window.getPhotoUrl(id) : null;
     if(photoUrl instanceof Promise) {
-        applyPhoto(null); // Show placeholder instantly while loading
+        applyPhoto(null); 
         photoUrl.then(applyPhoto);
     } else {
         applyPhoto(photoUrl);
     }
     
-    // Open sheet instantly without any delay
     document.getElementById('object-bottom-sheet').classList.add('open'); 
-    
     document.getElementById('btnObjEdit').onclick = () => window.openEditModal(type.toLowerCase(), id);
     document.getElementById('btnObjDelete').style.display = (type === 'GSS') ? 'none' : 'block'; 
     document.getElementById('btnObjMove').style.display = (type === 'DT') ? 'none' : 'block';
@@ -229,10 +266,10 @@ window.filterConsumerPoles = function() {
     nodes = window.sortByDistance(nodes, centerLat, centerLng); document.getElementById('inpConsParent').innerHTML = nodes.map(n => `<option value="${n.id}">${n.title} (${window.getDistStr(n.lat, n.lng)})</option>`).join('');
 };
 
-// --- NEW FIX: SQUARE, CENTERED BOTTOM CAMERA PREVIEW ---
+// --- PHOTO ON TOP, CAPTURE BUTTON BELOW ---
 window.getCameraFormHtml = () => `
 <div style="margin-top:20px; margin-bottom:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%;">
-    <img id="formTempPhoto" src="" style="width:140px; height:140px; object-fit:cover; border-radius:12px; display:none; margin-bottom:15px; border:2px solid var(--accent); box-shadow:0 4px 8px rgba(0,0,0,0.15);">
+    <img id="formTempPhoto" src="" onclick="window.openFullScreenPhoto(this.src)" style="width:160px; height:160px; object-fit:cover; border-radius:12px; display:none; margin-bottom:15px; border:2px solid var(--accent); box-shadow:0 4px 8px rgba(0,0,0,0.15); cursor:pointer;">
     <button type="button" class="btn-action-primary" style="padding:12px 24px; background:#0f172a; margin:0; border-radius:8px; width:100%;" onclick="window.captureTempPhoto()">
         <i class="fa-solid fa-camera"></i> Capture Photo
     </button>
@@ -290,30 +327,3 @@ window.openEditModal = function(type, id) {
         window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" class="form-input" placeholder=" " value="${l.type}" disabled><label>Voltage Type (Locked)</label></div><div class="form-row" id="editLinePhaseRow" style="display:${l.type.includes('11')?'block':'none'}"><select id="editLinePhase" class="form-select"><option value="Three Phase" ${l.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${l.phase==='Single Phase'?'selected':''}>Single Phase</option></select><label>Phase Type (HT)*</label></div><div class="form-row"><select id="editLineConductor" class="form-select">${l.type.includes('11') ? `<option value="Weasel" ${l.conductor==='Weasel'?'selected':''}>Weasel</option><option value="Rabbit" ${l.conductor==='Rabbit'?'selected':''}>Rabbit</option><option value="Dog" ${l.conductor==='Dog'?'selected':''}>Dog</option><option value="Underground Cable" ${l.conductor==='Underground Cable'?'selected':''}>Underground Cable</option>` : `<option value="Single Phase" ${l.conductor==='Single Phase'?'selected':''}>Single Phase</option><option value="Three Phase" ${l.conductor==='Three Phase'?'selected':''}>Three Phase</option>`}</select><label>Conductor</label></div><button class="btn-action-primary" onclick="window.executeSafeSave(() => window.saveEditedLine('${l.id}'))">Save Changes</button>`); 
     }
 }
-/* ==========================================
-   ABOUT APP MODAL
-========================================== */
-window.openAboutModal = function() {
-    window.toggleSidebar(false);
-    window.openModal(`
-        <div class="sheet-head">
-            <div class="sheet-title"><i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i> About DISCOM Survey Pro</div>
-            <button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        <div style="text-align: center; padding: 10px 0 20px 0;">
-            <div style="width: 64px; height: 64px; background: var(--accent); color: white; font-size: 32px; border-radius: 16px; display: flex; align-items:center; justify-content:center; margin: 0 auto 15px auto; box-shadow: 0 8px 20px rgba(37,99,235,0.3);">
-                <i class="fa-solid fa-bolt"></i>
-            </div>
-            <h3 style="font-size: 1.2rem; font-weight: 900; color: var(--text-main); margin-bottom: 5px;">DISCOM Survey Pro</h3>
-            <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 20px;">Professional GIS-based field survey mobile application designed for electricity infrastructure mapping, asset tracking, and enterprise-grade data management.</p>
-            
-            <div style="background: var(--bg-glass); border: 1px solid var(--border); padding: 12px; border-radius: 10px; text-align: left; margin-bottom: 20px;">
-                <div style="font-size: 0.8rem; color: var(--text-sub);">Developed By</div>
-                <div style="font-size: 0.95rem; font-weight: 800; color: var(--text-main); margin-top: 2px;">Suraj Singh Mehta</div>
-                <div style="font-size: 0.75rem; color: var(--accent); margin-top: 4px;">Electrical Asset Management Specialist</div>
-            </div>
-
-            <div style="font-size: 0.75rem; color: var(--text-sub);">Version 2.5.0 (Enterprise Edition)</div>
-        </div>
-    `);
-};
