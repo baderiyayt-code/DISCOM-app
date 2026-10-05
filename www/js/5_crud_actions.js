@@ -389,17 +389,39 @@ window.deleteEntity = function(type, id) {
     window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted successfully");
 };
 
-/* --- Loop Validation Function --- */
+ /* --- Replace validateNetworkLoops inside js/5_crud_actions.js --- */
+
 window.validateNetworkLoops = function(net, networkType = 'HT') {
     if (!net || !net.lines || !net.poles) return { hasLoop: false, message: "Valid" };
 
+    // 1. Collect all valid active node IDs currently existing in the network
+    const activeNodes = new Set();
+    if (net.feeder && net.feeder.parentGss) {
+        activeNodes.add('GSS_' + net.feeder.parentGss);
+    }
+    Object.keys(appState.gssNodes || {}).forEach(gCode => activeNodes.add('GSS_' + gCode));
+    
+    (net.poles || []).forEach(p => {
+        activeNodes.add('POLE_' + p.poleNo);
+        activeNodes.add(p.id);
+    });
+    
+    (net.dts || []).forEach(d => {
+        activeNodes.add('DT_' + d.code);
+        activeNodes.add(d.id);
+    });
+
+    // 2. Filter lines: Must match network type AND both endpoints must actually exist (ignores deleted/orphaned lines)
     const targetLines = net.lines.filter(l => {
         const isLT = l.type && l.type.includes('LT');
-        return networkType === 'LT' ? isLT : !isLT;
+        const matchesType = (networkType === 'LT' ? isLT : !isLT);
+        const endpointsExist = activeNodes.has(l.fromNode) && activeNodes.has(l.toNode);
+        return matchesType && endpointsExist;
     });
 
     if (targetLines.length === 0) return { hasLoop: false, message: "No lines to check" };
 
+    // Build adjacency list for graph traversal
     const adjList = {};
     targetLines.forEach(l => {
         const u = l.fromNode;
@@ -455,6 +477,7 @@ window.validateNetworkLoops = function(net, networkType = 'HT') {
 
     return { hasLoop: false, message: `${networkType} network is clean.` };
 };
+
 
 window.startObjectMove = function(type, id, title) { appState.activeMove = { type, id }; document.getElementById('center-placement-pin').style.display = 'block'; window.closeObjectSheet(); let moveBar = document.getElementById('move-confirm-bar'); if(!moveBar) { moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar'; moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white; flex:1;" onclick="window.cancelMove()">Cancel</button><button class="btn-action-primary" style="flex:1;" onclick="window.confirmMove()">Set New Location</button>`; document.body.appendChild(moveBar); if(typeof L !== 'undefined' && L.DomEvent) { L.DomEvent.disableClickPropagation(moveBar); L.DomEvent.disableScrollPropagation(moveBar); } } moveBar.style.display = 'flex'; document.getElementById('bottom-single-action').style.display = 'none'; window.showToast("Pan map to new location..."); };
 window.cancelMove = function() { appState.activeMove = null; document.getElementById('center-placement-pin').style.display = 'none'; document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block'; window.renderEntireNetwork(); };
