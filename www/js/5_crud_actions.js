@@ -342,77 +342,91 @@ window.saveNewConsumer = function() {
 };
 
 
-// ==========================================
-// OBJECT MOVE LOGIC (FULLY SYNCED WITH CLOUD)
-// ==========================================
-window.confirmMove = function() { 
-    window.executeSafeSave(() => {
-        if(!appState.activeMove) return false; 
-        
-        const center = map.getCenter(); 
-        const net = window.getActiveNetwork(); 
-        if(window.saveSnapshot) window.saveSnapshot(); 
-        
-        // Ensure type is safely checked in uppercase
-        const type = String(appState.activeMove.type).toUpperCase(); 
-        const id = appState.activeMove.id; 
-        let isUpdated = false;
-        
-        if(type === 'GSS' || type === 'GSSNODE') { 
-            if(appState.gssNodes[id]) { 
-                appState.gssNodes[id].lat = parseFloat(center.lat.toFixed(6)); 
-                appState.gssNodes[id].lng = parseFloat(center.lng.toFixed(6)); 
-                appState.gssNodes[id].updatedAt = Date.now();
-                appState.gssNodes[id].synced = false; // Forces cloud sync
-                isUpdated = true;
-            } 
-        } else if(type === 'POLE' || type === 'LTPOLE') { 
-            const p = (net.poles||[]).find(x => x.id === id); 
-            if(p) { 
-                p.lat = parseFloat(center.lat.toFixed(6)); 
-                p.lng = parseFloat(center.lng.toFixed(6)); 
-                p.updatedAt = Date.now(); 
-                p.synced = false; 
-                isUpdated = true;
-            } 
-        } else if(type === 'DT') { 
-            const d = (net.dts||[]).find(x => x.id === id); 
-            if(d) { 
-                d.lat = parseFloat(center.lat.toFixed(6)); 
-                d.lng = parseFloat(center.lng.toFixed(6)); 
-                d.updatedAt = Date.now(); 
-                d.synced = false; 
-                isUpdated = true;
-            } 
-        } else if(type === 'CONSUMER') { 
-            const c = (net.consumers||[]).find(x => x.id === id); 
-            if(c) { 
-                c.lat = parseFloat(center.lat.toFixed(6)); 
-                c.lng = parseFloat(center.lng.toFixed(6)); 
-                c.updatedAt = Date.now(); 
-                c.synced = false; 
-                isUpdated = true;
-            } 
+
+        window.confirmMove = function() { 
+    if(!appState.activeMove) return; 
+
+    const center = map.getCenter(); 
+    const net = window.getActiveNetwork(); 
+    if(window.saveSnapshot) window.saveSnapshot(); 
+
+    const type = String(appState.activeMove.type).toUpperCase(); 
+    const id = appState.activeMove.id; 
+    let isUpdated = false;
+
+    // 1. Update Coordinates and flag for sync
+    if(type === 'GSS' || type === 'GSSNODE') { 
+        if(appState.gssNodes[id]) { 
+            appState.gssNodes[id].lat = parseFloat(center.lat.toFixed(6)); 
+            appState.gssNodes[id].lng = parseFloat(center.lng.toFixed(6)); 
+            appState.gssNodes[id].updatedAt = Date.now();
+            appState.gssNodes[id].synced = false; 
+            isUpdated = true;
         } 
-        
-        // Reset Move UI
-        appState.activeMove = null; 
-        const pin = document.getElementById('center-placement-pin');
-        if (pin) pin.style.display = 'none'; 
-        
-        const moveBar = document.getElementById('move-confirm-bar');
-        if (moveBar) moveBar.style.display = 'none'; 
-        
-        const bottomAction = document.getElementById('bottom-single-action');
-        if (bottomAction) bottomAction.style.display = 'block';
-        
-        if(isUpdated && window.showToast) {
-            window.showToast("Location Updated in Database!");
+    } else if(type === 'POLE' || type === 'LTPOLE') { 
+        const p = (net.poles||[]).find(x => x.id === id); 
+        if(p) { 
+            p.lat = parseFloat(center.lat.toFixed(6)); 
+            p.lng = parseFloat(center.lng.toFixed(6)); 
+            p.updatedAt = Date.now(); 
+            p.synced = false; 
+            isUpdated = true;
+        } 
+    } else if(type === 'DT') { 
+        const d = (net.dts||[]).find(x => x.id === id); 
+        if(d) { 
+            d.lat = parseFloat(center.lat.toFixed(6)); 
+            d.lng = parseFloat(center.lng.toFixed(6)); 
+            d.updatedAt = Date.now(); 
+            d.synced = false; 
+            isUpdated = true;
+        } 
+    } else if(type === 'CONSUMER') { 
+        const c = (net.consumers||[]).find(x => x.id === id); 
+        if(c) { 
+            c.lat = parseFloat(center.lat.toFixed(6)); 
+            c.lng = parseFloat(center.lng.toFixed(6)); 
+            c.updatedAt = Date.now(); 
+            c.synced = false; 
+            isUpdated = true;
+        } 
+    } 
+
+    // 2. Reset Move UI immediately
+    appState.activeMove = null; 
+    const pin = document.getElementById('center-placement-pin');
+    if (pin) pin.style.display = 'none'; 
+
+    const moveBar = document.getElementById('move-confirm-bar');
+    if (moveBar) moveBar.style.display = 'none'; 
+
+    const bottomAction = document.getElementById('bottom-single-action');
+    if (bottomAction) bottomAction.style.display = 'block';
+
+    // 3. Force Render and Database Sync
+    if(isUpdated) {
+        if(window.renderEntireNetwork) window.renderEntireNetwork();
+
+        // Update Local Storage
+        if(typeof localforage !== 'undefined') {
+            localforage.setItem(DB_KEY, appState);
+        } else {
+            localStorage.setItem(DB_KEY, JSON.stringify(appState));
         }
         
-        return isUpdated; 
-    });
+        if(window.updateUnsyncedBadge) window.updateUnsyncedBadge();
+
+        // FORCE CLOUD SYNC (Bypasses any wrapper logic)
+        if(window.syncToSupabase) {
+            window.syncToSupabase();
+        }
+
+        if(window.showToast) {
+            window.showToast("Cloud Database Updated!");
+        }
+    }
 };
+
 
 // ==========================================
 // EDIT LOGIC (WITH CLOUD SYNC TRIGGER)
