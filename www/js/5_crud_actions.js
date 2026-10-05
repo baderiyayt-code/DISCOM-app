@@ -4,7 +4,6 @@ window.savePhotoData = function(id, base64) {
     if(!appState.photos) appState.photos = {};
     appState.photos[id] = base64;
     window.triggerPersistence();
-    // Background sync to Supabase
     if(window.syncPhotosToCloud) window.syncPhotosToCloud(id, base64);
 };
 
@@ -13,12 +12,12 @@ window.getPhotoUrl = function(id) {
 };
 
 // ==========================================
-// ⚡ MAGIC POLE FEATURE (AUTO-SNAP & SPLIT LINES)
+// ⚡ STRICT MAGIC POLE FEATURE (EXACT AUTO-SNAP & SPLIT)
 // ==========================================
 window.distancePointToSegmentMeters = function(lat, lng, lat1, lng1, lat2, lng2) {
-    const R = 6371000; // Earth radius in meters
+    const R = 6371000; 
     const dLatToMeters = R * Math.PI / 180;
-    const dLngToMeters = R * Math.PI / 180 * Math.cos(lat * Math.PI / 180);
+    const dLngToMeters = R * Math.PI / 180 * Math.cos(lat1 * Math.PI / 180);
 
     const cx = lng * dLngToMeters, cy = lat * dLatToMeters;
     const ax = lng1 * dLngToMeters, ay = lat1 * dLatToMeters;
@@ -39,12 +38,12 @@ window.autoSplitLinesWithPole = function(newPoleNodeId, poleLat, poleLng, isLT) 
     if(!net || !net.lines) return;
 
     let targetLineIdx = -1;
-    let minDistance = 6.0; // Snap radius: 6 meters (Agar pole line se 6 meter ke andar hai, toh line tod dega)
+    // Strict threshold: Pole must be exactly on the line (within 2.5 meters) to split it.
+    let minDistance = 2.5; 
 
     for(let i=0; i<net.lines.length; i++) {
         const line = net.lines[i];
         
-        // HT pole sirf HT line katega, LT pole sirf LT line katega
         const isLineLT = line.type.includes('LT');
         if (isLT && !isLineLT) continue;
         if (!isLT && isLineLT) continue;
@@ -64,20 +63,33 @@ window.autoSplitLinesWithPole = function(newPoleNodeId, poleLat, poleLng, isLT) 
     if(targetLineIdx !== -1) {
         const oldLine = net.lines[targetLineIdx];
         
-        // 2 nayi lineyan banayein purani property ke sath
-        const line1 = { id: 'LINE_' + Date.now() + '_1', type: oldLine.type, phase: oldLine.phase, conductor: oldLine.conductor, fromNode: oldLine.fromNode, toNode: newPoleNodeId };
-        const line2 = { id: 'LINE_' + Date.now() + '_2', type: oldLine.type, phase: oldLine.phase, conductor: oldLine.conductor, fromNode: newPoleNodeId, toNode: oldLine.toNode };
+        // Step 1: Create exactly two new lines preserving all old values
+        const line1 = { 
+            id: 'LINE_' + Date.now() + '_A', 
+            type: oldLine.type, 
+            phase: oldLine.phase, 
+            conductor: oldLine.conductor, 
+            fromNode: oldLine.fromNode, 
+            toNode: newPoleNodeId 
+        };
+        const line2 = { 
+            id: 'LINE_' + Date.now() + '_B', 
+            type: oldLine.type, 
+            phase: oldLine.phase, 
+            conductor: oldLine.conductor, 
+            fromNode: newPoleNodeId, 
+            toNode: oldLine.toNode 
+        };
         
-        // Purani line hata dein
+        // Step 2: Strictly delete the old line
         net.lines.splice(targetLineIdx, 1);
         
-        // Nayi lines add karein
+        // Step 3: Insert only the two newly connected lines
         net.lines.push(line1, line2);
 
-        // Success Toast
         setTimeout(() => { 
-            if(window.showToast) window.showToast("⚡ Magic Pole: Line Auto-Connected!"); 
-        }, 600);
+            if(window.showToast) window.showToast("⚡ Exact Split: Line Connected to New Pole!"); 
+        }, 500);
     }
 };
 
