@@ -1,7 +1,7 @@
 /* --- js/6_export.js --- */
 
 // ==========================================
-// UNIVERSAL FILE DOWNLOADER (BLOB FIX FOR APK)
+// UNIVERSAL FILE DOWNLOADER (SMART PERMISSION LOGIC)
 // ==========================================
 window.downloadFileUniversal = function(blob, filename, mimeType) {
     
@@ -19,56 +19,84 @@ window.downloadFileUniversal = function(blob, filename, mimeType) {
         return;
     }
 
-    // 2. Native Cordova APK (Android 10/11/12+ Fix)
+    // 2. Native Cordova APK 
     if (window.cordova && cordova.file) {
-        // FIX for Error Code 1: Convert Blob to ArrayBuffer
-        const reader = new FileReader();
-        reader.onloadend = function() {
-            const arrayBuffer = reader.result;
-            
-            // Primary Target: User's Download Folder
-            let storagePath = cordova.file.externalRootDirectory + 'Download/';
-            
-            window.resolveLocalFileSystemURL(storagePath, function(dirEntry) {
-                saveDataToDir(dirEntry, filename, arrayBuffer);
-            }, function(err) {
-                // Fallback Target: App's secure Data Directory (If Scoped Storage blocks Download folder)
-                window.resolveLocalFileSystemURL(cordova.file.externalDataDirectory, function(fallbackDir) {
-                    saveDataToDir(fallbackDir, filename, arrayBuffer);
-                }, function(err2) {
-                    alert("Storage access denied. Please grant permissions in App Info.");
-                });
-            });
-        };
-        // Trigger the reader
-        reader.readAsArrayBuffer(blob);
         
+        // Asli File Save Karne ka Logic
+        const executeSaveProcess = function() {
+            const reader = new FileReader();
+            reader.onloadend = function() {
+                const arrayBuffer = reader.result;
+                
+                // Pehli koshish: Public Download Folder (Permission milne par yahan aayega)
+                let storagePath = cordova.file.externalRootDirectory + 'Download/';
+                
+                window.resolveLocalFileSystemURL(storagePath, function(dirEntry) {
+                    saveDataToDir(dirEntry, filename, arrayBuffer);
+                }, function(err) {
+                    // Dusri koshish (Fallback): Agar naye Android ne block kiya toh Secure Data Folder
+                    const fallbackPath = cordova.file.externalDataDirectory || cordova.file.dataDirectory;
+                    window.resolveLocalFileSystemURL(fallbackPath, function(fallbackDir) {
+                        saveDataToDir(fallbackDir, filename, arrayBuffer);
+                    }, function(err2) {
+                        alert("Storage access completely blocked by Android Security.");
+                    });
+                });
+            };
+            reader.readAsArrayBuffer(blob);
+        };
+
         function saveDataToDir(dirEntry, fileName, dataBuffer) {
             dirEntry.getFile(fileName, { create: true, exclusive: false }, function(fileEntry) {
                 fileEntry.createWriter(function(fileWriter) {
                     fileWriter.onwriteend = function() {
-                        alert("✅ Saved successfully!\nLocation: " + fileEntry.nativeURL);
+                        alert("✅ File Saved Successfully!\n\nLocation: " + fileEntry.nativeURL);
                     };
-                    fileWriter.onerror = function(e) { 
-                        alert("Write Error: " + JSON.stringify(e)); 
-                    };
-                    // Pass ArrayBuffer directly instead of Blob
+                    fileWriter.onerror = function(e) { alert("Write Error: " + JSON.stringify(e)); };
                     fileWriter.write(dataBuffer);
                 });
             }, function(err) { alert("File create error: " + JSON.stringify(err)); });
         }
+
+        // --- PERMISSION ASK LOGIC ---
+        if (cordova.plugins && cordova.plugins.permissions) {
+            var permissions = cordova.plugins.permissions;
+            permissions.checkPermission(permissions.WRITE_EXTERNAL_STORAGE, function(status) {
+                if (status.hasPermission) {
+                    // Agar permission pehle se hai toh seedha save karo
+                    executeSaveProcess();
+                } else {
+                    // Agar permission nahi hai toh user se maango (Popup aayega)
+                    permissions.requestPermission(permissions.WRITE_EXTERNAL_STORAGE, function(status) {
+                        if(status.hasPermission) {
+                            executeSaveProcess();
+                        } else {
+                            alert("⚠️ Storage Permission Denied! File will be saved in App's secure folder.");
+                            executeSaveProcess(); // Deny karne par bhi hum private folder try karenge
+                        }
+                    }, function() {
+                        executeSaveProcess();
+                    });
+                }
+            });
+        } else {
+            // Agar permission plugin nahi hai toh direct koshish karo
+            executeSaveProcess(); 
+        }
+
     } else {
-        // Fallback Base64 method if file plugin is missing
+        // Fallback method
         const reader = new FileReader();
         reader.onloadend = function() {
             const a = document.createElement('a');
             a.style.display = 'none'; a.href = reader.result; a.download = filename;
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            alert("Downloading fallback... Check notifications.");
+            alert("Downloading... Check notifications.");
         };
         reader.readAsDataURL(blob);
     }
 };
+       
 
 // ==========================================
 // 1. GENERATE PROFESSIONAL SLD PDF
