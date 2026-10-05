@@ -12,7 +12,7 @@ window.getPhotoUrl = function(id) {
 };
 
 // ==========================================
-// ⚡ STRICT MAGIC POLE FEATURE (EXACT AUTO-SNAP & SPLIT)
+// ⚡ STRICT MAGIC POLE LOGIC (Step-by-Step as requested)
 // ==========================================
 window.distancePointToSegmentMeters = function(lat, lng, lat1, lng1, lat2, lng2) {
     const R = 6371000; 
@@ -38,10 +38,11 @@ window.autoSplitLinesWithPole = function(newPoleNodeId, poleLat, poleLng, isLT) 
     if(!net || !net.lines) return;
 
     let targetLineIdx = -1;
-    // Strict threshold: Pole must be exactly on the line (within 2.5 meters) to split it.
+    // सटीक 2.5 मीटर का दायरा (सिर्फ लाइन के ऊपर पोल रखने पर ही काम करेगा)
     let minDistance = 2.5; 
 
-    for(let i=0; i<net.lines.length; i++) {
+    // STEP 1: पुरानी लाइन की जानकारी लेना (किस नोड से किस नोड तक जुड़ी है)
+    for(let i = 0; i < net.lines.length; i++) {
         const line = net.lines[i];
         
         const isLineLT = line.type.includes('LT');
@@ -55,15 +56,17 @@ window.autoSplitLinesWithPole = function(newPoleNodeId, poleLat, poleLng, isLT) 
             const dist = window.distancePointToSegmentMeters(poleLat, poleLng, n1.lat, n1.lng, n2.lat, n2.lng);
             if(dist < minDistance) {
                 minDistance = dist;
-                targetLineIdx = i;
+                targetLineIdx = i; // वह लाइन मिल गई जिसे काटना है
             }
         }
     }
 
+    // अगर कोई लाइन पोल के नीचे मिली है...
     if(targetLineIdx !== -1) {
+        // पुरानी लाइन का डेटा सेव रखें (ताकि Type, Phase, Conductor न बदले)
         const oldLine = net.lines[targetLineIdx];
         
-        // Step 1: Create exactly two new lines preserving all old values
+        // STEP 2: नई लाइनें ड्रॉ करना (पुरानी नोड से नए पोल तक, और नए पोल से दूसरी पुरानी नोड तक)
         const line1 = { 
             id: 'LINE_' + Date.now() + '_A', 
             type: oldLine.type, 
@@ -81,15 +84,18 @@ window.autoSplitLinesWithPole = function(newPoleNodeId, poleLat, poleLng, isLT) 
             toNode: oldLine.toNode 
         };
         
-        // Step 2: Strictly delete the old line
+        // STEP 3: पुरानी लंबी लाइन को पूरी तरह डिलीट कर देना
         net.lines.splice(targetLineIdx, 1);
         
-        // Step 3: Insert only the two newly connected lines
+        // STEP 4: नई बनी दोनों लाइनों को नेटवर्क में जोड़ देना
         net.lines.push(line1, line2);
 
+        // STEP 5: मैजिक पोल का लॉजिक बंद कर देना (ताकि कोई दूसरी एक्स्ट्रा लाइन न खिंचे)
         setTimeout(() => { 
-            if(window.showToast) window.showToast("⚡ Exact Split: Line Connected to New Pole!"); 
+            if(window.showToast) window.showToast("⚡ Magic Pole: Line Exactly Split!"); 
         }, 500);
+        
+        return; // लॉजिक यहीं स्टॉप हो जाएगा।
     }
 };
 
@@ -112,7 +118,7 @@ window.saveNewPole = function() {
     
     net.poles.push(newObj); 
     
-    // TRIGGER MAGIC POLE AUTO-SNAP (For HT)
+    // नए पोल को सेव करते ही मैजिक पोल लॉजिक को कॉल करना
     window.autoSplitLinesWithPole('POLE_' + poleNo, lat, lng, false);
     
     appState.placementType = null; return true;
@@ -137,7 +143,7 @@ window.saveNewLTPole = function() {
     
     net.poles.push(newObj); 
     
-    // TRIGGER MAGIC POLE AUTO-SNAP (For LT)
+    // नए पोल को सेव करते ही मैजिक पोल लॉजिक को कॉल करना (LT के लिए)
     window.autoSplitLinesWithPole('POLE_' + poleNo, lat, lng, true);
     
     appState.placementType = null; return true;
