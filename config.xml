@@ -38,6 +38,19 @@
     <plugin name="cordova-plugin-geolocation" />
     <plugin name="cordova-plugin-android-permissions" />
     <plugin name="cordova-plugin-camera" />
+        <!-- File Storage Permissions for Downloading -->
+    <plugin name="cordova-plugin-file" />
+    <preference name="AndroidPersistentFileLocation" value="Compatibility" />
+    
+    <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">
+        <application android:requestLegacyExternalStorage="true" />
+    </edit-config>
+    
+    <config-file target="AndroidManifest.xml" parent="/*">
+        <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    </config-file>
+
     <plugin name="cordova-plugin-file" />
     <plugin name="cordova-plugin-splashscreen" />
 </widget>
