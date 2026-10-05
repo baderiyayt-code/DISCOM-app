@@ -341,32 +341,134 @@ window.saveNewConsumer = function() {
     net.consumers.push(newObj); appState.placementType = null; return true;
 };
 
+// ==========================================
+// OBJECT MOVE LOGIC (WITH DATABASE SYNC)
+// ==========================================
+window.confirmMove = function() { 
+    if(!appState.activeMove) return; 
+    const center = map.getCenter(); 
+    const net = window.getActiveNetwork(); 
+    if(window.saveSnapshot) window.saveSnapshot(); 
+    
+    const { type, id } = appState.activeMove; 
+    
+    if(type === 'GSS') { 
+        if(appState.gssNodes[id]) { 
+            appState.gssNodes[id].lat = center.lat; 
+            appState.gssNodes[id].lng = center.lng; 
+            appState.gssNodes[id].updatedAt = Date.now();
+            appState.gssNodes[id].isDirty = true;
+        } 
+    } else if(type === 'POLE' && net) { 
+        const p = (net.poles||[]).find(x => x.id === id); 
+        if(p) { 
+            p.lat = center.lat; 
+            p.lng = center.lng; 
+            p.updatedAt = Date.now(); 
+            p.isDirty = true; 
+        } 
+    } else if(type === 'DT' && net) { 
+        const d = (net.dts||[]).find(x => x.id === id); 
+        if(d) { 
+            d.lat = center.lat; 
+            d.lng = center.lng; 
+            d.updatedAt = Date.now(); 
+            d.isDirty = true; 
+        } 
+    } else if(type === 'CONSUMER' && net) { 
+        const c = (net.consumers||[]).find(x => x.id === id); 
+        if(c) { 
+            c.lat = center.lat; 
+            c.lng = center.lng; 
+            c.updatedAt = Date.now(); 
+            c.isDirty = true; 
+        } 
+    } 
+    
+    window.cancelMove(); 
+    window.triggerPersistence(); 
+    
+    // Optional: If there is a direct cloud sync function in your app, trigger it
+    if(window.syncDataToCloud) window.syncDataToCloud(); 
+    
+    window.showToast("Location Updated in Database!"); 
+};
+
+// ==========================================
+// EDIT LOGIC (WITH DATABASE SYNC FLAGS)
+// ==========================================
 window.saveEditedGss = function(code) { 
     const gss = appState.gssNodes[code]; if(!gss) return false;
     const newName = document.getElementById('editGssName').value.trim();
     if(!newName) { alert("Name is required"); return false; }
-    if(window.saveSnapshot) window.saveSnapshot(); gss.name = newName; return true; 
+    if(window.saveSnapshot) window.saveSnapshot(); 
+    
+    gss.name = newName; 
+    gss.updatedAt = Date.now(); 
+    gss.isDirty = true;
+    
+    return true; 
 };
+
 window.saveEditedPole = function(id) { 
-    const net = window.getActiveNetwork(); if(!net) return false; const p = (net.poles||[]).find(x => x.id === id); if(!p) return false; 
+    const net = window.getActiveNetwork(); if(!net) return false; 
+    const p = (net.poles||[]).find(x => x.id === id); if(!p) return false; 
     if(window.saveSnapshot) window.saveSnapshot(); 
-    p.poleType = document.getElementById('editMainPoleType').value; p.condition = document.getElementById('editPoleCondition').value; p.poleConfig = document.getElementById('editPccConfig') ? document.getElementById('editPccConfig').value : p.poleConfig; return true; 
+    
+    p.poleType = document.getElementById('editMainPoleType').value; 
+    p.condition = document.getElementById('editPoleCondition').value; 
+    p.poleConfig = document.getElementById('editPccConfig') ? document.getElementById('editPccConfig').value : p.poleConfig; 
+    p.updatedAt = Date.now(); 
+    p.isDirty = true;
+    
+    return true; 
 };
+
 window.saveEditedDT = function(id) { 
-    const net = window.getActiveNetwork(); if(!net) return false; const d = (net.dts||[]).find(x => x.id === id); if(!d) return false; 
+    const net = window.getActiveNetwork(); if(!net) return false; 
+    const d = (net.dts||[]).find(x => x.id === id); if(!d) return false; 
     if(window.saveSnapshot) window.saveSnapshot(); 
-    d.mountedOn = document.getElementById('editDTMounted').value; d.phase = document.getElementById('editDTPhase').value; d.rating = document.getElementById('editDTRating').value; d.location = document.getElementById('editDTLocation').value; return true; 
+    
+    d.mountedOn = document.getElementById('editDTMounted').value; 
+    d.phase = document.getElementById('editDTPhase').value; 
+    d.rating = document.getElementById('editDTRating').value; 
+    d.location = document.getElementById('editDTLocation').value; 
+    d.updatedAt = Date.now(); 
+    d.isDirty = true;
+    
+    return true; 
 };
+
 window.saveEditedConsumer = function(id) { 
-    const net = window.getActiveNetwork(); if(!net) return false; const c = (net.consumers||[]).find(x => x.id === id); if(!c) return false; 
+    const net = window.getActiveNetwork(); if(!net) return false; 
+    const c = (net.consumers||[]).find(x => x.id === id); if(!c) return false; 
     if(window.saveSnapshot) window.saveSnapshot(); 
-    c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value; c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; if(!c.name) { alert("Name required"); return false; } return true; 
+    
+    c.name = document.getElementById('editConsName').value.trim(); 
+    c.load = document.getElementById('editConsLoad').value; 
+    c.status = document.getElementById('editConsStatus').value; 
+    c.cType = document.getElementById('editConsType').value; 
+    if(!c.name) { alert("Name required"); return false; } 
+    
+    c.updatedAt = Date.now(); 
+    c.isDirty = true;
+    
+    return true; 
 };
+
 window.saveEditedLine = function(id) { 
-    const net = window.getActiveNetwork(); if(!net) return false; const l = (net.lines||[]).find(x => x.id === id); if(!l) return false; 
+    const net = window.getActiveNetwork(); if(!net) return false; 
+    const l = (net.lines||[]).find(x => x.id === id); if(!l) return false; 
     if(window.saveSnapshot) window.saveSnapshot(); 
-    l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase; l.conductor = document.getElementById('editLineConductor').value; return true; 
+    
+    l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase; 
+    l.conductor = document.getElementById('editLineConductor').value; 
+    l.updatedAt = Date.now(); 
+    l.isDirty = true;
+    
+    return true; 
 };
+
 
 window.deleteEntity = function(type, id) {
     const net = window.getActiveNetwork(); if(!net) return;
