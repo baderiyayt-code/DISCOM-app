@@ -342,55 +342,56 @@ window.saveNewConsumer = function() {
 };
 
 
-
-     window.confirmMove = function() { 
+window.confirmMove = function() { 
     if(!appState.activeMove) return; 
     
     const center = map.getCenter(); 
     const net = window.getActiveNetwork(); 
     if(window.saveSnapshot) window.saveSnapshot(); 
     
-    const { type, id } = appState.activeMove; 
-    
-    if(type === 'GSS') { 
-        if(appState.gssNodes[id]) { 
-            appState.gssNodes[id].lat = center.lat; 
-            appState.gssNodes[id].lng = center.lng; 
-            appState.gssNodes[id].synced = false; // Forces cloud sync
-        } 
-    } else if(type === 'POLE' && net) { 
-        const p = (net.poles||[]).find(x => x.id === id); 
-        if(p) { 
-            p.lat = center.lat; 
-            p.lng = center.lng; 
-            p.synced = false; // Forces cloud sync
-        } 
-    } else if(type === 'CONSUMER' && net) { 
-        const c = (net.consumers||[]).find(x => x.id === id); 
-        if(c) { 
-            c.lat = center.lat; 
-            c.lng = center.lng; 
-            c.synced = false; // Forces cloud sync
-        } 
-    } else if(type === 'DT' && net) { 
-        const d = (net.dts||[]).find(x => x.id === id); 
-        if(d) { 
-            d.lat = center.lat; 
-            d.lng = center.lng; 
-            d.synced = false; // Forces cloud sync
-        } 
+    const id = appState.activeMove.id; 
+    let isUpdated = false;
+
+    // 1. Check if it's a GSS Node
+    if(appState.gssNodes && appState.gssNodes[id]) { 
+        appState.gssNodes[id].lat = parseFloat(center.lat.toFixed(6)); 
+        appState.gssNodes[id].lng = parseFloat(center.lng.toFixed(6)); 
+        appState.gssNodes[id].updatedAt = Date.now();
+        appState.gssNodes[id].synced = false; 
+        isUpdated = true;
     } 
+
+    // 2. Safely search across all Network Objects (Poles, DTs, Consumers) ignoring "type"
+    if (net && !isUpdated) {
+        const arraysToCheck = ['poles', 'dts', 'consumers'];
+        for (let arrName of arraysToCheck) {
+            let objList = net[arrName] || [];
+            let targetObj = objList.find(x => x.id === id);
+            
+            if (targetObj) {
+                targetObj.lat = parseFloat(center.lat.toFixed(6));
+                targetObj.lng = parseFloat(center.lng.toFixed(6));
+                targetObj.updatedAt = Date.now();
+                targetObj.synced = false; // Forces cloud sync in Supabase
+                isUpdated = true;
+                break; // Stop searching once found
+            }
+        }
+    }
     
-    // Resume original clean lifecycle
+    // 3. Reset UI naturally
     window.cancelMove(); 
-    window.triggerPersistence(); 
     
-    if(window.showToast) {
-        window.showToast("Location Updated & Synced!");
+    // 4. Trigger saves if found
+    if(isUpdated) {
+        if(window.triggerPersistence) window.triggerPersistence(); // Triggers local save and syncToSupabase
+        if(window.showToast) window.showToast("Location Updated & Synced to Cloud!");
+    } else {
+        if(window.showToast) window.showToast("Error: Object not found to move.");
     }
 };
-   
 
+     
 
 
 // ==========================================
