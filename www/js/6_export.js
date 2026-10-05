@@ -1,4 +1,4 @@
-/* --- js/6_export.js --- */
+d/* --- js/6_export.js --- */
 
 // ==========================================
 // UNIVERSAL NATIVE FILE DOWNLOADER (FOR APK & WEB)
@@ -43,7 +43,7 @@ window.generateCadSLDPdf = function() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
         
-        const pageWidth = 297, pageHeight = 210, margin = 10;
+        const pageWidth = 297, pageHeight = 210, margin = 5;
         const cw = pageWidth - 2 * margin, ch = pageHeight - 2 * margin;
 
         // Draw Grid
@@ -121,7 +121,7 @@ window.generateCadSLDPdf = function() {
             } else if(n.type === 'DT') {
                 // --- DT BOX & FONT MATCHED PROPORTIONATELY ---
                 doc.setFillColor(249, 115, 22); doc.setDrawColor(0,0,0); doc.setLineWidth(0.10); 
-                doc.rect(pos.x - 1.25, pos.y - 1.25, 2, 2, 'FD'); 
+                doc.rect(pos.x - 1.25, pos.y - 1.25, 1, 1, 'FD'); 
                 doc.setFontSize(3); doc.setTextColor(0,0,0); 
                 const rating = String(n.data.rating).replace(/[^0-9]/g, ''); 
                 doc.text(rating, pos.x, pos.y, { align: 'center' });
