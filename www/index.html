@@ -222,15 +222,18 @@
             <div class="menu-link-btn" onclick="exportFullJSONBackup()"><i class="fa-solid fa-download" style="color:#3b82f6;"></i> Export Backup (JSON)</div>
             <div class="menu-link-btn" onclick="document.getElementById('importBackupFile').click()"><i class="fa-solid fa-upload" style="color:#8b5cf6;"></i> Import Backup (JSON)</div>
             <input type="file" id="importBackupFile" style="display:none;" accept=".json" onchange="handleImportChoice(event)">
+           
             
             <div class="menu-category-title">System</div>
             <div class="menu-link-btn" onclick="openSettingsPage()"><i class="fa-solid fa-gear" style="color:#64748b;"></i> Settings</div>
             <div class="menu-link-btn" style="color:#ef4444; margin-top:auto;" onclick="handleSupabaseLogout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout Securely</div>
-        </div>
-    </div>
+
             <div class="menu-category-title">Information</div>
             <div class="menu-link-btn" onclick="openAboutModal()"><i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i> About App</div>
 
+        </div>
+    </div>
+            
     <div class="object-bottom-sheet" id="object-bottom-sheet">
         <div class="sheet-drag-handle" onclick="closeObjectSheet()"></div>
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px;">
