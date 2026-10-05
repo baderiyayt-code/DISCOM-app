@@ -90,7 +90,7 @@ window.generateCadSLDPdf = function() {
             else return { x: xOffset + ((lng - minLng) * scale), y: yOffset + ch - ((lat - minLat) * scale) };
         };
 
-        if(isRotated) { doc.setFontSize(6); doc.setTextColor(100, 100, 100); doc.text("Note: Diagram Auto-Rotated 90° for optimal fit", margin + 2, margin + 8); }
+        if(isRotated) { doc.setFontSize(6); doc.setTextColor(100, 100, 100); doc.text("Note: Diagram Auto-Rotated 90Â° for optimal fit", margin + 2, margin + 8); }
 
         let totalHT = 0;
         (net.lines||[]).forEach(l => {
@@ -121,8 +121,8 @@ window.generateCadSLDPdf = function() {
             } else if(n.type === 'DT') {
                 // --- DT BOX & FONT MATCHED PROPORTIONATELY ---
                 doc.setFillColor(249, 115, 22); doc.setDrawColor(0,0,0); doc.setLineWidth(0.10); 
-                doc.rect(pos.x - 1.25, pos.y - 1.25, 2, 2, 'FD'); 
-                doc.setFontSize(4); doc.setTextColor(0,0,0); 
+                doc.rect(pos.x - 1.25, pos.y - 1.25, 1, 1, 'FD'); 
+                doc.setFontSize(3); doc.setTextColor(0,0,0); 
                 const rating = String(n.data.rating).replace(/[^0-9]/g, ''); 
                 doc.text(rating, pos.x, pos.y, { align: 'center' });
             } else if(n.type === 'POLE') {
