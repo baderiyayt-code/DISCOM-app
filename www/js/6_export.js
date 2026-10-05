@@ -1,11 +1,11 @@
 /* --- js/6_export.js --- */
 
 // ==========================================
-// UNIVERSAL FILE DOWNLOADER (WEB + APK FIX)
+// UNIVERSAL FILE DOWNLOADER (BLOB FIX FOR APK)
 // ==========================================
 window.downloadFileUniversal = function(blob, filename, mimeType) {
     
-    // 1. Agar App Web Browser (Vercel/Chrome) par chal rahi hai
+    // 1. Web Browser (Vercel/Chrome)
     if (typeof cordova === 'undefined' || !window.cordova) {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -19,41 +19,59 @@ window.downloadFileUniversal = function(blob, filename, mimeType) {
         return;
     }
 
-    // 2. Agar App Native Android APK me chal rahi hai (Cordova Fix)
+    // 2. Native Cordova APK (Android 10/11/12+ Fix)
     if (window.cordova && cordova.file) {
-        // Native Cordova File Plugin se direct 'Downloads' folder me save karega
-        const storagePath = cordova.file.externalRootDirectory + 'Download/';
-        window.resolveLocalFileSystemURL(storagePath, function(dirEntry) {
-            dirEntry.getFile(filename, { create: true, exclusive: false }, function(fileEntry) {
-                fileEntry.createWriter(function(fileWriter) {
-                    fileWriter.onwriteend = function() {
-                        alert("✅ Saved successfully to your Downloads folder!\nFile: " + filename);
-                    };
-                    fileWriter.onerror = function(e) { alert("Write Error: " + JSON.stringify(e)); };
-                    fileWriter.write(blob);
-                });
-            }, function(err) { alert("File create error. Check Storage Permissions in App Info."); });
-        }, function(err) { alert("Directory access error. Check Storage Permissions."); });
-    } else {
-        // Fallback Fix: Agar File Plugin install nahi hai, toh Base64 me convert karke force download karega
+        // FIX for Error Code 1: Convert Blob to ArrayBuffer
         const reader = new FileReader();
         reader.onloadend = function() {
-            const base64data = reader.result;
+            const arrayBuffer = reader.result;
+            
+            // Primary Target: User's Download Folder
+            let storagePath = cordova.file.externalRootDirectory + 'Download/';
+            
+            window.resolveLocalFileSystemURL(storagePath, function(dirEntry) {
+                saveDataToDir(dirEntry, filename, arrayBuffer);
+            }, function(err) {
+                // Fallback Target: App's secure Data Directory (If Scoped Storage blocks Download folder)
+                window.resolveLocalFileSystemURL(cordova.file.externalDataDirectory, function(fallbackDir) {
+                    saveDataToDir(fallbackDir, filename, arrayBuffer);
+                }, function(err2) {
+                    alert("Storage access denied. Please grant permissions in App Info.");
+                });
+            });
+        };
+        // Trigger the reader
+        reader.readAsArrayBuffer(blob);
+        
+        function saveDataToDir(dirEntry, fileName, dataBuffer) {
+            dirEntry.getFile(fileName, { create: true, exclusive: false }, function(fileEntry) {
+                fileEntry.createWriter(function(fileWriter) {
+                    fileWriter.onwriteend = function() {
+                        alert("✅ Saved successfully!\nLocation: " + fileEntry.nativeURL);
+                    };
+                    fileWriter.onerror = function(e) { 
+                        alert("Write Error: " + JSON.stringify(e)); 
+                    };
+                    // Pass ArrayBuffer directly instead of Blob
+                    fileWriter.write(dataBuffer);
+                });
+            }, function(err) { alert("File create error: " + JSON.stringify(err)); });
+        }
+    } else {
+        // Fallback Base64 method if file plugin is missing
+        const reader = new FileReader();
+        reader.onloadend = function() {
             const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = base64data;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            alert("File downloading... Check your notifications.");
+            a.style.display = 'none'; a.href = reader.result; a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            alert("Downloading fallback... Check notifications.");
         };
         reader.readAsDataURL(blob);
     }
 };
 
 // ==========================================
-// 1. GENERATE PROFESSIONAL SLD PDF (AUTO-ROTATE FIT)
+// 1. GENERATE PROFESSIONAL SLD PDF
 // ==========================================
 window.generateCadSLDPdf = function() {
     const net = window.getActiveNetwork();
@@ -132,7 +150,6 @@ window.generateCadSLDPdf = function() {
         doc.text(`Total HT Length: ${(totalHT/1000).toFixed(3)} km`, pageWidth - margin - 43, pageHeight - margin - 5.5);
         doc.text(`Total DTs: ${(net.dts||[]).length}`, pageWidth - margin - 43, pageHeight - margin - 2.5);
 
-        // --- NEW SAFE EXPORT LOGIC ---
         const blob = doc.output('blob');
         const filename = `${fName.replace(/\s+/g, '_')}_SLD.pdf`;
         window.downloadFileUniversal(blob, filename, 'application/pdf');
@@ -211,8 +228,6 @@ window.exportDataToCSV = function() {
 // ==========================================
 window.exportFullJSONBackup = function() {
     if(!appState) return;
-    
-    // Backup export karte waqt photos nikal dein taki file size bahut bada na ho jaye
     const stateToExport = JSON.parse(JSON.stringify(appState));
     delete stateToExport.photos; 
     
@@ -230,9 +245,9 @@ window.handleImportChoice = function(e) {
         try {
             const importedData = JSON.parse(ev.target.result);
             if(!importedData.feeders || !importedData.gssNodes) return alert("Invalid Backup File!");
-            const localPhotos = appState.photos || {}; // Save existing photos
+            const localPhotos = appState.photos || {}; 
             appState = importedData;
-            appState.photos = localPhotos; // Restore photos
+            appState.photos = localPhotos; 
             
             window.triggerPersistence(); window.renderEntireNetwork();
             alert("Backup Restored Successfully!");
