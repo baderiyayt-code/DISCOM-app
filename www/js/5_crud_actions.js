@@ -13,7 +13,7 @@ window.getPhotoUrl = function(id) {
     return (appState.photos && appState.photos[id]) ? appState.photos[id] : null;
 };
 
-/* --- Updated Magic Pole Logic for HT and LT Networks --- */
+/* --- Replace checkAndSplitLineOnPoleInsert inside js/5_crud_actions.js --- */
 
 window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
     if(!net || !net.lines || !net.poles) return;
@@ -22,12 +22,11 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
     let matchedLine = null;
     let isLT = (newPole.lineType === 'LT');
 
-    // Search for the exact line segment that the new pole is intersecting
     for (let i = 0; i < net.lines.length; i++) {
         const l = net.lines[i];
         const isLineLT = l.type && l.type.includes('LT');
         
-        // HT pole can only split HT lines, LT pole can only split LT lines
+        // HT can only split HT lines, LT can only split LT lines
         if (isLT && !isLineLT) continue;
         if (!isLT && isLineLT) continue;
 
@@ -47,7 +46,8 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
                 { lat: n2.lat, lng: n2.lng }
             );
 
-            if (distToSegment <= 4.0 && isBetweenEndpoints) {
+            // Using a slightly wider threshold (6 meters) for precise line capture
+            if (distToSegment <= 6.0 && isBetweenEndpoints) {
                 targetLineIndex = i;
                 matchedLine = l;
                 break; 
@@ -62,36 +62,39 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
         const linePhase = matchedLine.phase;
         const lineCond = matchedLine.conductor;
 
-        // If it's an LT pole, automatically detect and inherit DT Code from the connected line nodes
+        // If it's an LT pole, automatically detect and inherit DT Code
         if (isLT) {
-            let detectedDtCode = null;
-            const checkNodeForDT = (nodeId) => {
-                if (nodeId.startsWith('DT_')) return nodeId.replace('DT_', '');
-                const foundPole = (net.poles||[]).find(x => 'POLE_' + x.poleNo === nodeId || x.id === nodeId);
-                if (foundPole && foundPole.dtCode) return foundPole.dtCode;
-                return null;
-            };
-            detectedDtCode = checkNodeForDT(originalFrom) || checkNodeForDT(originalTo);
+            let detectedDtCode = newPole.dtCode || null;
+            if (!detectedDtCode) {
+                const checkNodeForDT = (nodeId) => {
+                    if (nodeId.startsWith('DT_')) return nodeId.replace('DT_', '');
+                    const foundPole = (net.poles||[]).find(x => 'POLE_' + x.poleNo === nodeId || x.id === nodeId || x.poleNo === nodeId);
+                    if (foundPole && foundPole.dtCode) return foundPole.dtCode;
+                    return null;
+                };
+                detectedDtCode = checkNodeForDT(originalFrom) || checkNodeForDT(originalTo);
+            }
             
             if (detectedDtCode) {
                 newPole.dtCode = detectedDtCode;
-                // Auto generate sequential LT pole number for this DT (e.g., 8380-1, 8380-2)
                 let maxL = 0;
-                (net.poles||[]).filter(p => p.lineType === 'LT' && String(p.dtCode) === String(detectedDtCode)).forEach(p => {
+                (net.poles||[]).filter(p => p.lineType === 'LT' && String(p.dtCode) === String(detectedDtCode) && p.id !== newPole.id).forEach(p => {
                     const pts = String(p.poleNo).split('-');
                     if(pts.length > 1) { const num = parseInt(pts[1]); if(!isNaN(num) && num > maxL) maxL = num; }
                 });
-                newPole.poleNo = detectedDtCode + '-' + (maxL + 1);
+                if(!String(newPole.poleNo).includes('-')) {
+                    newPole.poleNo = detectedDtCode + '-' + (maxL + 1);
+                }
             }
         }
 
-        // 1. Remove the old single line securely
+        // 1. Permanently delete the old single line from the network array
         net.lines.splice(targetLineIndex, 1);
 
         const newPoleNodeId = 'POLE_' + newPole.poleNo;
 
         if (originalFrom !== newPoleNodeId && originalTo !== newPoleNodeId) {
-            // 2. Create Segment 1: Original From -> New Pole
+            // 2. Create Segment 1: Original From -> New Magic Pole
             const segment1 = {
                 id: 'LINE_' + Date.now() + '_1',
                 type: lineType,
@@ -101,7 +104,7 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
                 toNode: newPoleNodeId
             };
 
-            // 3. Create Segment 2: New Pole -> Original To
+            // 3. Create Segment 2: New Magic Pole -> Original To
             const segment2 = {
                 id: 'LINE_' + Date.now() + '_2',
                 type: lineType,
@@ -114,6 +117,7 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
             net.lines.push(segment1);
             net.lines.push(segment2);
 
+            // Clean up any duplicate or leftover lines
             if(window.deduplicateNetworkData) {
                 window.deduplicateNetworkData();
             }
@@ -124,6 +128,8 @@ window.checkAndSplitLineOnPoleInsert = function(net, newPole) {
         }
     }
 };
+
+            
 
 window.isPointOnSegment = function(p, a, b) {
     const dxy = Math.hypot(b.lat - a.lat, b.lng - a.lng);
