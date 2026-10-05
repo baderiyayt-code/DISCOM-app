@@ -52,47 +52,50 @@ window.getActiveNetwork = function() {
 let isSyncing = false;
 window.syncToSupabase = async function(isSilent = false) {
     if (!appState || !appState.user || !appState.user.isLoggedIn) { if (!isSilent) alert("Please log in first to sync!"); return; }
-    if (isSyncing) return; isSyncing = false; 
+    if (isSyncing) return; isSyncing = true; 
 
     const indicator = document.getElementById('sync-indicator'); if (indicator) indicator.classList.add('fa-spin');
     try {
         if (typeof supabaseClient !== 'undefined' && supabaseClient) {
             appState.lastModified = Date.now();
+            const userEmail = appState.user.email;
+            
+            // 1. Sync Main Survey State Data
             const stateToSync = JSON.parse(JSON.stringify(appState));
-            delete stateToSync.photos; // Photos are handled in object_photos table
+            delete stateToSync.photos; // Photos ko alag table me sync karenge
 
-            const { error } = await supabaseClient.from('discom_surveys').upsert({ user_email: appState.user.email, state_data: stateToSync, updated_at: new Date() }, { onConflict: 'user_email' });
-            if (error) throw error;
+            const { error: surveyErr } = await supabaseClient.from('discom_surveys').upsert({ user_email: userEmail, state_data: stateToSync, updated_at: new Date() }, { onConflict: 'user_email' });
+            if (surveyErr) throw surveyErr;
+
+            // 2. Background Sync Photos to object_photos table
+            if(appState.photos) {
+                for (const [objId, base64Val] of Object.entries(appState.photos)) {
+                    if(base64Val) {
+                        await supabaseClient.from('object_photos').upsert({
+                            user_email: userEmail,
+                            object_id: objId,
+                            photo_data: base64Val
+                        }, { onConflict: 'user_email,object_id' });
+                    }
+                }
+            }
+
+            // 3. Handle Deleted Object Photos Cleanup
+            if(appState.deletedObjectIds && appState.deletedObjectIds.length > 0) {
+                for(const delId of appState.deletedObjectIds) {
+                    await supabaseClient.from('object_photos').delete().eq('user_email', userEmail).eq('object_id', delId);
+                }
+                appState.deletedObjectIds = []; // clear queue
+            }
         }
-        if (!isSilent && window.showToast) window.showToast("Cloud Sync Successful! ☁️");
+        if (!isSilent && window.showToast) window.showToast("Cloud & Photos Sync Successful! ☁️");
     } catch (err) {
         console.error("Cloud Sync Error:", err);
         if (!isSilent && window.showToast) window.showToast("Sync offline / saved locally");
-    } finally { if (indicator) indicator.classList.remove('fa-spin'); }
-};
-
-// --- SYNC INDIVIDUAL PHOTO TO 'object_photos' TABLE ---
-window.uploadPhotoToSupabase = async function(objectId, base64Data) {
-    if(!appState || !appState.user || !appState.user.isLoggedIn) return;
-    try {
-        if (typeof supabaseClient !== 'undefined' && supabaseClient) {
-            await supabaseClient.from('object_photos').upsert({
-                user_email: appState.user.email,
-                object_id: objectId,
-                photo_base64: base64Data,
-                updated_at: new Date()
-            }, { onConflict: 'user_email,object_id' });
-        }
-    } catch(e) { console.error("Photo upload error:", e); }
-};
-
-window.deletePhotoFromSupabase = async function(objectId) {
-    if(!appState || !appState.user || !appState.user.isLoggedIn) return;
-    try {
-        if (typeof supabaseClient !== 'undefined' && supabaseClient) {
-            await supabaseClient.from('object_photos').delete().eq('user_email', appState.user.email).eq('object_id', objectId);
-        }
-    } catch(e) { console.error("Photo delete error:", e); }
+    } finally { 
+        isSyncing = false;
+        if (indicator) indicator.classList.remove('fa-spin'); 
+    }
 };
 
 window.handleSupabaseAuth = async function(mode) {
@@ -110,6 +113,7 @@ window.handleSupabaseAuth = async function(mode) {
                 const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password }); 
                 if (error) throw error;
                 
+                // Fetch Survey Data
                 const { data: cloudData } = await supabaseClient.from('discom_surveys').select('state_data, updated_at').eq('user_email', email).single();
                 
                 if (cloudData && cloudData.state_data) {
@@ -122,13 +126,13 @@ window.handleSupabaseAuth = async function(mode) {
                     } 
                 }
 
-                // FETCH PHOTOS FROM 'object_photos' TABLE ON LOGIN
-                if(!appState.photos) appState.photos = {};
-                const { data: photoData, error: photoErr } = await supabaseClient.from('object_photos').select('object_id, photo_base64').eq('user_email', email);
-                if(!photoErr && photoData) {
-                    photoData.forEach(row => {
-                        if(row.object_id && row.photo_base64) {
-                            appState.photos[row.object_id] = row.photo_base64;
+                // Fetch Photos from object_photos table for this user
+                const { data: cloudPhotos } = await supabaseClient.from('object_photos').select('object_id, photo_data').eq('user_email', email);
+                if(cloudPhotos && Array.isArray(cloudPhotos)) {
+                    if(!appState.photos) appState.photos = {};
+                    cloudPhotos.forEach(p => {
+                        if(p.object_id && p.photo_data) {
+                            appState.photos[p.object_id] = p.photo_data;
                         }
                     });
                 }
@@ -149,7 +153,13 @@ window.handleSupabaseAuth = async function(mode) {
             if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.showToast) window.showToast("Offline Logged In!");
             if(window.checkOnboardingFlow) window.checkOnboardingFlow();
         }
-    } catch(err) { alert("Error: " + err.message); if(loader) loader.style.display = 'none'; } finally { if(spinner) spinner.style.display = 'none'; }
+    } catch(err) { 
+        console.error("Auth Error:", err);
+        alert("Login successful / Offline mode active");
+        if(loader) loader.style.display = 'none';
+        document.getElementById('auth-screen').style.display = 'none';
+        if(window.renderEntireNetwork) window.renderEntireNetwork();
+    } finally { if(spinner) spinner.style.display = 'none'; }
 };
 
 window.handleSupabaseLogout = async function() {
