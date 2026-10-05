@@ -3,6 +3,55 @@
 window.tempPhotoUrl = null;
 window.currentSelectedObj = null;
 
+// ==========================================
+// CAMERA & PHOTO CAPTURE LOGIC (RESTORED)
+// ==========================================
+window.captureTempPhoto = function() {
+    if (typeof navigator !== 'undefined' && navigator.camera) {
+        navigator.camera.getPicture((imgData) => {
+            window.tempPhotoUrl = "data:image/jpeg;base64," + imgData;
+            const imgEl = document.getElementById('formTempPhoto');
+            if(imgEl) { imgEl.src = window.tempPhotoUrl; imgEl.style.display = 'block'; }
+        }, (err) => { alert("Camera error: " + err); }, {
+            quality: 40, destinationType: 0, targetWidth: 800, targetHeight: 800, correctOrientation: true
+        });
+    } else {
+        let input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+        input.onchange = e => {
+            let file = e.target.files[0]; if(!file) return; let reader = new FileReader();
+            reader.onload = ev => {
+                window.tempPhotoUrl = ev.target.result;
+                const imgEl = document.getElementById('formTempPhoto');
+                if(imgEl) { imgEl.src = window.tempPhotoUrl; imgEl.style.display = 'block'; }
+            }; reader.readAsDataURL(file);
+        }; input.click();
+    }
+};
+
+window.captureObjectPhoto = function() {
+    if(!window.currentSelectedObj) return alert("Error: Object not selected!");
+    const id = window.currentSelectedObj.id;
+    
+    const processPhoto = (base64Data) => {
+        if(window.savePhotoData) window.savePhotoData(id, base64Data);
+        const imgEl = document.getElementById('objPhotoImg');
+        const placeholderEl = document.getElementById('objPhotoPlaceholder');
+        if(imgEl && placeholderEl) { imgEl.src = base64Data; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; }
+        if(window.showToast) window.showToast("Photo Saved Successfully!");
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.camera) {
+        navigator.camera.getPicture((imgData) => { processPhoto("data:image/jpeg;base64," + imgData); }, 
+        (err) => { alert("Camera error: " + err); }, { quality: 40, destinationType: 0, targetWidth: 800, targetHeight: 800, correctOrientation: true });
+    } else {
+        let input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+        input.onchange = e => {
+            let file = e.target.files[0]; if(!file) return; let reader = new FileReader();
+            reader.onload = ev => processPhoto(ev.target.result); reader.readAsDataURL(file);
+        }; input.click();
+    }
+};
+
 // --- FULL SCREEN PHOTO LOGIC ---
 window.openFullScreenPhoto = function(src) {
     if(!src || src === '' || src === window.location.href) return;
@@ -80,7 +129,6 @@ window.openFeederConfigModal = function() {
     window.openModal(`<div class="sheet-head"><div class="sheet-title">Add Feeder</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><select id="inpFeederGss" class="form-select">${gssOpts}</select><label>Select GSS*</label></div><div class="form-row"><input type="text" id="inpFeederCode" class="form-input" placeholder=" "><label>Feeder Code*</label></div><div class="form-row"><input type="text" id="inpFeederName" class="form-input" placeholder=" "><label>Feeder Name*</label></div><button class="btn-action-primary" onclick="window.saveNewFeeder()">Save Feeder</button>`);
 };
 
-// --- FIX: SECURE FEEDER CREATION (PREVENTS CRASH) ---
 window.saveNewFeeder = function() { 
     try {
         const gss = document.getElementById('inpFeederGss').value; const code = document.getElementById('inpFeederCode').value.trim(); const name = document.getElementById('inpFeederName').value.trim(); 
@@ -88,20 +136,16 @@ window.saveNewFeeder = function() {
         if(!appState.feeders) appState.feeders = {}; 
         if(appState.feeders[code]) return alert("Feeder code already exists"); 
         
-        // Initialize ALL arrays explicitly so map renderer doesn't crash on undefined
-        appState.feeders[code] = { 
-            feeder: { name: name, code: code, subdivCode: "SD-01", parentGss: gss }, 
-            poles: [], dts: [], lines: [], consumers: [] 
-        }; 
+        appState.feeders[code] = { feeder: { name: name, code: code, subdivCode: "SD-01", parentGss: gss }, poles: [], dts: [], lines: [], consumers: [] }; 
         appState.currentFeederCode = code; 
         window.closeModal(); 
         
         setTimeout(() => {
-            try { if(window.renderEntireNetwork) window.renderEntireNetwork(); } catch(e){ console.error("Render error after new feeder:", e); }
-            try { if(window.triggerPersistence) window.triggerPersistence(); } catch(e){ console.error("Save error after new feeder:", e); }
+            try { if(window.renderEntireNetwork) window.renderEntireNetwork(); } catch(e){}
+            try { if(window.triggerPersistence) window.triggerPersistence(); } catch(e){}
             if(window.showToast) window.showToast("Feeder Added!"); 
         }, 100);
-    } catch (e) { console.error("SaveNewFeeder Error:", e); alert("Error saving feeder!"); }
+    } catch (e) { alert("Error saving feeder!"); }
 };
 
 window.openEditFeederModal = function(code) {
@@ -130,7 +174,6 @@ window.deleteGssAndFeederStrict = function(code) {
 
 window.openAddGssModal = function() { window.toggleSidebar(false); window.openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-plus-circle"></i> Add New GSS</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" id="inpGssCode" class="form-input" placeholder=" "><label>GSS Code*</label></div><div class="form-row"><input type="text" id="inpGssName" class="form-input" placeholder=" "><label>GSS Name*</label></div><button class="btn-action-primary" onclick="window.saveNewGss()">Save GSS</button>`); };
 
-// --- FIX: SECURE GSS CREATION ---
 window.saveNewGss = function() { 
     try {
         const code = document.getElementById('inpGssCode').value.trim(); const name = document.getElementById('inpGssName').value.trim(); 
@@ -150,13 +193,14 @@ window.saveNewGss = function() {
             if(window.showToast) window.showToast("New GSS added!"); 
             if(window.checkOnboardingFlow) window.checkOnboardingFlow();
         }, 100);
-    } catch(e) { console.error("SaveNewGSS Error:", e); alert("Error saving GSS!"); }
+    } catch(e) { alert("Error saving GSS!"); }
 };
 
 window.relocateGss = function(gssCode) { if(window.closeObjectSheet) window.closeObjectSheet(); window.toggleSidebar(false); if(window.startObjectMove) window.startObjectMove('GSS', gssCode, `GSS (${gssCode})`); };
 window.autoSaveSettings = function() { appState.settings.unit = document.getElementById('setUnit').value; appState.settings.language = document.getElementById('setLanguage').value; appState.settings.theme = document.getElementById('setTheme').value; appState.settings.liveSync = document.getElementById('setLiveSync').checked; window.applyTranslations(); window.applyTheme(); window.triggerPersistence(); window.renderEntireNetwork(); window.showToast("Settings Saved!"); }
 window.openSettingsPage = function() { window.toggleSidebar(false); document.getElementById('setUnit').value = appState.settings.unit || 'm'; document.getElementById('setLanguage').value = appState.settings.language || 'en'; document.getElementById('setTheme').value = appState.settings.theme || 'light'; document.getElementById('setLiveSync').checked = appState.settings.liveSync !== false; document.getElementById('settings-page').classList.add('open'); }
 window.closeSettingsPage = function() { document.getElementById('settings-page').classList.remove('open'); }
+
 window.openAboutModal = function() { window.toggleSidebar(false); window.openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-circle-info" style="color:#3b82f6;"></i> About App</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div style="text-align: center; padding: 10px 0 20px 0;"><div style="width: 64px; height: 64px; background: var(--accent); color: white; font-size: 32px; border-radius: 16px; display: flex; align-items:center; justify-content:center; margin: 0 auto 15px auto; box-shadow: 0 8px 20px rgba(37,99,235,0.3);"><i class="fa-solid fa-bolt"></i></div><h3 style="font-size: 1.2rem; font-weight: 900; color: var(--text-main); margin-bottom: 5px;">DISCOM Survey Pro</h3><p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 20px;">Professional GIS-based field survey mobile application designed for electricity infrastructure mapping, asset tracking, and enterprise-grade data management.</p><div style="background: var(--bg-glass); border: 1px solid var(--border); padding: 12px; border-radius: 10px; text-align: left; margin-bottom: 20px;"><div style="font-size: 0.8rem; color: var(--text-sub);">Developed By</div><div style="font-size: 0.95rem; font-weight: 800; color: var(--text-main); margin-top: 2px;">Suraj Singh Mehta</div><div style="font-size: 0.75rem; color: var(--accent); margin-top: 4px;">Electrical Asset Management Specialist</div></div><div style="font-size: 0.75rem; color: var(--text-sub);">Version 2.5.0 (Enterprise Edition)</div></div>`); };
 
 window.openFilterModal = function() { const f = appState.filters; window.openModal(`<div class="sheet-head"><div class="sheet-title"><i class="fa-solid fa-filter" style="color:#d97706;"></i> Object Filter</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="capsule-filter-group"><label class="capsule"><input type="checkbox" id="flt11" ${f.lines11?'checked':''}><span>11 KV Line</span></label><label class="capsule"><input type="checkbox" id="fltLT" ${f.linesLT?'checked':''}><span>LT Line</span></label><label class="capsule"><input type="checkbox" id="fltPoles" ${f.poles?'checked':''}><span>Poles</span></label><label class="capsule"><input type="checkbox" id="fltDTs" ${f.dts?'checked':''}><span>DT</span></label><label class="capsule"><input type="checkbox" id="fltCons" ${f.consumers?'checked':''}><span>Consumers</span></label></div><button class="btn-action-primary" onclick="window.saveFilters()" style="margin-top:20px;">Apply Filters</button>`); }
@@ -268,22 +312,5 @@ window.showFormModal = function(type, snapLat, snapLng) {
         if ((net.dts||[]).length === 0) return alert("Must have at least one DT!"); let sortedDTs = window.sortByDistance((net.dts||[]).map(d=>({id: 'DT_'+d.code, lat: d.lat, lng: d.lng})), snapLat, snapLng); const dtOpts = sortedDTs.map(d => `<option value="${d.id}">${d.id.replace('_', ': ')} (${window.getDistStr(d.lat, d.lng)})</option>`).join('');
         window.openModal(`<div class="sheet-head"><div class="sheet-title">Add Consumer</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-grid-2"><div class="form-row"><select id="inpConsDT" class="form-select" onchange="window.filterConsumerPoles()">${dtOpts}</select><label>Parent DT*</label></div><div class="form-row"><select id="inpConsParent" class="form-select"></select><label>Connects To*</label></div></div><div class="form-grid-2"><div class="form-row"><select id="inpConsStatus" class="form-select"><option value="Regular" selected>Regular</option><option value="DC">DC</option><option value="PDC">PDC</option></select><label>Status</label></div><div class="form-row"><select id="inpConsType" class="form-select"><option value="Domestic" selected>Domestic</option><option value="NonDomestic">NonDomestic</option><option value="Agriculture">Agriculture</option><option value="Govt.">Govt.</option><option value="SIP MIP">SIP MIP</option><option value="Other">Other</option></select><label>Type</label></div></div><div class="form-grid-2"><div class="form-row"><input type="number" id="inpConsKno" class="form-input" placeholder=" "><label>K-Number*</label></div><div class="form-row"><input type="text" id="inpConsLoad" class="form-input" placeholder=" " value="1 kW"><label>Load</label></div></div><div class="form-row"><input type="text" id="inpConsName" class="form-input" placeholder=" "><label>Consumer Name*</label></div><input type="hidden" id="inpLat" value="${snapLat}"><input type="hidden" id="inpLng" value="${snapLng}">${window.getCameraFormHtml()}<button class="btn-action-primary" onclick="window.executeSafeSave(() => window.saveNewConsumer())">Save Consumer</button>`);
         setTimeout(() => window.filterConsumerPoles(), 100);
-    }
-}
-
-window.openEditModal = function(type, id) {
-    window.closeObjectSheet(); const net = window.getActiveNetwork();
-    if (type === 'pole') { 
-        const p = net.poles.find(x => x.id === id); if (!p) return; 
-        window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit Pole</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" id="editPoleNo" class="form-input" placeholder=" " value="${p.poleNo}" disabled><label>Pole Number (Locked)</label></div><div class="form-grid-2"><div class="form-row"><select id="editMainPoleType" class="form-select" onchange="window.togglePccConfig('editMainPoleType', 'editPccConfigDiv')"><option value="PCC" ${p.poleType==='PCC'?'selected':''}>PCC</option><option value="TOWER" ${p.poleType==='TOWER'?'selected':''}>TOWER</option><option value="RAIL POLE" ${p.poleType==='RAIL POLE'?'selected':''}>RAIL POLE</option></select><label>Pole Type*</label></div><div class="form-row"><select id="editPoleCondition" class="form-select"><option value="Good" ${p.condition==='Good'?'selected':''}>Good</option><option value="Tilted" ${p.condition==='Tilted'?'selected':''}>Tilted</option><option value="Damaged" ${p.condition==='Damaged'?'selected':''}>Damaged</option></select><label>Condition</label></div></div><div class="form-row" id="editPccConfigDiv" style="display:${p.poleType==='PCC'?'block':'none'};"><select id="editPccConfig" class="form-select"><option value="Single Pole" ${p.poleConfig==='Single Pole'?'selected':''}>Single Pole</option><option value="Double Pole" ${p.poleConfig==='Double Pole'?'selected':''}>Double Pole</option></select><label>PCC Configuration</label></div><button class="btn-action-primary" onclick="window.executeSafeSave(() => window.saveEditedPole('${p.id}'))">Save Changes</button>`); 
-    } else if (type === 'dt') { 
-        const d = net.dts.find(x => x.id === id); if (!d) return; 
-        window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit DT</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><select id="editDTMounted" class="form-select"><option value="Double Pole (DP)" ${d.mountedOn==='Double Pole (DP)'?'selected':''}>Double Pole (DP)</option><option value="Single Pole (SP)" ${d.mountedOn==='Single Pole (SP)'?'selected':''}>Single Pole (SP)</option><option value="Plinth" ${d.mountedOn==='Plinth'?'selected':''}>Plinth</option></select><label>Mounted On*</label></div><div class="form-grid-2"><div class="form-row"><input type="text" class="form-input" placeholder=" " value="${d.code}" disabled><label>DT Code (Locked)</label></div><div class="form-row"><select id="editDTPhase" class="form-select" onchange="window.updateDTRatingDropdowns('editDTPhase', 'editDTRating')"><option value="Three Phase" ${d.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${d.phase==='Single Phase'?'selected':''}>Single Phase</option></select><label>Phase*</label></div></div><div class="form-row"><select id="editDTRating" class="form-select">${dtRatingOptionsHtml}</select><label>Rating (kVA)*</label></div><div class="form-row"><input type="text" id="editDTLocation" class="form-input" placeholder=" " value="${d.location || ''}"><label>Location</label></div><button class="btn-action-primary" onclick="window.executeSafeSave(() => window.saveEditedDT('${d.id}'))">Save Changes</button>`); setTimeout(() => { window.updateDTRatingDropdowns('editDTPhase', 'editDTRating'); document.getElementById('editDTRating').value = d.rating; }, 50); 
-    } else if (type === 'consumer') { 
-        const c = net.consumers.find(x => x.id === id); if (!c) return; 
-        window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit Consumer</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" id="editConsName" class="form-input" placeholder=" " value="${c.name}"><label>Consumer Name*</label></div><div class="form-grid-2"><div class="form-row"><input type="number" class="form-input" placeholder=" " value="${c.kno}" disabled><label>K-Number (Locked)</label></div><div class="form-row"><input type="text" id="editConsLoad" class="form-input" placeholder=" " value="${c.load||''}"><label>Load</label></div></div><div class="form-grid-2"><div class="form-row"><select id="editConsStatus" class="form-select"><option value="Regular" ${c.status==='Regular'?'selected':''}>Regular</option><option value="DC" ${c.status==='DC'?'selected':''}>DC</option><option value="PDC" ${c.status==='PDC'?'selected':''}>PDC</option></select><label>Status</label></div><div class="form-row"><select id="editConsType" class="form-select"><option value="Domestic" ${c.cType==='Domestic'?'selected':''}>Domestic</option><option value="NonDomestic" ${c.cType==='NonDomestic'?'selected':''}>NonDomestic</option><option value="Agriculture" ${c.cType==='Agriculture'?'selected':''}>Agriculture</option><option value="Govt." ${c.cType==='Govt.'?'selected':''}>Govt.</option><option value="SIP MIP" ${c.cType==='SIP MIP'?'selected':''}>SIP MIP</option><option value="Other" ${c.cType==='Other'?'selected':''}>Other</option></select><label>Type</label></div></div><button class="btn-action-primary" onclick="window.executeSafeSave(() => window.saveEditedConsumer('${c.id}'))">Save Changes</button>`); 
-    } else if (type === 'line') { 
-        const l = net.lines.find(x => x.id === id); if (!l) return; 
-        window.openModal(`<div class="sheet-head"><div class="sheet-title">Edit Line</div><button class="sheet-close-btn" onclick="window.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="form-row"><input type="text" class="form-input" placeholder=" " value="${l.type}" disabled><label>Voltage Type (Locked)</label></div><div class="form-row" id="editLinePhaseRow" style="display:${l.type.includes('11')?'block':'none'}"><select id="editLinePhase" class="form-select"><option value="Three Phase" ${l.phase==='Three Phase'?'selected':''}>Three Phase</option><option value="Single Phase" ${l.phase==='Single Phase'?'selected':''}>Single Phase</option></select><label>Phase Type (HT)*</label></div><div class="form-row"><select id="editLineConductor" class="form-select">${l.type.includes('11') ? `<option value="Weasel" ${l.conductor==='Weasel'?'selected':''}>Weasel</option><option value="Rabbit" ${l.conductor==='Rabbit'?'selected':''}>Rabbit</option><option value="Dog" ${l.conductor==='Dog'?'selected':''}>Dog</option><option value="Underground Cable" ${l.conductor==='Underground Cable'?'selected':''}>Underground Cable</option>` : `<option value="Single Phase" ${l.conductor==='Single Phase'?'selected':''}>Single Phase</option><option value="Three Phase" ${l.conductor==='Three Phase'?'selected':''}>Three Phase</option>`}</select><label>Conductor</label></div><button class="btn-action-primary" onclick="window.executeSafeSave(() => window.saveEditedLine('${l.id}'))">Save Changes</button>`); 
     }
 }
