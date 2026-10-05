@@ -37,6 +37,8 @@ window.triggerPersistence = async function() {
         appState.lastModified = Date.now(); 
         window.deduplicateNetworkData(); 
         await localforage.setItem('discom_app_state', appState);
+        
+        // Background Cloud Sync Trigger
         if (appState.user && appState.user.isLoggedIn && appState.settings && appState.settings.liveSync !== false) {
             window.syncToSupabase(true);
         }
@@ -51,27 +53,54 @@ window.getActiveNetwork = function() {
 
 let isSyncing = false;
 window.syncToSupabase = async function(isSilent = false) {
-    if (!appState || !appState.user || !appState.user.isLoggedIn) { if (!isSilent) alert("Please log in first to sync!"); return; }
-    if (isSyncing) return; isSyncing = false; 
+    if (!appState || !appState.user || !appState.user.isLoggedIn) { 
+        if (!isSilent) alert("Please log in first to sync with cloud!"); 
+        return; 
+    }
+    
+    if (isSyncing) return; 
+    isSyncing = true; 
 
-    const indicator = document.getElementById('sync-indicator'); if (indicator) indicator.classList.add('fa-spin');
+    const indicator = document.getElementById('sync-indicator'); 
+    if (indicator) indicator.classList.add('fa-spin');
+
     try {
         if (typeof supabaseClient !== 'undefined' && supabaseClient) {
             appState.lastModified = Date.now();
-            const stateToSync = JSON.parse(JSON.stringify(appState));
-            delete stateToSync.photos; 
+            
+            // Clean state payload for database storage
+            const statePayload = {
+                user: appState.user,
+                currentFeederCode: appState.currentFeederCode,
+                gssNodes: appState.gssNodes || {},
+                feeders: appState.feeders || {},
+                filters: appState.filters || {},
+                settings: appState.settings || {},
+                lastModified: appState.lastModified
+            };
 
-            const { error } = await supabaseClient.from('discom_surveys').upsert({ user_email: appState.user.email, state_data: stateToSync, updated_at: new Date() }, { onConflict: 'user_email' });
+            const { error } = await supabaseClient
+                .from('discom_surveys')
+                .upsert({ 
+                    user_email: appState.user.email, 
+                    state_data: statePayload, 
+                    updated_at: new Date() 
+                }, { onConflict: 'user_email' });
+            
             if (error) throw error;
         }
+
         if (!isSilent && window.showToast) window.showToast("Cloud Sync Successful! ☁️");
     } catch (err) {
-        console.error("Cloud Sync Error:", err);
-        if (!isSilent && window.showToast) window.showToast("Sync offline / saved locally");
-    } finally { if (indicator) indicator.classList.remove('fa-spin'); }
+        console.error("Cloud Sync Error Details:", err);
+        if (!isSilent && window.showToast) window.showToast("Sync failed / Saved locally");
+    } finally { 
+        isSyncing = false;
+        if (indicator) indicator.classList.remove('fa-spin'); 
+    }
 };
 
-// Background Photo Sync & Pull Function
+// Background Photo Sync to Supabase object_photos table
 window.syncPhotosToCloud = async function(objectId, base64Url, objectType = 'OBJECT') {
     if(!appState || !appState.user || !appState.user.isLoggedIn) return;
     try {
@@ -114,16 +143,24 @@ window.deletePhotoFromCloud = async function(objectId) {
 };
 
 window.handleSupabaseAuth = async function(mode) {
-    const email = document.getElementById('authEmail').value.trim(), password = document.getElementById('authPassword').value.trim(), name = document.getElementById('authName') ? document.getElementById('authName').value.trim() : 'Surveyor';
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value.trim();
+    const name = document.getElementById('authName') ? document.getElementById('authName').value.trim() : 'Surveyor';
+
     if(!email || !password) return alert("Email and Password required!");
-    const loader = document.getElementById('erection-loader'), spinner = document.getElementById('appLoaderSpinner');
-    if(loader) loader.style.display = 'flex'; if(spinner) spinner.style.display = 'block';
+    
+    const loader = document.getElementById('erection-loader');
+    const spinner = document.getElementById('appLoaderSpinner');
+    if(loader) loader.style.display = 'flex'; 
+    if(spinner) spinner.style.display = 'block';
 
     try {
         if (typeof supabaseClient !== 'undefined' && supabaseClient) {
             if (mode === 'signup') {
                 const { error } = await supabaseClient.auth.signUp({ email, password, options: { data: { full_name: name } } });
-                if (error) throw error; alert("Account created! You can now login."); toggleAuthMode();
+                if (error) throw error; 
+                alert("Account created! You can now login."); 
+                toggleAuthMode();
             } else {
                 const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password }); 
                 if (error) throw error;
@@ -147,33 +184,60 @@ window.handleSupabaseAuth = async function(mode) {
 
                 appState.user = { isLoggedIn: true, email: email, name: data.user.user_metadata?.full_name || name };
                 
-                // Pull photos associated with this user from Supabase object_photos table
+                // Pull photos associated with this user
                 await window.pullPhotosFromCloud(email);
 
                 await window.triggerPersistence();
-                if(loader) loader.style.display = 'none'; document.getElementById('auth-screen').style.display = 'none';
-                if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.showToast) window.showToast("Logged in successfully!");
+                
+                if(loader) loader.style.display = 'none'; 
+                document.getElementById('auth-screen').style.display = 'none';
+                if(window.renderEntireNetwork) window.renderEntireNetwork(); 
+                if(window.showToast) window.showToast("Logged in successfully!");
                 if(window.checkOnboardingFlow) window.checkOnboardingFlow();
             }
         } else {
-            appState.user = { isLoggedIn: true, email: email, name: name }; await window.triggerPersistence();
-            if(loader) loader.style.display = 'none'; document.getElementById('auth-screen').style.display = 'none';
-            if(window.renderEntireNetwork) window.renderEntireNetwork(); if(window.showToast) window.showToast("Offline Logged In!");
+            appState.user = { isLoggedIn: true, email: email, name: name }; 
+            await window.triggerPersistence();
+            if(loader) loader.style.display = 'none'; 
+            document.getElementById('auth-screen').style.display = 'none';
+            if(window.renderEntireNetwork) window.renderEntireNetwork(); 
+            if(window.showToast) window.showToast("Offline Logged In!");
             if(window.checkOnboardingFlow) window.checkOnboardingFlow();
         }
-    } catch(err) { alert("Error: " + err.message); if(loader) loader.style.display = 'none'; } finally { if(spinner) spinner.style.display = 'none'; }
+    } catch(err) { 
+        console.error("Auth Exception:", err);
+        alert("Authentication failed: " + err.message); 
+        if(loader) loader.style.display = 'none'; 
+    } finally { 
+        if(spinner) spinner.style.display = 'none'; 
+    }
 };
 
 window.handleSupabaseLogout = async function() {
     if(confirm("Logout and clear local data?")) {
         try { if (typeof supabaseClient !== 'undefined' && supabaseClient) await supabaseClient.auth.signOut(); } catch(e) {}
-        appState.user = { isLoggedIn: false, email: '', name: '' }; await localforage.removeItem('discom_app_state'); window.location.reload();
+        appState.user = { isLoggedIn: false, email: '', name: '' }; 
+        await localforage.removeItem('discom_app_state'); 
+        window.location.reload();
     }
 };
 
 window.checkOnboardingFlow = function() {
-    const overlay = document.getElementById('onboarding-overlay'); if(!overlay) return;
-    if (Object.keys(appState.gssNodes || {}).length === 0) { document.getElementById('onboarding-title').innerText = "Add Your First GSS"; document.getElementById('onboarding-btn').onclick = () => { overlay.style.display = 'none'; window.openAddGssModal(); }; overlay.style.display = 'flex'; } 
-    else if (Object.keys(appState.feeders || {}).length === 0) { document.getElementById('onboarding-title').innerText = "Create Your First Feeder"; document.getElementById('onboarding-btn').onclick = () => { overlay.style.display = 'none'; window.openFeederConfigModal(); }; overlay.style.display = 'flex'; } 
-    else { overlay.style.display = 'none'; }
+    const overlay = document.getElementById('onboarding-overlay'); 
+    if(!overlay) return;
+    
+    const gssKeys = Object.keys(appState.gssNodes || {});
+    const feederKeys = Object.keys(appState.feeders || {});
+
+    if (gssKeys.length === 0) { 
+        document.getElementById('onboarding-title').innerText = "Add Your First GSS"; 
+        document.getElementById('onboarding-btn').onclick = () => { overlay.style.display = 'none'; window.openAddGssModal(); }; 
+        overlay.style.display = 'flex'; 
+    } else if (feederKeys.length === 0) { 
+        document.getElementById('onboarding-title').innerText = "Create Your First Feeder"; 
+        document.getElementById('onboarding-btn').onclick = () => { overlay.style.display = 'none'; window.openFeederConfigModal(); }; 
+        overlay.style.display = 'flex'; 
+    } else { 
+        overlay.style.display = 'none'; 
+    }
 };
