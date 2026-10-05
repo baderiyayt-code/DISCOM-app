@@ -1,100 +1,230 @@
-window.startObjectMove = function(type, id, title) {
-    window.closeObjectSheet(); appState.activeMove = { type: type, id: id }; 
-    const pin = document.getElementById('center-placement-pin'); if(pin) pin.style.display = 'block'; 
-    const bsa = document.getElementById('bottom-single-action'); if(bsa) bsa.style.display = 'none';
-    
-    let moveBar = document.getElementById('move-confirm-bar');
-    if(moveBar) moveBar.remove(); 
-    moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar'; 
-    moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;'; 
-    
-    // NATIVE POINTERDOWN TO BLOCK MAP CLICKS
-    moveBar.innerHTML = `
-        <button type="button" class="btn-danger-outline" style="background:white; margin-top:0; pointer-events:auto; flex:1; font-weight:800;" onpointerdown="event.stopPropagation();" onclick="window.cancelMove(event)">Cancel</button>
-        <button type="button" class="btn-action-primary" style="margin-top:0; pointer-events:auto; flex:1; font-weight:800;" onpointerdown="event.stopPropagation();" onclick="window.confirmMove(event)">Confirm Move</button>
-    `; 
-    document.body.appendChild(moveBar); 
-    window.renderEntireNetwork(); 
-}
-window.cancelMove = function(e) { if(e){e.preventDefault(); e.stopPropagation();} appState.activeMove = null; const pin = document.getElementById('center-placement-pin'); if(pin) pin.style.display = 'none'; const moveBar = document.getElementById('move-confirm-bar'); if(moveBar) moveBar.remove(); const bsa = document.getElementById('bottom-single-action'); if(bsa) bsa.style.display = 'block'; window.renderEntireNetwork(); }
-window.confirmMove = function(e) {
-    if(e){e.preventDefault(); e.stopPropagation();}
-    try {
-        if(!appState.activeMove) return; const net = window.getActiveNetwork(); if(!net) return; const center = map.getCenter(); const { type, id } = appState.activeMove;
-        let objList = null; if(type === 'POLE') objList = net.poles; else if(type === 'DT') objList = net.dts; else if(type === 'CONSUMER') objList = net.consumers; else if(type === 'GSS') { if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } }
-        if(objList) { const obj = objList.find(x => x.id === id); if(obj) { obj.lat = center.lat; obj.lng = center.lng; obj.synced = false; } }
-        if(typeof window.saveSnapshot === 'function') window.saveSnapshot(); if(typeof window.triggerPersistence === 'function') window.triggerPersistence(); window.cancelMove(); window.showToast("Location Updated!");
-    } catch(err) { console.error("Move Error:", err); alert("Move Error: " + err.message); }
-}
+/* --- js/5_crud_actions.js --- */
 
-window.attachTempPhoto = function(type, id) { if(tempPhotoUrl) { if(!appState.photos) appState.photos = []; appState.photos.push({ id: 'PH_' + Date.now(), object_type: type, object_id: id, photo_url: tempPhotoUrl, synced: false }); tempPhotoUrl = null; } };
-window.captureTempPhoto = function() { if (typeof navigator.camera === 'undefined') return alert("Camera plugin not found."); navigator.camera.getPicture(function(imageData) { tempPhotoUrl = "data:image/jpeg;base64," + imageData; document.getElementById('formTempPhoto').src = tempPhotoUrl; document.getElementById('formTempPhoto').style.display = 'block'; }, function(err) { window.showToast("Camera cancelled"); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false }); };
-window.captureObjectPhoto = function() { if (!currentSelectedObj || !appState.user.isLoggedIn) return; if (typeof navigator.camera === 'undefined') return alert("Camera plugin not installed."); navigator.camera.getPicture(function(imageData) { window.showToast("Saving photo..."); const base64Data = "data:image/jpeg;base64," + imageData; if(!appState.photos) appState.photos = []; appState.photos = appState.photos.filter(x => x.object_id !== currentSelectedObj.id); appState.photos.push({ id: 'PH_' + Date.now(), object_type: currentSelectedObj.type, object_id: currentSelectedObj.id, photo_url: base64Data, synced: false }); const imgEl = document.getElementById('objPhotoImg'); const placeholderEl = document.getElementById('objPhotoPlaceholder'); imgEl.src = base64Data; imgEl.style.display = 'block'; placeholderEl.style.display = 'none'; window.triggerPersistence(); }, function(message) { alert('Camera cancelled or failed: ' + message); }, { quality: 50, destinationType: Camera.DestinationType.DATA_URL, sourceType: Camera.PictureSourceType.CAMERA, saveToPhotoAlbum: false }); };
+window.savePhotoData = function(id, base64) {
+    if(!appState.photos) appState.photos = {};
+    appState.photos[id] = base64;
+    window.triggerPersistence();
+};
+window.getPhotoUrl = function(id) {
+    return (appState.photos && appState.photos[id]) ? appState.photos[id] : null;
+};
 
-window.saveNewPole = function() { 
-    try {
-        const no = document.getElementById('inpPoleNo').value.trim(); const category = document.getElementById('inpPoleCategory').value; const lat = parseFloat(document.getElementById('inpLat').value); const lng = parseFloat(document.getElementById('inpLng').value); const pType = document.getElementById('inpMainPoleType').value; const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A'; const condition = document.getElementById('inpPoleCondition').value;
-        if (!no) return alert("Enter pole number"); const net = window.getActiveNetwork(); if(!net) return alert("No active network!"); if (net.poles.some(p => String(p.poleNo) === no)) return alert(`Pole exists!`); 
-        window.saveSnapshot(); const objId = 'P_'+Date.now(); net.poles.push({ id: objId, poleNo: no, lineType: category, poleType: pType, poleConfig: pConfig, condition: condition, lat, lng, synced: false }); 
-        window.attachTempPhoto('POLE', objId); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("HT Pole added!");
-    } catch(err) { console.error(err); alert("Error saving pole: " + err.message); }
-}
+window.saveNewPole = function() {
+    const net = window.getActiveNetwork(); if(!net) return false;
+    const poleNo = document.getElementById('inpPoleNo').value.trim();
+    const pType = document.getElementById('inpMainPoleType').value;
+    const pCond = document.getElementById('inpPoleCondition').value;
+    const pConf = document.getElementById('inpPccConfig').value;
+    
+    if(!poleNo) { alert("Pole Number is required!"); return false; }
+    
+    // STRICT CHECK: Is Pole already exist?
+    if(net.poles.some(p => String(p.poleNo) === poleNo && p.lineType !== 'LT')) {
+        alert("HT Pole Number already exists!"); return false;
+    }
+    
+    if(window.saveSnapshot) window.saveSnapshot();
+    const newObj = {
+        id: 'POLE_' + Date.now(),
+        poleNo: poleNo, lineType: 'HT', poleType: pType, condition: pCond, poleConfig: pConf,
+        lat: parseFloat(document.getElementById('inpLat').value),
+        lng: parseFloat(document.getElementById('inpLng').value)
+    };
+    if(typeof tempPhotoUrl !== 'undefined' && tempPhotoUrl) window.savePhotoData(newObj.id, tempPhotoUrl);
+    net.poles.push(newObj);
+    appState.placementType = null; return true;
+};
+
 window.saveNewLTPole = function() {
-    try {
-        const dtCodeRaw = document.getElementById('inpLTPoleDT').value; const dtCode = dtCodeRaw.replace('DT_', ''); const category = document.getElementById('inpPoleCategory').value; const lat = parseFloat(document.getElementById('inpLat').value); const lng = parseFloat(document.getElementById('inpLng').value); const pType = document.getElementById('inpMainPoleType').value; const pConfig = pType === 'PCC' ? document.getElementById('inpPccConfig').value : 'N/A'; const condition = document.getElementById('inpPoleCondition').value;
-        if (!dtCode) return alert("Select DT"); const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
-        const existingLTPoles = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(dtCode)); let maxId = 0; existingLTPoles.forEach(ep => { const parts = String(ep.poleNo).split('-'); if (parts.length > 1) { const num = parseInt(parts[parts.length - 1]); if (!isNaN(num) && num > maxId) maxId = num; } }); const finalPoleNo = `${dtCode}-${maxId + 1}`;
-        if (net.poles.some(p => String(p.poleNo) === String(finalPoleNo))) return alert(`Pole ${finalPoleNo} exists!`); 
-        window.saveSnapshot(); const objId = 'P_'+Date.now(); net.poles.push({ id: objId, poleNo: finalPoleNo, lineType: category, dtCode: dtCode, poleType: pType, poleConfig: pConfig, condition: condition, lat, lng, synced: false }); 
-        window.attachTempPhoto('POLE', objId); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("LT Pole added!");
-    } catch(err) { console.error(err); alert("Error saving LT pole: " + err.message); }
-}
-window.saveNewLine = function() { 
-    try {
-        const from = document.getElementById('inpFromNode').value; const to = document.getElementById('inpToNode').value; const type = document.getElementById('inpLineType').value; const conductor = document.getElementById('inpConductor').value; const phase = type === '11 KV LINE' ? document.getElementById('inpLinePhase').value : 'N/A';
-        if (!from || !to) return alert("Please select both From and To nodes!"); if (from === to) return alert("Cannot connect node to itself!"); const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
-        const spec = window.getLineSpec(type, phase, conductor); const existingLine = net.lines.find(l => (l.fromNode === from && l.toNode === to) || (l.fromNode === to && l.toNode === from)); if(existingLine) return alert("Line already exists!");
-        const c1 = window.getNodeCoords(from); const c2 = window.getNodeCoords(to); if(!c1 || !c2 || isNaN(c1.lat) || isNaN(c2.lat)) return alert("Invalid node coordinates!"); 
-        window.saveSnapshot(); const dist = window.calcDistance(c1.lat, c1.lng, c2.lat, c2.lng); const objId = 'LN_'+Date.now(); net.lines.push({ id: objId, type: spec.name, conductor: conductor, phase: phase, fromNode: from, toNode: to, distanceMeters: dist, coords: [[c1.lat, c1.lng], [c2.lat, c2.lng]], synced: false }); 
-        window.attachTempPhoto('LINE', objId); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Line added!");
-    } catch(err) { console.error(err); alert("Error saving line: " + err.message); }
-}
-window.saveNewDT = function() { 
-    try {
-        const parentRef = document.getElementById('inpDTParent').value; const code = document.getElementById('inpDTCode').value.trim(); const mountedOn = document.getElementById('inpDTMounted').value; const rating = parseFloat(document.getElementById('inpDTRating').value); const phase = document.getElementById('inpDTPhase').value; const location = document.getElementById('inpDTLocation').value.trim();
-        if (!code) return alert("Enter DT Code"); const net = window.getActiveNetwork(); if(!net) return alert("No active network!");
-        let rawParentRef = parentRef; if(parentRef.startsWith('POLE_')) rawParentRef = parentRef.replace('POLE_', ''); if(parentRef.startsWith('GSS_')) rawParentRef = parentRef.replace('GSS_', '');
-        let lat = 0, lng = 0; const p = net.poles.find(x => String(x.poleNo) === String(rawParentRef)); if (p && !isNaN(p.lat)) { lat = p.lat; lng = p.lng; } else { const gss = appState.gssNodes[rawParentRef]; if(gss && !isNaN(gss.lat)) { lat = gss.lat; lng = gss.lng; } else return alert("Parent node coordinates missing!"); }
-        window.saveSnapshot(); const objId = 'DT_' + Date.now(); net.dts.push({ id: objId, parentPole: rawParentRef, mountedOn: mountedOn, code, rating, phase, location, lat: lat, lng: lng, synced: false }); 
-        window.attachTempPhoto('DT', objId); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("DT added!");
-    } catch(err) { console.error(err); alert("Error saving DT: " + err.message); }
-}
-window.saveNewConsumer = function() { 
-    try {
-        const parentRefRaw = document.getElementById('inpConsParent').value; const kno = document.getElementById('inpConsKno').value.trim(); const name = document.getElementById('inpConsName').value.trim(); const load = document.getElementById('inpConsLoad').value.trim(); const status = document.getElementById('inpConsStatus').value; const cType = document.getElementById('inpConsType').value; const lat = parseFloat(document.getElementById('inpLat').value); const lng = parseFloat(document.getElementById('inpLng').value); 
-        const net = window.getActiveNetwork(); if(!net) return alert("No active network!"); if(net.consumers.some(c => String(c.kno) === String(kno))) return alert("K-Number exists!");
-        let rawParentRef = parentRefRaw; if (rawParentRef.startsWith('POLE_')) rawParentRef = rawParentRef.replace('POLE_', ''); if (rawParentRef.startsWith('DT_')) rawParentRef = rawParentRef.replace('DT_', ''); let parentType = parentRefRaw.startsWith('DT_') ? 'DT' : 'POLE';
-        if (!name || !kno) return alert("Enter Name and K-No"); 
-        window.saveSnapshot(); const objId = 'CS_'+Date.now(); net.consumers.push({ id: objId, parentRef: rawParentRef, parentType, kno, name, load, status, cType, lat, lng, synced: false }); 
-        window.attachTempPhoto('CONSUMER', objId); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Consumer added!");
-    } catch(err) { console.error(err); alert("Error saving consumer: " + err.message); }
-}
+    const net = window.getActiveNetwork(); if(!net) return false;
+    const dt = document.getElementById('inpLTPoleDT').value;
+    const pType = document.getElementById('inpMainPoleType').value;
+    const pCond = document.getElementById('inpPoleCondition').value;
+    if(!dt) { alert("Associated DT is required!"); return false; }
+    
+    let maxL = 0;
+    net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === dt.replace('DT_','')).forEach(p => {
+        const pts = String(p.poleNo).split('-');
+        if(pts.length > 1) { const num = parseInt(pts[1]); if(!isNaN(num) && num > maxL) maxL = num; }
+    });
+    const poleNo = dt.replace('DT_','') + '-' + (maxL + 1);
+    
+    if(window.saveSnapshot) window.saveSnapshot();
+    const newObj = {
+        id: 'POLE_' + Date.now(),
+        poleNo: poleNo, lineType: 'LT', dtCode: dt.replace('DT_',''), poleType: pType, condition: pCond,
+        lat: parseFloat(document.getElementById('inpLat').value),
+        lng: parseFloat(document.getElementById('inpLng').value)
+    };
+    if(typeof tempPhotoUrl !== 'undefined' && tempPhotoUrl) window.savePhotoData(newObj.id, tempPhotoUrl);
+    net.poles.push(newObj);
+    appState.placementType = null; return true;
+};
 
-window.saveEditedPole = function(id) { const net = window.getActiveNetwork(); const p = net.poles.find(x => x.id === id); if(!p) return; p.poleType = document.getElementById('editMainPoleType').value; p.poleConfig = p.poleType === 'PCC' ? document.getElementById('editPccConfig').value : 'N/A'; p.condition = document.getElementById('editPoleCondition').value; p.synced = false; window.saveSnapshot(); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Pole Settings Updated"); }
-window.saveEditedDT = function(id) { const net = window.getActiveNetwork(); const d = net.dts.find(x => x.id === id); if (!d) return; d.phase = document.getElementById('editDTPhase').value; d.mountedOn = document.getElementById('editDTMounted').value; d.rating = parseFloat(document.getElementById('editDTRating').value); d.location = document.getElementById('editDTLocation').value.trim(); d.synced = false; window.saveSnapshot(); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("DT Updated"); }
-window.saveEditedConsumer = function(id) { const net = window.getActiveNetwork(); const c = net.consumers.find(x => x.id === id); if (!c) return; c.name = document.getElementById('editConsName').value.trim(); c.load = document.getElementById('editConsLoad').value.trim(); c.status = document.getElementById('editConsStatus').value; c.cType = document.getElementById('editConsType').value; c.synced = false; window.saveSnapshot(); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Consumer Updated"); }
-window.saveEditedLine = function(id) { const net = window.getActiveNetwork(); const l = net.lines.find(x => x.id === id); if (!l) return; if(l.type.includes('11')) l.phase = document.getElementById('editLinePhase').value; l.conductor = document.getElementById('editLineConductor').value; l.synced = false; window.saveSnapshot(); window.closeModal(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Line Updated"); }
+window.saveNewLine = function() {
+    const net = window.getActiveNetwork(); if(!net) return false;
+    const type = document.getElementById('inpLineType').value;
+    const phase = document.getElementById('inpLinePhase') ? document.getElementById('inpLinePhase').value : '';
+    const cond = document.getElementById('inpConductor').value;
+    const fNode = document.getElementById('inpFromNode').value;
+    const tNode = document.getElementById('inpToNode').value;
+    if(!fNode || !tNode || fNode === tNode) { alert("Invalid From/To nodes!"); return false; }
+    
+    // STRICT CHECK: Prevent double lines
+    if(net.lines.some(l => (l.fromNode === fNode && l.toNode === tNode) || (l.fromNode === tNode && l.toNode === fNode))) {
+        alert("This line route already exists!"); return false;
+    }
 
-window.deleteDTLogic = function(dtId, net) { const d = net.dts.find(x => x.id === dtId); if(!d) return; const ltPolesToRemove = net.poles.filter(p => p.lineType === 'LT' && String(p.dtCode) === String(d.code)), ltPoleIds = ltPolesToRemove.map(p => String(p.poleNo)), ltPoleNodeIds = ltPoleIds.map(pn => 'POLE_' + pn); net.lines = net.lines.filter(l => l.fromNode !== ('DT_' + d.code) && l.toNode !== ('DT_' + d.code) && !ltPoleNodeIds.includes(String(l.fromNode)) && !ltPoleNodeIds.includes(String(l.toNode))); net.consumers = net.consumers.filter(c => { const isDirectToDT = (c.parentType === 'DT' && String(c.parentRef) === String(d.code)), isOnRemovedLTPole = (c.parentType === 'POLE' && ltPoleIds.includes(String(c.parentRef))); return !(isDirectToDT || isOnRemovedLTPole); }); net.poles = net.poles.filter(p => !ltPoleIds.includes(String(p.poleNo))); net.dts = net.dts.filter(x => x.id !== dtId); }
-window.deleteLTPoleLogic = function(p, net) { net.consumers = net.consumers.filter(c => !(c.parentType === 'POLE' && String(c.parentRef) === String(p.poleNo))); net.lines = net.lines.filter(l => String(l.fromNode) !== ('POLE_'+p.poleNo) && String(l.toNode) !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== p.id); }
+    if(window.saveSnapshot) window.saveSnapshot();
+    const newObj = { id: 'LINE_' + Date.now(), type: type, phase: phase, conductor: cond, fromNode: fNode, toNode: tNode };
+    if(typeof tempPhotoUrl !== 'undefined' && tempPhotoUrl) window.savePhotoData(newObj.id, tempPhotoUrl);
+    net.lines.push(newObj); return true;
+};
+
+window.saveNewDT = function() {
+    const net = window.getActiveNetwork(); if(!net) return false;
+    const parent = document.getElementById('inpDTParent').value;
+    const mountedOn = document.getElementById('inpDTMounted').value;
+    const code = document.getElementById('inpDTCode').value.trim();
+    const phase = document.getElementById('inpDTPhase').value;
+    const rating = document.getElementById('inpDTRating').value;
+    const loc = document.getElementById('inpDTLocation').value;
+    
+    if(!parent || !code || !rating) { alert("Code, Parent and Rating required!"); return false; }
+
+    // STRICT CHECK: Prevent duplicate DT code
+    if(net.dts.some(d => String(d.code) === code)) {
+        alert(`A DT with Code ${code} already exists! Please use a different code.`); return false;
+    }
+
+    let lat = 0, lng = 0;
+    if(document.getElementById('inpLat')) { 
+        lat = parseFloat(document.getElementById('inpLat').value); 
+        lng = parseFloat(document.getElementById('inpLng').value); 
+    }
+    if(isNaN(lat) || lat === 0) { 
+        const pNode = window.getNodeCoords(parent); 
+        if(pNode) { lat = pNode.lat; lng = pNode.lng; } 
+    }
+
+    if(window.saveSnapshot) window.saveSnapshot();
+    const newObj = {
+        id: 'DT_' + Date.now(), code: code, parentPole: parent.replace('POLE_','').replace('GSS_',''),
+        mountedOn: mountedOn, phase: phase, rating: rating, location: loc, lat: lat, lng: lng
+    };
+    if(typeof tempPhotoUrl !== 'undefined' && tempPhotoUrl) window.savePhotoData(newObj.id, tempPhotoUrl);
+    net.dts.push(newObj);
+    appState.placementType = null; return true;
+};
+
+window.saveNewConsumer = function() {
+    const net = window.getActiveNetwork(); if(!net) return false;
+    const dt = document.getElementById('inpConsDT').value;
+    const parent = document.getElementById('inpConsParent').value;
+    const status = document.getElementById('inpConsStatus').value;
+    const cType = document.getElementById('inpConsType').value;
+    const kno = document.getElementById('inpConsKno').value.trim();
+    const load = document.getElementById('inpConsLoad').value;
+    const name = document.getElementById('inpConsName').value.trim();
+    
+    if(!dt || !parent || !kno || !name) { alert("Missing required fields (K-No, Name, etc)!"); return false; }
+
+    // STRICT CHECK: Prevent duplicate Consumer K-Number
+    if(net.consumers.some(c => String(c.kno) === kno)) {
+        alert(`A Consumer with K-Number ${kno} already exists!`); return false;
+    }
+
+    if(window.saveSnapshot) window.saveSnapshot();
+    const newObj = {
+        id: 'CONS_' + Date.now(),
+        parentType: parent.startsWith('DT_') ? 'DT' : 'POLE', parentRef: parent.replace('POLE_','').replace('DT_',''),
+        status: status, cType: cType, kno: kno, load: load, name: name,
+        lat: parseFloat(document.getElementById('inpLat').value), lng: parseFloat(document.getElementById('inpLng').value)
+    };
+    if(typeof tempPhotoUrl !== 'undefined' && tempPhotoUrl) window.savePhotoData(newObj.id, tempPhotoUrl);
+    net.consumers.push(newObj);
+    appState.placementType = null; return true;
+};
+
+window.saveEditedPole = function(id) {
+    const net = window.getActiveNetwork(); if(!net) return false; const p = net.poles.find(x => x.id === id); if(!p) return false;
+    if(window.saveSnapshot) window.saveSnapshot();
+    p.poleType = document.getElementById('editMainPoleType').value;
+    p.condition = document.getElementById('editPoleCondition').value;
+    p.poleConfig = document.getElementById('editPccConfig') ? document.getElementById('editPccConfig').value : p.poleConfig;
+    return true;
+};
+window.saveEditedDT = function(id) {
+    const net = window.getActiveNetwork(); if(!net) return false; const d = net.dts.find(x => x.id === id); if(!d) return false;
+    if(window.saveSnapshot) window.saveSnapshot();
+    d.mountedOn = document.getElementById('editDTMounted').value;
+    d.phase = document.getElementById('editDTPhase').value;
+    d.rating = document.getElementById('editDTRating').value;
+    d.location = document.getElementById('editDTLocation').value;
+    return true;
+};
+window.saveEditedConsumer = function(id) {
+    const net = window.getActiveNetwork(); if(!net) return false; const c = net.consumers.find(x => x.id === id); if(!c) return false;
+    if(window.saveSnapshot) window.saveSnapshot();
+    c.name = document.getElementById('editConsName').value.trim();
+    c.load = document.getElementById('editConsLoad').value;
+    c.status = document.getElementById('editConsStatus').value;
+    c.cType = document.getElementById('editConsType').value;
+    if(!c.name) { alert("Name required"); return false; }
+    return true;
+};
+window.saveEditedLine = function(id) {
+    const net = window.getActiveNetwork(); if(!net) return false; const l = net.lines.find(x => x.id === id); if(!l) return false;
+    if(window.saveSnapshot) window.saveSnapshot();
+    l.phase = document.getElementById('editLinePhase') ? document.getElementById('editLinePhase').value : l.phase;
+    l.conductor = document.getElementById('editLineConductor').value;
+    return true;
+};
 
 window.deleteEntity = function(type, id) {
-    const net = window.getActiveNetwork(); if(!confirm(`Delete this ${type.toUpperCase()}?`)) return; window.saveSnapshot();
-    const beforeIds = [...net.poles, ...net.lines, ...net.dts, ...net.consumers].map(x=>x.id);
-    if (type === 'line') net.lines = net.lines.filter(x => x.id !== id); else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id); else if (type === 'dt') window.deleteDTLogic(id, net);
-    else if (type === 'pole') { const p = net.poles.find(x => x.id === id); if (p) { if (p.lineType === 'LT') window.deleteLTPoleLogic(p, net); else { const dtsOnPole = net.dts.filter(d => String(d.parentPole) === String(p.poleNo)); dtsOnPole.forEach(dt => window.deleteDTLogic(dt.id, net)); net.lines = net.lines.filter(l => l.fromNode !== ('POLE_'+p.poleNo) && l.toNode !== ('POLE_'+p.poleNo)); net.poles = net.poles.filter(x => x.id !== id); } } } 
-    else if (type === 'gss') { if (appState.gssNodes[id]) delete appState.gssNodes[id]; }
-    const afterIds = new Set([...net.poles, ...net.lines, ...net.dts, ...net.consumers].map(x=>x.id));
-    if(!appState.deletedObjectIds) appState.deletedObjectIds = []; beforeIds.forEach(bId => { if(!afterIds.has(bId)) appState.deletedObjectIds.push(bId); });
-    window.closeObjectSheet(); window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted!");
-}
+    const net = window.getActiveNetwork(); if(!net) return;
+    if(!confirm("Are you sure you want to delete this?")) return;
+    if(window.saveSnapshot) window.saveSnapshot();
+    if(!appState.deletedObjectIds) appState.deletedObjectIds = []; appState.deletedObjectIds.push(id);
+    
+    if (type === 'pole') net.poles = net.poles.filter(x => x.id !== id);
+    else if (type === 'dt') net.dts = net.dts.filter(x => x.id !== id);
+    else if (type === 'consumer') net.consumers = net.consumers.filter(x => x.id !== id);
+    else if (type === 'line') net.lines = net.lines.filter(x => x.id !== id);
+    
+    window.renderEntireNetwork(); window.triggerPersistence(); window.showToast("Deleted successfully");
+};
+
+window.startObjectMove = function(type, id, title) {
+    appState.activeMove = { type, id };
+    document.getElementById('center-placement-pin').style.display = 'block';
+    window.closeObjectSheet();
+    
+    let moveBar = document.getElementById('move-confirm-bar');
+    if(!moveBar) {
+        moveBar = document.createElement('div'); moveBar.id = 'move-confirm-bar';
+        moveBar.style.cssText = 'position:fixed; bottom:30px; left:50%; transform:translateX(-50%); z-index:9999999; display:flex; gap:10px; width:90%; max-width:400px; pointer-events:auto;';
+        moveBar.innerHTML = `<button class="btn-danger-outline" style="background:white; flex:1;" onclick="window.cancelMove()">Cancel</button><button class="btn-action-primary" style="flex:1;" onclick="window.confirmMove()">Set New Location</button>`;
+        document.body.appendChild(moveBar);
+        if(typeof L !== 'undefined' && L.DomEvent) { L.DomEvent.disableClickPropagation(moveBar); L.DomEvent.disableScrollPropagation(moveBar); }
+    }
+    moveBar.style.display = 'flex'; document.getElementById('bottom-single-action').style.display = 'none';
+    window.showToast("Pan map to new location...");
+};
+window.cancelMove = function() {
+    appState.activeMove = null; document.getElementById('center-placement-pin').style.display = 'none';
+    document.getElementById('move-confirm-bar').style.display = 'none'; document.getElementById('bottom-single-action').style.display = 'block';
+    window.renderEntireNetwork();
+};
+window.confirmMove = function() {
+    if(!appState.activeMove) return;
+    const center = map.getCenter(); const net = window.getActiveNetwork();
+    if(window.saveSnapshot) window.saveSnapshot();
+    const { type, id } = appState.activeMove;
+    
+    if(type === 'GSS') { if(appState.gssNodes[id]) { appState.gssNodes[id].lat = center.lat; appState.gssNodes[id].lng = center.lng; } }
+    else if(type === 'POLE' && net) { const p = net.poles.find(x => x.id === id); if(p) { p.lat = center.lat; p.lng = center.lng; } }
+    else if(type === 'CONSUMER' && net) { const c = net.consumers.find(x => x.id === id); if(c) { c.lat = center.lat; c.lng = center.lng; } }
+    
+    window.cancelMove(); window.triggerPersistence(); window.showToast("Location Updated!");
+};
