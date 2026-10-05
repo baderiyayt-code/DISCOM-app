@@ -343,52 +343,75 @@ window.saveNewConsumer = function() {
 
 
 // ==========================================
-// OBJECT MOVE LOGIC (WITH CLOUD SYNC TRIGGER)
+// OBJECT MOVE LOGIC (FULLY SYNCED WITH CLOUD)
 // ==========================================
 window.confirmMove = function() { 
-    if(!appState.activeMove) return; 
-    const center = map.getCenter(); 
-    const net = window.getActiveNetwork(); 
-    if(window.saveSnapshot) window.saveSnapshot(); 
-    
-    const { type, id } = appState.activeMove; 
-    
-    if(type === 'GSS') { 
-        if(appState.gssNodes[id]) { 
-            appState.gssNodes[id].lat = center.lat; 
-            appState.gssNodes[id].lng = center.lng; 
-            appState.gssNodes[id].updatedAt = Date.now();
-            appState.gssNodes[id].synced = false; // Forces cloud sync
+    window.executeSafeSave(() => {
+        if(!appState.activeMove) return false; 
+        
+        const center = map.getCenter(); 
+        const net = window.getActiveNetwork(); 
+        if(window.saveSnapshot) window.saveSnapshot(); 
+        
+        // Ensure type is safely checked in uppercase
+        const type = String(appState.activeMove.type).toUpperCase(); 
+        const id = appState.activeMove.id; 
+        let isUpdated = false;
+        
+        if(type === 'GSS' || type === 'GSSNODE') { 
+            if(appState.gssNodes[id]) { 
+                appState.gssNodes[id].lat = parseFloat(center.lat.toFixed(6)); 
+                appState.gssNodes[id].lng = parseFloat(center.lng.toFixed(6)); 
+                appState.gssNodes[id].updatedAt = Date.now();
+                appState.gssNodes[id].synced = false; // Forces cloud sync
+                isUpdated = true;
+            } 
+        } else if(type === 'POLE' || type === 'LTPOLE') { 
+            const p = (net.poles||[]).find(x => x.id === id); 
+            if(p) { 
+                p.lat = parseFloat(center.lat.toFixed(6)); 
+                p.lng = parseFloat(center.lng.toFixed(6)); 
+                p.updatedAt = Date.now(); 
+                p.synced = false; 
+                isUpdated = true;
+            } 
+        } else if(type === 'DT') { 
+            const d = (net.dts||[]).find(x => x.id === id); 
+            if(d) { 
+                d.lat = parseFloat(center.lat.toFixed(6)); 
+                d.lng = parseFloat(center.lng.toFixed(6)); 
+                d.updatedAt = Date.now(); 
+                d.synced = false; 
+                isUpdated = true;
+            } 
+        } else if(type === 'CONSUMER') { 
+            const c = (net.consumers||[]).find(x => x.id === id); 
+            if(c) { 
+                c.lat = parseFloat(center.lat.toFixed(6)); 
+                c.lng = parseFloat(center.lng.toFixed(6)); 
+                c.updatedAt = Date.now(); 
+                c.synced = false; 
+                isUpdated = true;
+            } 
         } 
-    } else if(type === 'POLE' && net) { 
-        const p = (net.poles||[]).find(x => x.id === id); 
-        if(p) { 
-            p.lat = center.lat; 
-            p.lng = center.lng; 
-            p.updatedAt = Date.now(); 
-            p.synced = false; // Forces cloud sync
-        } 
-    } else if(type === 'DT' && net) { 
-        const d = (net.dts||[]).find(x => x.id === id); 
-        if(d) { 
-            d.lat = center.lat; 
-            d.lng = center.lng; 
-            d.updatedAt = Date.now(); 
-            d.synced = false; // Forces cloud sync
-        } 
-    } else if(type === 'CONSUMER' && net) { 
-        const c = (net.consumers||[]).find(x => x.id === id); 
-        if(c) { 
-            c.lat = center.lat; 
-            c.lng = center.lng; 
-            c.updatedAt = Date.now(); 
-            c.synced = false; // Forces cloud sync
-        } 
-    } 
-    
-    window.cancelMove(); 
-    window.triggerPersistence(); // This will auto-trigger syncToSupabase()
-    window.showToast("Location Updated in Database!"); 
+        
+        // Reset Move UI
+        appState.activeMove = null; 
+        const pin = document.getElementById('center-placement-pin');
+        if (pin) pin.style.display = 'none'; 
+        
+        const moveBar = document.getElementById('move-confirm-bar');
+        if (moveBar) moveBar.style.display = 'none'; 
+        
+        const bottomAction = document.getElementById('bottom-single-action');
+        if (bottomAction) bottomAction.style.display = 'block';
+        
+        if(isUpdated && window.showToast) {
+            window.showToast("Location Updated in Database!");
+        }
+        
+        return isUpdated; 
+    });
 };
 
 // ==========================================
