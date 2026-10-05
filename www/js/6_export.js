@@ -33,7 +33,7 @@ window.downloadFileNative = function(blob, filename) {
 };
 
 // ==========================================
-// 1. GENERATE PROFESSIONAL SLD PDF (ROUNDED DISTANCE & CLEAN LABELS)
+// 1. GENERATE PROFESSIONAL SLD PDF (BLACK SMALL LINE TEXT & BALANCED DT)
 // ==========================================
 window.generateCadSLDPdf = function() {
     const net = window.getActiveNetwork();
@@ -106,9 +106,9 @@ window.generateCadSLDPdf = function() {
                 let angleDeg = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
                 if(angleDeg > 90 || angleDeg < -90) angleDeg += 180; 
                 
-                // --- DISTANCE ROUNDED TO NEAREST WHOLE NUMBER (e.g. 239 M) & FONT REDUCED FOR CLARITY ---
-                doc.setFontSize(3.2); 
-                doc.setTextColor(37, 99, 235); 
+                // --- LINE TEXT: SMALL (2.8) & BLACK COLOR ---
+                doc.setFontSize(2.8); 
+                doc.setTextColor(0, 0, 0); 
                 const roundedDist = Math.round(l.distanceMeters || 0);
                 doc.text(`${roundedDist} M`, midX, midY - 0.4, { angle: -angleDeg, align: 'center' });
             }
@@ -119,11 +119,12 @@ window.generateCadSLDPdf = function() {
             if(n.type === 'GSS') {
                 doc.setFillColor(220, 38, 38); doc.setDrawColor(0,0,0); doc.setLineWidth(0.2); doc.rect(pos.x - 3, pos.y - 2, 6, 4, 'FD'); doc.setFontSize(4.5); doc.setTextColor(255,255,255); doc.text("GSS", pos.x, pos.y + 1, { align: 'center' }); doc.setTextColor(0,0,0); doc.setFontSize(4); doc.text(n.data.name || "Substation", pos.x, pos.y - 3, { align: 'center' });
             } else if(n.type === 'DT') {
+                // --- DT BOX & FONT MATCHED PROPORTIONATELY ---
                 doc.setFillColor(249, 115, 22); doc.setDrawColor(0,0,0); doc.setLineWidth(0.15); 
                 doc.rect(pos.x - 1.25, pos.y - 1.25, 2.5, 2.5, 'FD'); 
-                doc.setFontSize(3.5); doc.setTextColor(0,0,0); 
+                doc.setFontSize(2.5); doc.setTextColor(0,0,0); 
                 const rating = String(n.data.rating).replace(/[^0-9]/g, ''); 
-                doc.text(rating, pos.x, pos.y + 0.9, { align: 'center' });
+                doc.text(rating, pos.x, pos.y + 0.7, { align: 'center' });
             } else if(n.type === 'POLE') {
                 doc.setFillColor(100, 116, 139); doc.circle(pos.x, pos.y, 0.5, 'F');
             }
